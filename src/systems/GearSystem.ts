@@ -1,0 +1,300 @@
+import { GearState, GearType } from '../types/gear.types';
+import { World } from '../world/World';
+import { GearMeshGraph } from '../world/GearMeshGraph';
+import { EventBus } from './EventBus';
+import { GEAR_DEFINITIONS, GEAR_MESH_TOLERANCE, gearRadius, gearPowerCost, gearMaxHp, turretMaxAmmo } from '../constants/gear.constants';
+import { SNAP_THRESHOLD, PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X } from '../constants/world.constants';
+import { REPOSITION_COOLDOWN_MS, GEAR_PLACEMENT_COST_BASE, GEAR_PLACEMENT_COST_MULTIPLIER } from '../constants/balance.constants';
+import { TechState } from '../types/tech.types';
+import { distance } from '../utils/MathUtils';
+
+let _nextGearId = 1;
+function nextGearId(): string {
+  return `gear_${_nextGearId++}`;
+}
+
+export interface SnapResult {
+  x: number;
+  y: number;
+  snapTargetId: string | null; // null = no snap, just cursor pos
+  valid: boolean;
+}
+
+/**
+ * Manages gear placement, removal, and mesh graph wiring.
+ * Free placement with magnetic snap — no grid.
+ * Teeth-based sizing replaces small/medium/large.
+ */
+export class GearSystem {
+  private world: World;
+  private meshGraph: GearMeshGraph;
+  private eventBus: EventBus;
+  private playerTech: TechState;
+
+  // Pause tracking: accumulated ms the game was paused, to exclude from cooldown
+  private totalPausedMs: number = 0;
+  private pauseStart: number | null = null;
+
+  constructor(world: World, meshGraph: GearMeshGraph, eventBus: EventBus, playerTech: TechState) {
+    this.world = world;
+    this.meshGraph = meshGraph;
+    this.eventBus = eventBus;
+    this.playerTech = playerTech;
+  }
+
+  /** Called by GameScene when pause state changes */
+  setPaused(paused: boolean): void {
+    if (paused && this.pauseStart === null) {
+      this.pauseStart = Date.now();
+    } else if (!paused && this.pauseStart !== null) {
+      this.totalPausedMs += Date.now() - this.pauseStart;
+      this.pauseStart = null;
+    }
+  }
+
+  /** Check if a gear type is unlocked for the given owner */
+  isUnlocked(type: GearType, owner: 'player' | 'ai'): boolean {
+    if (owner === 'ai') return true;
+    const def = GEAR_DEFINITIONS[type];
+    if (!def) return false;
+    if (!def.unlockNode) return true;
+    return this.playerTech.researched.has(def.unlockNode);
+  }
+
+  /**
+   * Compute snap candidate and return best match or null.
+   * Excludes a gear if excludeId is provided.
+   */
+  private computeSnapCandidate(dragX: number, dragY: number, teeth: number, excludeId: string | null): { x: number; y: number; targetId: string } | null {
+    const myRadius = gearRadius(teeth);
+    let bestCandidate: { x: number; y: number; targetId: string } | null = null;
+    let bestDist = Infinity;
+
+    for (const [id, existing] of this.world.getAllGears()) {
+      if (excludeId !== null && id === excludeId) continue;
+
+      const exRadius = gearRadius(existing.teeth);
+      const meshDist = myRadius + exRadius;
+      const d = distance(dragX, dragY, existing.x, existing.y);
+
+      if (d < meshDist + SNAP_THRESHOLD) {
+        const nx = dragX - existing.x;
+        const ny = dragY - existing.y;
+        const len = Math.sqrt(nx * nx + ny * ny);
+        if (len < 1) continue;
+
+        const snapX = existing.x + (nx / len) * meshDist;
+        const snapY = existing.y + (ny / len) * meshDist;
+        const distToSnap = distance(dragX, dragY, snapX, snapY);
+
+        if (distToSnap < bestDist) {
+          bestDist = distToSnap;
+          bestCandidate = { x: snapX, y: snapY, targetId: existing.id };
+        }
+      }
+    }
+
+    return bestCandidate;
+  }
+
+  /**
+   * Compute the snap position for a gear being dragged at (dragX, dragY).
+   * Scans all existing gears for snap candidates within SNAP_THRESHOLD of meshing distance.
+   */
+  getSnapPosition(dragX: number, dragY: number, teeth: number, owner: 'player' | 'ai'): SnapResult {
+    const best = this.computeSnapCandidate(dragX, dragY, teeth, null);
+    const finalX = best ? best.x : dragX;
+    const finalY = best ? best.y : dragY;
+    const valid = this.world.canPlace(finalX, finalY, teeth, owner);
+
+    return {
+      x: finalX,
+      y: finalY,
+      snapTargetId: best?.targetId ?? null,
+      valid,
+    };
+  }
+
+  /**
+   * Attempt to place a gear at pixel (x, y). Returns GearState if successful, null otherwise.
+   */
+  tryPlace(
+    type: GearType,
+    teeth: number,
+    x: number,
+    y: number,
+    owner: 'player' | 'ai',
+    ignoreTechCheck: boolean = false,
+  ): GearState | null {
+    const def = GEAR_DEFINITIONS[type];
+    if (!def) return null;
+    if (!ignoreTechCheck && !this.isUnlocked(type, owner)) return null;
+    if (!this.world.canPlace(x, y, teeth, owner)) return null;
+
+    const maxHp = gearMaxHp(teeth, type);
+    const gear: GearState = {
+      id: nextGearId(),
+      definitionKey: type,
+      type,
+      teeth,
+      x,
+      y,
+      owner,
+      angularVelocity: 0,
+      currentAngle: 0,
+      accumulatedAngle: 0,
+      frictionLoad: 0,
+      torqueOutput: 0,
+      isSpinning: false,
+      isBurntOut: false,
+      hp: maxHp,
+      maxHp,
+      isJammed: false,
+      crackLevel: 0,
+      jamStress: 0,
+    };
+
+    // Initialize turret ammo on placement
+    if (type === 'crossbow_turret' || type === 'artillery_turret') {
+      gear.ammo = 0;
+      gear.maxAmmo = turretMaxAmmo(teeth);
+    }
+
+    this.world.placeGear(gear);
+    this.meshGraph.addGear(gear);
+    this.meshGraph.rebuildEdgesFor(gear, this.world.getAllGears());
+
+    this.eventBus.emit('gear:placed', { gear });
+    this.eventBus.emit('gear:mesh_updated', {
+      gearIds: [gear.id, ...this.meshGraph.getNeighbors(gear.id)],
+    });
+
+    return gear;
+  }
+
+  /** Compute the power cost to place a gear of the given type and teeth count */
+  getPlacementCost(type: GearType, teeth: number): number {
+    const def = GEAR_DEFINITIONS[type];
+    if (!def) return 0;
+    return gearPowerCost(def.basePowerCost, teeth);
+  }
+
+  removeGear(gearId: string): boolean {
+    const gear = this.world.removeGear(gearId);
+    if (!gear) return false;
+
+    const neighbors = this.meshGraph.getNeighbors(gearId);
+    this.meshGraph.removeGear(gearId);
+
+    this.eventBus.emit('gear:removed', { gearId });
+    this.eventBus.emit('gear:mesh_updated', { gearIds: neighbors });
+
+    return true;
+  }
+
+  /**
+   * Sells a gear: removes it and returns the gold refund (50% of placement cost, rounded up).
+   * Returns null if the gear doesn't exist.
+   * Caller is responsible for crediting the gold via economySystem.earnGold().
+   */
+  sellGear(gearId: string): number | null {
+    const gear = this.world.getGear(gearId);
+    if (!gear) return null;
+    const placementCost = GEAR_PLACEMENT_COST_BASE + gear.teeth * GEAR_PLACEMENT_COST_MULTIPLIER;
+    const refund = Math.ceil(placementCost * 0.5);
+    this.removeGear(gearId);
+    return refund;
+  }
+
+  markBurntOut(gearId: string, timestamp: number): void {
+    const gear = this.world.getGear(gearId);
+    if (!gear) return;
+    gear.isBurntOut = true;
+    gear.burntOutAt = timestamp;
+    gear.isSpinning = false;
+    gear.angularVelocity = 0;
+    this.world.updateGear(gear);
+    this.eventBus.emit('gear:burnt_out', { gearId });
+  }
+
+  startOverclock(gearId: string, duration: number, now: number): void {
+    const gear = this.world.getGear(gearId);
+    if (!gear || gear.type !== 'overclock' || gear.isBurntOut) return;
+    gear.overclockUntil = now + duration;
+    this.world.updateGear(gear);
+    this.eventBus.emit('gear:overclock_started', { gearId, duration });
+  }
+
+  /**
+   * Reposition an existing gear to a new location.
+   * Validates ownership, cooldown, and placement legality (excluding self).
+   */
+  repositionGear(gearId: string, newX: number, newY: number, owner: 'player' | 'ai'): boolean {
+    const gear = this.world.getGear(gearId);
+    if (!gear) return false;
+    if (gear.owner !== owner) return false;
+    if (this.isOnCooldown(gearId)) return false;
+    if (!this.world.canPlaceExcluding(newX, newY, gear.teeth, owner, gearId)) return false;
+
+    const oldX = gear.x;
+    const oldY = gear.y;
+    gear.x = newX;
+    gear.y = newY;
+    gear.lastRepositionedAt = Date.now();
+    this.world.updateGear(gear);
+
+    // Rebuild mesh edges for this gear
+    this.meshGraph.removeGear(gearId);
+    this.meshGraph.addGear(gear);
+    this.meshGraph.rebuildEdgesFor(gear, this.world.getAllGears());
+
+    // Also rebuild edges for neighbors that may have lost/gained connections
+    for (const neighborId of this.meshGraph.getNeighbors(gearId)) {
+      const neighbor = this.world.getGear(neighborId);
+      if (neighbor) {
+        this.meshGraph.rebuildEdgesFor(neighbor, this.world.getAllGears());
+      }
+    }
+
+    this.eventBus.emit('gear:repositioned', { gearId, oldX, oldY, newX, newY });
+    this.eventBus.emit('gear:mesh_updated', {
+      gearIds: [gearId, ...this.meshGraph.getNeighbors(gearId)],
+    });
+
+    return true;
+  }
+
+  /** Check if a gear is still on reposition cooldown (pause time is excluded) */
+  isOnCooldown(gearId: string): boolean {
+    const gear = this.world.getGear(gearId);
+    if (!gear || !gear.lastRepositionedAt) return false;
+    const currentPausedMs = this.pauseStart !== null ? Date.now() - this.pauseStart : 0;
+    const effectiveNow = Date.now() - this.totalPausedMs - currentPausedMs;
+    return effectiveNow - gear.lastRepositionedAt < REPOSITION_COOLDOWN_MS;
+  }
+
+  /**
+   * Compute snap position excluding a specific gear (for repositioning).
+   */
+  getSnapPositionExcluding(dragX: number, dragY: number, teeth: number, owner: 'player' | 'ai', excludeGearId: string): SnapResult {
+    const best = this.computeSnapCandidate(dragX, dragY, teeth, excludeGearId);
+    const finalX = best ? best.x : dragX;
+    const finalY = best ? best.y : dragY;
+    const valid = this.world.canPlaceExcluding(finalX, finalY, teeth, owner, excludeGearId);
+
+    return {
+      x: finalX,
+      y: finalY,
+      snapTargetId: best?.targetId ?? null,
+      valid,
+    };
+  }
+
+  getWorld(): World {
+    return this.world;
+  }
+
+  getMeshGraph(): GearMeshGraph {
+    return this.meshGraph;
+  }
+}

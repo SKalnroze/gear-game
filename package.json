@@ -1,0 +1,20 @@
+{
+  "name": "gear-game",
+  "version": "0.1.0",
+  "description": "A deep browser strategy game with interconnected gears, power flow, and tactical combat.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.9.0",
+    "typescript": "~5.7.2",
+    "vite": "^6.0.0"
+  }
+}

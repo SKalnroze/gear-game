@@ -123,7 +123,9 @@ export class UIScene extends Phaser.Scene {
       playerLabel = 'PLAYER BASE';
       aiLabel     = 'AI BASE';
     }
-    this.healthBars = new BaseHealthBars(this, winSystem, playerLabel, aiLabel);
+    const humanOwner: 'player' | 'ai' | null =
+      this.isSpectate ? null : this.playerIsRight ? 'ai' : 'player';
+    this.healthBars = new BaseHealthBars(this, winSystem, playerLabel, aiLabel, humanOwner);
 
     // ── Tooltip (must be first — high depth) ──────────────────────────────
     this.tooltipManager = new TooltipManager(this, eventBus);

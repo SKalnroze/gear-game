@@ -31,6 +31,12 @@ export interface StatSnapshot {
 
 export interface GameOverData {
   winner: 'player' | 'ai';
+  /**
+   * Which owner the human was playing, or null in a spectate match.
+   * `winner` is an owner label, and the lobby can seat the human on either
+   * side, so victory cannot be inferred from `winner === 'player'`.
+   */
+  humanOwner: 'player' | 'ai' | null;
   reason: string;
   difficulty: string;
   snapshots: StatSnapshot[];

@@ -579,7 +579,7 @@ export class GameScene extends Phaser.Scene {
 
     // Tech research — wire UI click to TechSystem
     eventBus.on('ui:tech_node_clicked', ({ nodeId }) => {
-      this.techSystem.startResearch(nodeId, 'player');
+      this.techSystem.startResearch(nodeId, this._playerOwner());
     });
 
     // Drag-from-palette — now carries teeth instead of size
@@ -592,7 +592,7 @@ export class GameScene extends Phaser.Scene {
       const cam = this.cameras.main;
       const wx = cam.scrollX + (this.scale.width / 2) / this.cameraZoom;
       const wy = cam.scrollY + (panelState.topY / 2) / this.cameraZoom;
-      const snap = this.gearSystem.getSnapPosition(wx, wy, this.dragGearTeeth, 'player');
+      const snap = this.gearSystem.getSnapPosition(wx, wy, this.dragGearTeeth, this._playerOwner());
       this.worldRenderer.drawGhostGear(snap.x, snap.y, this.dragGearTeeth, snap.valid, snap.snapTargetId !== null);
     });
 
@@ -700,7 +700,7 @@ export class GameScene extends Phaser.Scene {
       // ─── Palette drag (updates ghost even while cursor is over panel) ───
       if (this.isDragging && this.dragGearType) {
         const isPractice = this.leftSlot.kind === 'human' && this.rightSlot.kind === 'human';
-        const ghostOwner: 'player' | 'ai' = (isPractice && this.asEnemyMode) ? 'ai' : 'player';
+        const ghostOwner: 'player' | 'ai' = (isPractice && this.asEnemyMode) ? this._enemyOwner() : this._playerOwner();
         const snap = this.gearSystem.getSnapPosition(pointer.worldX, pointer.worldY, this.dragGearTeeth, ghostOwner);
         this.worldRenderer.drawGhostGear(snap.x, snap.y, this.dragGearTeeth, snap.valid, snap.snapTargetId !== null);
         return;
@@ -717,7 +717,7 @@ export class GameScene extends Phaser.Scene {
           return;
         }
         const snap = this.gearSystem.getSnapPositionExcluding(
-          pointer.worldX, pointer.worldY, gear.teeth, 'player', this.pickedUpGearId,
+          pointer.worldX, pointer.worldY, gear.teeth, this._playerOwner(), this.pickedUpGearId,
         );
         this.worldRenderer.drawGhostGear(snap.x, snap.y, gear.teeth, snap.valid, snap.snapTargetId !== null);
         // Move the gear entity to follow mouse
@@ -735,7 +735,7 @@ export class GameScene extends Phaser.Scene {
         const gear = this.world.getGear(this.repositionGearId);
         if (!gear) return;
         const snap = this.gearSystem.getSnapPositionExcluding(
-          pointer.worldX, pointer.worldY, gear.teeth, 'player', this.repositionGearId,
+          pointer.worldX, pointer.worldY, gear.teeth, this._playerOwner(), this.repositionGearId,
         );
         this.worldRenderer.drawGhostGear(snap.x, snap.y, gear.teeth, snap.valid, snap.snapTargetId !== null);
         return;
@@ -774,7 +774,7 @@ export class GameScene extends Phaser.Scene {
         if (foundGear.type === 'crossbow_turret' || foundGear.type === 'artillery_turret') {
           const range = turretRange(foundGear.teeth, foundGear.type as 'crossbow_turret' | 'artillery_turret');
           const color = foundGear.type === 'artillery_turret' ? 0xff6600 : 0xffdd00;
-          const ownerAlpha = foundGear.owner === 'player' ? 0.5 : 0.35;
+          const ownerAlpha = foundGear.owner === this._playerOwner() ? 0.5 : 0.35;
           this.rangeCircleGraphics.lineStyle(1.5, color, ownerAlpha);
           this.rangeCircleGraphics.strokeCircle(foundGear.x, foundGear.y, range);
           this.rangeCircleGraphics.fillStyle(color, 0.04);
@@ -805,10 +805,10 @@ export class GameScene extends Phaser.Scene {
         const gear = this.world.getGear(this.repositionGearId);
         if (gear && pointer.y <= WORLD_HEIGHT) {
           const snap = this.gearSystem.getSnapPositionExcluding(
-            pointer.worldX, pointer.worldY, gear.teeth, 'player', this.repositionGearId,
+            pointer.worldX, pointer.worldY, gear.teeth, this._playerOwner(), this.repositionGearId,
           );
           if (snap.valid) {
-            const ok = this.gearSystem.repositionGear(this.repositionGearId, snap.x, snap.y, 'player');
+            const ok = this.gearSystem.repositionGear(this.repositionGearId, snap.x, snap.y, this._playerOwner());
             if (ok) {
               const entity = this.gearEntities.get(this.repositionGearId);
               if (entity) {
@@ -843,7 +843,7 @@ export class GameScene extends Phaser.Scene {
       const worldX = pointer.worldX;
       const worldY = pointer.worldY;
       const isPractice = this.leftSlot.kind === 'human' && this.rightSlot.kind === 'human';
-      const placeOwner: 'player' | 'ai' = (isPractice && this.asEnemyMode) ? 'ai' : 'player';
+      const placeOwner: 'player' | 'ai' = (isPractice && this.asEnemyMode) ? this._enemyOwner() : this._playerOwner();
       const snap = this.gearSystem.getSnapPosition(worldX, worldY, this.dragGearTeeth, placeOwner);
 
       if (snap.valid) {
@@ -943,13 +943,13 @@ export class GameScene extends Phaser.Scene {
         const isPractice = this.leftSlot.kind === 'human' && this.rightSlot.kind === 'human';
         const canRemoveEnemy = isPractice && this.asEnemyMode;
         for (const [, gear] of this.world.getAllGears()) {
-          if (gear.owner !== 'player' && !canRemoveEnemy) continue;
+          if (gear.owner !== this._playerOwner() && !canRemoveEnemy) continue;
           if (gear.owner === 'ai' && !canRemoveEnemy) continue;
           const dx = gear.x - clickX;
           const dy = gear.y - clickY;
           if (Math.sqrt(dx * dx + dy * dy) < gearRadius(gear.teeth)) {
             const refund = this.gearSystem.sellGear(gear.id);
-            if (refund !== null) this.economySystem.earnGold('player', refund);
+            if (refund !== null) this.economySystem.earnGold(this._playerOwner(), refund);
             break;
           }
         }
@@ -961,12 +961,12 @@ export class GameScene extends Phaser.Scene {
         const gear = this.world.getGear(this.pickedUpGearId);
         if (gear) {
           const snap = this.gearSystem.getSnapPositionExcluding(
-            pointer.worldX, pointer.worldY, gear.teeth, 'player', this.pickedUpGearId,
+            pointer.worldX, pointer.worldY, gear.teeth, this._playerOwner(), this.pickedUpGearId,
           );
 
           if (snap.valid) {
             // Valid placement — move the gear in the world
-            const moved = this.gearSystem.repositionGear(this.pickedUpGearId, snap.x, snap.y, 'player');
+            const moved = this.gearSystem.repositionGear(this.pickedUpGearId, snap.x, snap.y, this._playerOwner());
             if (moved) {
               // Successfully placed — clear pickup state
               const entity = this.gearEntities.get(this.pickedUpGearId);
@@ -990,7 +990,7 @@ export class GameScene extends Phaser.Scene {
       const clickX = pointer.worldX;
       const clickY = pointer.worldY;
       for (const [, gear] of this.world.getAllGears()) {
-        if (gear.owner !== 'player') continue;
+        if (gear.owner !== this._playerOwner()) continue;
         const dx = gear.x - clickX;
         const dy = gear.y - clickY;
         if (Math.sqrt(dx * dx + dy * dy) < gearRadius(gear.teeth)) {
@@ -1195,8 +1195,8 @@ export class GameScene extends Phaser.Scene {
 
   private updateBasesDisplay(): void {
     this.worldRenderer.drawBases(
-      this.winSystem.getHp('player'),
-      this.winSystem.getMaxHp('player'),
+      this.winSystem.getHp(this._playerOwner()),
+      this.winSystem.getMaxHp(this._playerOwner()),
       this.winSystem.getHp('ai'),
       this.winSystem.getMaxHp('ai'),
     );
@@ -1348,6 +1348,11 @@ export class GameScene extends Phaser.Scene {
     return this.playerIsRight ? 'ai' : 'player';
   }
 
+  /** The side opposing the human. */
+  private _enemyOwner(): 'player' | 'ai' {
+    return this.playerIsRight ? 'player' : 'ai';
+  }
+
   /** Called whenever a combat-pressure event occurs. Starts or sustains combat mood. */
   private _onCombatEvent(): void {
     this._lastCombatAt = Date.now();
@@ -1380,8 +1385,9 @@ export class GameScene extends Phaser.Scene {
   private showGameOver(winner: 'player' | 'ai', reason: string): void {
     // ─── Audio: stop music and play outcome SFX ───────────────────────
     musicEngine.stop();
-    if (GAME_SETTINGS.soundEnabled) {
-      if (winner === 'player') {
+    const humanOwner = this.isSpectate ? null : this._playerOwner();
+    if (GAME_SETTINGS.soundEnabled && humanOwner !== null) {
+      if (winner === humanOwner) {
         soundManager.playVictory();
       } else {
         soundManager.playDefeat();
@@ -1403,7 +1409,7 @@ export class GameScene extends Phaser.Scene {
       difficultyLabel = `ai-right(${this.rightSlot.difficulty ?? 'medium'})`;
     }
 
-    const data = this.gameStatsTracker.buildGameOverData(winner, reason, difficultyLabel);
+    const data = this.gameStatsTracker.buildGameOverData(winner, reason, difficultyLabel, humanOwner);
     // Launch the stats scene — GameScene/UIScene shut down via onShutdown()
     this.scene.start('GameOverScene', data);
   }

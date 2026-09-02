@@ -2,11 +2,18 @@ import { describe, it, expect } from 'vitest';
 import {
   computeScaledStats,
   isInFront,
+  isOwnerOnRight,
+  marchDirection,
+  enemyBaseX,
+  homeBaseX,
+  spawnX,
+  hasReachedEnemyBase,
   gearInLane,
   computeAttackCooldown,
   computeChargeDamage,
   TYPE_MASS_MULT,
 } from '../../src/systems/unit.utils';
+import { PLAYER_BASE_X, AI_BASE_X } from '../../src/constants/world.constants';
 import { UNIT_DEFINITIONS } from '../../src/constants/unit.constants';
 import { LANE_Y_MIN, LANE_Y_MAX } from '../../src/constants/world.constants';
 import type { UnitState } from '../../src/types/unit.types';
@@ -196,5 +203,146 @@ describe('computeChargeDamage', () => {
 
   it('chargeAccum=50 → 1.5× baseDamage', () => {
     expect(computeChargeDamage(10, 50)).toBe(15);
+  });
+});
+
+// ─── Orientation ──────────────────────────────────────────────────────────────
+
+describe('orientation', () => {
+  // playerRight=false is the classic layout: human on the left marching right.
+  // playerRight=true is the flipped lobby (AI left, human right), where every
+  // directional decision must mirror. Movement, targeting and base arrival used
+  // to disagree with each other in that configuration.
+
+  function unitAt(owner: 'player' | 'ai', x: number): UnitState {
+    return { owner, x, y: 260 } as UnitState;
+  }
+
+  describe('isOwnerOnRight', () => {
+    it('normal layout puts the player left and the AI right', () => {
+      expect(isOwnerOnRight('player', false)).toBe(false);
+      expect(isOwnerOnRight('ai', false)).toBe(true);
+    });
+
+    it('flipped layout swaps them', () => {
+      expect(isOwnerOnRight('player', true)).toBe(true);
+      expect(isOwnerOnRight('ai', true)).toBe(false);
+    });
+  });
+
+  describe('marchDirection', () => {
+    it('the left side marches right and the right side marches left', () => {
+      expect(marchDirection('player', false)).toBe(1);
+      expect(marchDirection('ai', false)).toBe(-1);
+    });
+
+    it('flips with the layout', () => {
+      expect(marchDirection('player', true)).toBe(-1);
+      expect(marchDirection('ai', true)).toBe(1);
+    });
+
+    it('the two sides always march at each other', () => {
+      for (const flipped of [false, true]) {
+        expect(marchDirection('player', flipped)).toBe(-marchDirection('ai', flipped));
+      }
+    });
+  });
+
+  describe('base positions', () => {
+    it('each side attacks the far base and defends the near one', () => {
+      expect(enemyBaseX('player', false)).toBe(AI_BASE_X);
+      expect(homeBaseX('player', false)).toBe(PLAYER_BASE_X);
+      expect(enemyBaseX('ai', false)).toBe(PLAYER_BASE_X);
+      expect(homeBaseX('ai', false)).toBe(AI_BASE_X);
+    });
+
+    it('flipped, the player attacks the left base instead', () => {
+      expect(enemyBaseX('player', true)).toBe(PLAYER_BASE_X);
+      expect(homeBaseX('player', true)).toBe(AI_BASE_X);
+      expect(enemyBaseX('ai', true)).toBe(AI_BASE_X);
+      expect(homeBaseX('ai', true)).toBe(PLAYER_BASE_X);
+    });
+
+    it('a side never attacks its own base', () => {
+      for (const flipped of [false, true]) {
+        for (const owner of ['player', 'ai'] as const) {
+          expect(enemyBaseX(owner, flipped)).not.toBe(homeBaseX(owner, flipped));
+        }
+      }
+    });
+  });
+
+  describe('marching leads to the enemy base', () => {
+    // The bug this guards: units spawned on the correct side, then marched the
+    // wrong way and "reached the enemy base" at their own doorstep.
+    it('the enemy base always lies ahead of the spawn point', () => {
+      for (const flipped of [false, true]) {
+        for (const owner of ['player', 'ai'] as const) {
+          const start = spawnX(owner, flipped);
+          const target = enemyBaseX(owner, flipped);
+          const dir = marchDirection(owner, flipped);
+          expect(Math.sign(target - start)).toBe(dir);
+        }
+      }
+    });
+
+    it('the home base lies behind the spawn point', () => {
+      for (const flipped of [false, true]) {
+        for (const owner of ['player', 'ai'] as const) {
+          const start = spawnX(owner, flipped);
+          const home = homeBaseX(owner, flipped);
+          expect(Math.sign(home - start)).toBe(-marchDirection(owner, flipped));
+        }
+      }
+    });
+  });
+
+  describe('hasReachedEnemyBase', () => {
+    it('is false at the spawn point in either layout', () => {
+      for (const flipped of [false, true]) {
+        for (const owner of ['player', 'ai'] as const) {
+          expect(hasReachedEnemyBase(unitAt(owner, spawnX(owner, flipped)), flipped)).toBe(false);
+        }
+      }
+    });
+
+    it('is true on reaching the target base in either layout', () => {
+      for (const flipped of [false, true]) {
+        for (const owner of ['player', 'ai'] as const) {
+          expect(hasReachedEnemyBase(unitAt(owner, enemyBaseX(owner, flipped)), flipped)).toBe(true);
+        }
+      }
+    });
+
+    it('is false at the unit’s own base', () => {
+      for (const flipped of [false, true]) {
+        for (const owner of ['player', 'ai'] as const) {
+          expect(hasReachedEnemyBase(unitAt(owner, homeBaseX(owner, flipped)), flipped)).toBe(false);
+        }
+      }
+    });
+  });
+
+  describe('isInFront agrees with march direction', () => {
+    it('a target further along the march is in front, one behind is not', () => {
+      for (const flipped of [false, true]) {
+        for (const owner of ['player', 'ai'] as const) {
+          const unit = unitAt(owner, 1400);
+          const dir = marchDirection(owner, flipped);
+          expect(isInFront(unit, 1400 + dir * 100, flipped)).toBe(true);
+          expect(isInFront(unit, 1400 - dir * 100, flipped)).toBe(false);
+        }
+      }
+    });
+
+    it('the enemy base is in front and the home base behind', () => {
+      for (const flipped of [false, true]) {
+        for (const owner of ['player', 'ai'] as const) {
+          const unit = unitAt(owner, spawnX(owner, flipped));
+          expect(isInFront(unit, enemyBaseX(owner, flipped), flipped)).toBe(true);
+          expect(isInFront(unit, homeBaseX(owner, flipped), flipped)).toBe(false);
+        }
+      }
+    });
   });
 });

@@ -154,6 +154,56 @@ describe('UnitSystem', () => {
     });
   });
 
+  describe('a flipped world (AI left, human right)', () => {
+    function flippedRig() {
+      const r = makeRig();
+      r.world.setPlayerOnRight(true);
+      return r;
+    }
+
+    it('units spawn on their own side', () => {
+      const r = flippedRig();
+      r.system.spawnSingleFromGear('player', 'infantry', 10);
+      r.system.spawnSingleFromGear('ai', 'infantry', 10);
+
+      const [playerUnit, aiUnit] = r.spawned();
+      // Human is on the right now, so its units start further along x.
+      expect(playerUnit.x).toBeGreaterThan(aiUnit.x);
+    });
+
+    it('units march toward the enemy, not their own base', () => {
+      const r = flippedRig();
+      r.system.spawnSingleFromGear('player', 'infantry', 10);
+      r.system.spawnSingleFromGear('ai', 'infantry', 10);
+
+      const before = [...r.system.getAllUnits().values()].map(u => ({ id: u.id, owner: u.owner, x: u.x }));
+      for (let i = 0; i < 10; i++) r.system.update(0.1, i * 100, noProjectiles);
+
+      for (const prev of before) {
+        const now = r.system.getUnit(prev.id)!;
+        const moved = now.x - prev.x;
+        // Flipped: the human side marches left (-x), the AI right (+x).
+        // This is the bug that made a player unit walk into its own base.
+        expect(Math.sign(moved)).toBe(prev.owner === 'player' ? -1 : 1);
+      }
+    });
+
+    it('arrival triggers at the enemy base, not the home base', () => {
+      const r = flippedRig();
+      r.system.spawnSingleFromGear('player', 'infantry', 10);
+
+      const unit = [...r.system.getAllUnits().values()][0];
+      // AI_BASE_X is the human's *own* base once flipped: no arrival here.
+      unit.x = AI_BASE_X;
+      r.system.update(0.016, 0, noProjectiles);
+      expect(r.events('unit:reached_base')).toHaveLength(0);
+
+      unit.x = PLAYER_BASE_X;
+      r.system.update(0.016, 0, noProjectiles);
+      expect(r.events('unit:reached_base')).toHaveLength(1);
+    });
+  });
+
   describe('death', () => {
     it('a unit that dies is removed from the map', () => {
       const r = makeRig();

@@ -2,11 +2,7 @@ import { UnitState, UnitType, UnitDefinition } from '../types/unit.types';
 import { EventBus } from './EventBus';
 import { UNIT_DEFINITIONS } from '../constants/unit.constants';
 import { gearRadius, crackLevelFor } from '../constants/gear.constants';
-import {
-  WORLD_WIDTH, LANE_Y_MIN, LANE_Y_MAX,
-  PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X,
-  PLAYER_BASE_X, AI_BASE_X,
-} from '../constants/world.constants';
+import { WORLD_WIDTH, LANE_Y_MIN, LANE_Y_MAX } from '../constants/world.constants';
 import { randomInt } from '../utils/MathUtils';
 import { World } from '../world/World';
 import { EconomySystem } from './EconomySystem';
@@ -15,6 +11,9 @@ import { distance } from '../utils/MathUtils';
 import {
   computeScaledStats,
   isInFront,
+  marchDirection,
+  spawnX,
+  hasReachedEnemyBase,
   gearInLane,
   computeAttackCooldown,
   computeChargeDamage,
@@ -176,13 +175,7 @@ export class UnitSystem {
     const { hp: hpBonus, speed: speedBonus, damage: dmgBonus } = this.getUnitBonuses(owner, unitType);
     const frictionVal = def.frictionValue ?? 0;
 
-    const playerRight = this.world?.isPlayerOnRight() ?? false;
-    let startX: number;
-    if (!playerRight) {
-      startX = owner === 'player' ? PLAYER_ZONE_MAX_X : AI_ZONE_MIN_X;
-    } else {
-      startX = owner === 'player' ? AI_ZONE_MIN_X : PLAYER_ZONE_MAX_X;
-    }
+    const startX = spawnX(owner, this.playerRight);
     const margin = 20;
     const y = randomInt(LANE_Y_MIN + margin, LANE_Y_MAX - margin);
 
@@ -327,13 +320,18 @@ export class UnitSystem {
 
   /** True when a unit has crossed into the base it is attacking. */
   private hasReachedEnemyBase(unit: UnitState): boolean {
-    return unit.owner === 'player' ? unit.x >= AI_BASE_X : unit.x <= PLAYER_BASE_X;
+    return hasReachedEnemyBase(unit, this.playerRight);
+  }
+
+  /** Whether the human side occupies the right half of the map. */
+  private get playerRight(): boolean {
+    return this.world?.isPlayerOnRight() ?? false;
   }
 
   // ─── Behavior update methods ────────────────────────────────────────────
 
   private marchForward(unit: UnitState, deltaSec: number): void {
-    const direction = unit.owner === 'player' ? 1 : -1;
+    const direction = marchDirection(unit.owner, this.playerRight);
     const effectiveSpeed = unit.speed * (unit.slowFactor ?? 1);
     unit.vx = direction * effectiveSpeed;
     unit.vy = 0;
@@ -356,7 +354,7 @@ export class UnitSystem {
     allUnits: Map<string, UnitState>,
     allGears: ReturnType<World['getAllGears']>,
   ): void {
-    const direction = unit.owner === 'player' ? 1 : -1;
+    const direction = marchDirection(unit.owner, this.playerRight);
     const effectiveSpeed = unit.speed * (unit.slowFactor ?? 1);
 
     // Find nearest enemy unit or enemy gear within 300px
@@ -370,7 +368,7 @@ export class UnitSystem {
     for (const [, other] of allUnits) {
       if (other.owner === unit.owner) continue;
       if (other.reachedBase) continue;
-      if (!isInFront(unit, other.x, this.world?.isPlayerOnRight() ?? false)) continue; // don't chase targets behind
+      if (!isInFront(unit, other.x, this.playerRight)) continue; // don't chase targets behind
       const d = distance(unit.x, unit.y, other.x, other.y);
       if (d < nearestDist) {
         nearestDist = d;
@@ -381,7 +379,7 @@ export class UnitSystem {
     // Also find nearest reachable enemy gear (must be in lane for melee)
     for (const [, gear] of allGears) {
       if (gear.owner === unit.owner) continue;
-      if (!isInFront(unit, gear.x, this.world?.isPlayerOnRight() ?? false)) continue; // don't chase gears behind
+      if (!isInFront(unit, gear.x, this.playerRight)) continue; // don't chase gears behind
       if (!gearInLane(gear.y)) continue; // melee can't reach gears outside lane
       const d = distance(unit.x, unit.y, gear.x, gear.y);
       if (d < nearestGearDist) {
@@ -454,7 +452,7 @@ export class UnitSystem {
     allUnits: Map<string, UnitState>,
     allGears: ReturnType<World['getAllGears']>,
   ): void {
-    const direction = unit.owner === 'player' ? 1 : -1;
+    const direction = marchDirection(unit.owner, this.playerRight);
     const effectiveSpeedMult = unit.slowFactor ?? 1;
 
     if (unit.behaviorState === 'retreating') {
@@ -471,10 +469,10 @@ export class UnitSystem {
 
     // Only charge toward enemies that are in front
     const hasForwardTarget = Array.from(allUnits.values()).some(
-      u => u.owner !== unit.owner && !u.reachedBase && isInFront(unit, u.x, this.world?.isPlayerOnRight() ?? false),
+      u => u.owner !== unit.owner && !u.reachedBase && isInFront(unit, u.x, this.playerRight),
     );
     const hasForwardGear = Array.from(allGears.values()).some(
-      g => g.owner !== unit.owner && isInFront(unit, g.x, this.world?.isPlayerOnRight() ?? false) && gearInLane(g.y),
+      g => g.owner !== unit.owner && isInFront(unit, g.x, this.playerRight) && gearInLane(g.y),
     );
 
     // If no forward targets, just march forward (don't charge backward)
@@ -561,7 +559,7 @@ export class UnitSystem {
     allUnits: Map<string, UnitState>,
     allGears: ReturnType<World['getAllGears']>,
   ): void {
-    const direction = unit.owner === 'player' ? 1 : -1;
+    const direction = marchDirection(unit.owner, this.playerRight);
     const effectiveSpeed = unit.speed * (unit.slowFactor ?? 1);
 
     // Detection range = 1.5× attack range (search further than stop range)
@@ -575,7 +573,7 @@ export class UnitSystem {
     for (const [, other] of allUnits) {
       if (other.owner === unit.owner) continue;
       if (other.reachedBase) continue;
-      if (!isInFront(unit, other.x, this.world?.isPlayerOnRight() ?? false)) continue; // don't fire backward
+      if (!isInFront(unit, other.x, this.playerRight)) continue; // don't fire backward
       const d = distance(unit.x, unit.y, other.x, other.y);
       if (d < artilleryDetectRange && d < targetDist) {
         targetDist = d;
@@ -588,7 +586,7 @@ export class UnitSystem {
     if (targetX < 0) {
       for (const [, gear] of allGears) {
         if (gear.owner === unit.owner) continue;
-        if (!isInFront(unit, gear.x, this.world?.isPlayerOnRight() ?? false)) continue;
+        if (!isInFront(unit, gear.x, this.playerRight)) continue;
         const d = distance(unit.x, unit.y, gear.x, gear.y);
         if (d < artilleryDetectRange && d < targetDist) {
           targetDist = d;
@@ -632,7 +630,7 @@ export class UnitSystem {
       }
     } else {
       // Default march — turret points forward
-      unit.turretAngle = unit.owner === 'player' ? 0 : Math.PI;
+      unit.turretAngle = marchDirection(unit.owner, this.playerRight) > 0 ? 0 : Math.PI;
       this.marchForward(unit, deltaSec);
       unit.inCombat = false;
     }
@@ -647,8 +645,8 @@ export class UnitSystem {
   ): void {
     // Heavy, slow unit. Frontal attack only. 3× slower than infantry. High push impulse.
     const effectiveSpeed = unit.speed * 0.7 * (unit.slowFactor ?? 1);
-    const direction = unit.owner === 'player' ? 1 : -1;
-    const playerRight = this.world?.isPlayerOnRight() ?? false;
+    const direction = marchDirection(unit.owner, this.playerRight);
+    const playerRight = this.playerRight;
 
     // Iron Guard: attack cooldown is 3× infantry (3000ms at 10 teeth)
     const ironAttackCooldown = (unit.size / 1.2) * 300;
@@ -748,7 +746,7 @@ export class UnitSystem {
     now: number,
     allUnits: Map<string, UnitState>,
   ): void {
-    const direction = unit.owner === 'player' ? 1 : -1;
+    const direction = marchDirection(unit.owner, this.playerRight);
     const effectiveSpeed = unit.speed * (unit.slowFactor ?? 1);
 
     // Always march forward fast (passes through enemy units)
@@ -799,7 +797,7 @@ export class UnitSystem {
     for (const [, other] of allUnits) {
       if (other.owner === unit.owner) continue;
       if (other.reachedBase) continue;
-      if (!isInFront(unit, other.x, this.world?.isPlayerOnRight() ?? false)) continue;
+      if (!isInFront(unit, other.x, this.playerRight)) continue;
       const d = distance(unit.x, unit.y, other.x, other.y);
       if (d < SENTINEL_ATTACK_RANGE && d < targetDist) {
         targetDist = d;
@@ -811,7 +809,7 @@ export class UnitSystem {
     if (targetX < 0) {
       for (const [, gear] of allGears) {
         if (gear.owner === unit.owner) continue;
-        if (!isInFront(unit, gear.x, this.world?.isPlayerOnRight() ?? false)) continue;
+        if (!isInFront(unit, gear.x, this.playerRight)) continue;
         const d = distance(unit.x, unit.y, gear.x, gear.y);
         if (d < SENTINEL_ATTACK_RANGE && d < targetDist) {
           targetDist = d;

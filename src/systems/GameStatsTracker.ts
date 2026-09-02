@@ -106,11 +106,16 @@ export class GameStatsTracker {
     this.takeSnapshot((now - this.gameStartTime) / 1000);
   }
 
-  buildGameOverData(winner: 'player' | 'ai', reason: string, difficulty: string): GameOverData {
+  buildGameOverData(
+    winner: 'player' | 'ai',
+    reason: string,
+    difficulty: string,
+    humanOwner: 'player' | 'ai' | null,
+  ): GameOverData {
     const pTot = Object.values(this.playerUnitByType).reduce((s, v) => s + v, 0);
     const aTot = Object.values(this.aiUnitByType).reduce((s, v) => s + v, 0);
     return {
-      winner, reason, difficulty,
+      winner, humanOwner, reason, difficulty,
       snapshots: this.snapshots,
       playerGearsPlaced: this.playerGearsPlaced,
       aiGearsPlaced: this.aiGearsPlaced,

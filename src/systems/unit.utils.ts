@@ -6,7 +6,11 @@
 import { UnitDefinition, UnitState, UnitType } from '../types/unit.types';
 import { DEFAULT_TEETH } from '../constants/gear.constants';
 import { ENGAGE_DISTANCE } from '../constants/balance.constants';
-import { LANE_Y_MIN, LANE_Y_MAX } from '../constants/world.constants';
+import {
+  LANE_Y_MIN, LANE_Y_MAX,
+  PLAYER_BASE_X, AI_BASE_X,
+  PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X,
+} from '../constants/world.constants';
 
 // ─── Mass multipliers by unit type ───────────────────────────────────────────
 
@@ -59,20 +63,53 @@ export function computeScaledStats(def: UnitDefinition, teeth: number, unitType:
   };
 }
 
-// ─── Positional helpers ───────────────────────────────────────────────────────
+// ─── Orientation ──────────────────────────────────────────────────────────────
+//
+// Owner ('player' / 'ai') says *whose* a thing is; it does not say which half
+// of the map they occupy. `playerRight` flips that mapping. Everything
+// directional must be derived from these helpers rather than from the owner
+// label, which is what let march direction and base arrival disagree with
+// spawn position and targeting when the lobby put the human on the right.
+
+/** True when this side occupies the right half of the map. */
+export function isOwnerOnRight(owner: UnitState['owner'], playerRight: boolean): boolean {
+  return owner === 'player' ? playerRight : !playerRight;
+}
+
+/** +1 when this side marches toward increasing x, -1 when it marches left. */
+export function marchDirection(owner: UnitState['owner'], playerRight: boolean): number {
+  return isOwnerOnRight(owner, playerRight) ? -1 : 1;
+}
+
+/** x of the base this side is attacking. */
+export function enemyBaseX(owner: UnitState['owner'], playerRight: boolean): number {
+  return isOwnerOnRight(owner, playerRight) ? PLAYER_BASE_X : AI_BASE_X;
+}
+
+/** x of the base this side is defending. */
+export function homeBaseX(owner: UnitState['owner'], playerRight: boolean): number {
+  return isOwnerOnRight(owner, playerRight) ? AI_BASE_X : PLAYER_BASE_X;
+}
+
+/** x at which this side's units enter the lane. */
+export function spawnX(owner: UnitState['owner'], playerRight: boolean): number {
+  return isOwnerOnRight(owner, playerRight) ? AI_ZONE_MIN_X : PLAYER_ZONE_MAX_X;
+}
+
+/** True once a unit has crossed into the base it is attacking. */
+export function hasReachedEnemyBase(unit: UnitState, playerRight: boolean): boolean {
+  const target = enemyBaseX(unit.owner, playerRight);
+  return marchDirection(unit.owner, playerRight) > 0 ? unit.x >= target : unit.x <= target;
+}
 
 /**
- * Returns true if `targetX` lies in front of the unit (the direction it
- * naturally marches).  `playerRight` indicates whether the human side has
- * been flipped to the right half of the map; when that flag is set the
- * marching directions are inverted.
+ * Returns true if `targetX` lies in front of the unit — the direction it
+ * naturally marches.
  */
 export function isInFront(unit: UnitState, targetX: number, playerRight: boolean): boolean {
-  if (!playerRight) {
-    return unit.owner === 'player' ? targetX >= unit.x : targetX <= unit.x;
-  } else {
-    return unit.owner === 'player' ? targetX <= unit.x : targetX >= unit.x;
-  }
+  return marchDirection(unit.owner, playerRight) > 0
+    ? targetX >= unit.x
+    : targetX <= unit.x;
 }
 
 /** Returns true if a gear at gearY overlaps the lane band (melee reachability). */

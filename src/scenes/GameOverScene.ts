@@ -146,10 +146,18 @@ export class GameOverScene extends Phaser.Scene {
   private drawHeader(): void {
     const { width } = this.scale;
     const cx = width / 2;
-    const isVictory = this.statsData.winner === 'player';
-    const titleColor = isVictory ? NEON_STR.cyan : NEON_STR.red;
-    const titleText  = isVictory ? '⚡ VICTORY' : '✕ DEFEAT';
-    const glowColor  = isVictory ? NEON.cyan : NEON.red;
+    // A spectate match has no human side, and the human is not always the
+    // 'player' owner -- the lobby can seat them on either side.
+    const humanOwner = this.statsData.humanOwner ?? null;
+    const isSpectate = humanOwner === null;
+    const isVictory = !isSpectate && this.statsData.winner === humanOwner;
+
+    const winnerLabel = this.statsData.winner === 'player' ? 'PLAYER 1' : 'PLAYER 2';
+    const titleColor = isSpectate ? NEON_STR.cyan : isVictory ? NEON_STR.cyan : NEON_STR.red;
+    const titleText  = isSpectate
+      ? `◆ ${winnerLabel} WINS`
+      : isVictory ? '⚡ VICTORY' : '✕ DEFEAT';
+    const glowColor  = isSpectate ? NEON.cyan : isVictory ? NEON.cyan : NEON.red;
 
     const hdrBg = this.add.graphics();
     hdrBg.fillStyle(0x05050e, 0.98);

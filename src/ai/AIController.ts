@@ -8,6 +8,7 @@ import { WinConditionSystem } from '../systems/WinConditionSystem';
 import { World } from '../world/World';
 import { GearMeshGraph } from '../world/GearMeshGraph';
 import { GameClock, NEVER } from '../systems/GameClock';
+import { isOwnerOnRight } from '../systems/unit.utils';
 import { AIChainPlanner, AIPlacementContext } from './AIChainPlanner';
 import type { AIChainPlan, ChainRole } from './AIChainPlanner';
 import { AIResearchPlan } from './AIResearchPlan';
@@ -386,6 +387,22 @@ export class AIController {
     );
   }
 
+  /**
+   * True when this controller's side holds the right half of the map.
+   * Derived from the world, not from the owner label: with the lobby's slot
+   * flip an AI can be the 'player' owner and still be on the right, and every
+   * zone/front/back computation below depends on the half, not the name.
+   */
+  /** This controller's own tech state, not always the AI-side one. */
+  private ownTech() {
+    if (!this.techSystem) return null;
+    return this.owner === 'player' ? this.techSystem.getPlayerTech() : this.techSystem.getAITech();
+  }
+
+  private get onRight(): boolean {
+    return isOwnerOnRight(this.owner, this.world.isPlayerOnRight());
+  }
+
   /** Rate-limited log — status/idle messages shown at most once per 8 s */
   private lastStatusLogAt = 0;
   private logThrottled(msg: string): void {
@@ -572,7 +589,7 @@ export class AIController {
         continue;
       }
 
-      const unlockedTeeth = this.techSystem?.getAITech().unlockedTeeth ?? [10];
+      const unlockedTeeth = this.ownTech()?.unlockedTeeth ?? [10];
       const addition = AIChainPlanner.findBestAddition(
         chain, this.strategyProfile, this.owner,
         this.world, this.meshGraph, this.economySystem,
@@ -674,13 +691,13 @@ export class AIController {
   private pickEconomyChainOrigin(): { x: number; y: number } | null {
     const MIN_ORIGIN_DIST = 200;
 
-    const zoneMinX = this.owner === 'ai' ? AI_ZONE_MIN_X + 60 : 60;
-    const zoneMaxX = this.owner === 'ai' ? WORLD_WIDTH - 60 : PLAYER_ZONE_MAX_X - 60;
+    const zoneMinX = this.onRight ? AI_ZONE_MIN_X + 60 : 60;
+    const zoneMaxX = this.onRight ? WORLD_WIDTH - 60 : PLAYER_ZONE_MAX_X - 60;
     const zoneW = zoneMaxX - zoneMinX;
 
     // Back 35%: for AI (right side) that's the right portion; for player it's the left portion
-    const backStart = this.owner === 'ai' ? zoneMinX + zoneW * 0.65 : zoneMinX;
-    const backEnd   = this.owner === 'ai' ? zoneMaxX                 : zoneMinX + zoneW * 0.35;
+    const backStart = this.onRight ? zoneMinX + zoneW * 0.65 : zoneMinX;
+    const backEnd   = this.onRight ? zoneMaxX                 : zoneMinX + zoneW * 0.35;
     const backW = backEnd - backStart;
 
     for (let i = 0; i < 12; i++) {
@@ -700,12 +717,12 @@ export class AIController {
     const laneCenter = (LANE_Y_MIN + LANE_Y_MAX) / 2;
     const laneSpread = (LANE_Y_MAX - LANE_Y_MIN) * 0.75;
 
-    const zoneMinX = this.owner === 'ai' ? AI_ZONE_MIN_X + 60 : 60;
-    const zoneMaxX = this.owner === 'ai' ? WORLD_WIDTH - 60 : PLAYER_ZONE_MAX_X - 60;
+    const zoneMinX = this.onRight ? AI_ZONE_MIN_X + 60 : 60;
+    const zoneMaxX = this.onRight ? WORLD_WIDTH - 60 : PLAYER_ZONE_MAX_X - 60;
     const zoneW = zoneMaxX - zoneMinX;
 
     // Front 55% of zone (toward enemy)
-    const frontStart = this.owner === 'ai' ? zoneMinX : zoneMinX + zoneW * 0.45;
+    const frontStart = this.onRight ? zoneMinX : zoneMinX + zoneW * 0.45;
     const frontW = zoneW * 0.55;
 
     for (let i = 0; i < 14; i++) {
@@ -718,7 +735,7 @@ export class AIController {
 
   /** Place the first motor of a brand-new chain near the given origin. */
   private bootstrapNewChain(origin: { x: number; y: number }): AIDecision | null {
-    const unlocked = this.techSystem?.getAITech().unlockedTeeth ?? [10];
+    const unlocked = this.ownTech()?.unlockedTeeth ?? [10];
     const profileMax = this.strategyProfile === 'hard' ? 30 : this.strategyProfile === 'medium' ? 15 : 10;
     const teethList = [...unlocked].filter(t => t <= profileMax).sort((a, b) => b - a);
     if (teethList.length === 0) teethList.push(10);
@@ -757,8 +774,8 @@ export class AIController {
     const MIN_ORIGIN_DIST = 250;
     const laneY = (LANE_Y_MIN + LANE_Y_MAX) / 2;
 
-    const zoneMinX = this.owner === 'ai' ? AI_ZONE_MIN_X + 60 : 60;
-    const zoneMaxX = this.owner === 'ai' ? WORLD_WIDTH - 60 : PLAYER_ZONE_MAX_X - 60;
+    const zoneMinX = this.onRight ? AI_ZONE_MIN_X + 60 : 60;
+    const zoneMaxX = this.onRight ? WORLD_WIDTH - 60 : PLAYER_ZONE_MAX_X - 60;
     const zoneW = zoneMaxX - zoneMinX;
 
     if (this.strategyProfile === 'easy') {
@@ -839,7 +856,7 @@ export class AIController {
       const newX = anchor.x + Math.cos(angle) * (targetRadius + anchorRadius) * 0.95;
       const newY = anchor.y + Math.sin(angle) * (targetRadius + anchorRadius) * 0.95;
 
-      const inZone = this.owner === 'ai'
+      const inZone = this.onRight
         ? (newX >= AI_ZONE_MIN_X + 40 && newX <= WORLD_WIDTH - 40)
         : (newX >= 40 && newX <= PLAYER_ZONE_MAX_X - 40);
 
@@ -856,13 +873,13 @@ export class AIController {
    */
   private findRearmostGearOfType(plan: AIChainPlan, type: GearType): GearState | null {
     let rearmost: GearState | null = null;
-    let rearX = this.owner === 'ai' ? -Infinity : Infinity;
+    let rearX = this.onRight ? -Infinity : Infinity;
     for (const gearId of plan.gearIds) {
       const g = this.world.getGear(gearId);
       if (!g || g.type !== type) continue;
       // AI: rearmost = highest X (furthest from player)
       // Player: rearmost = lowest X (furthest from AI)
-      if (this.owner === 'ai' ? g.x > rearX : g.x < rearX) {
+      if (this.onRight ? g.x > rearX : g.x < rearX) {
         rearX = g.x;
         rearmost = g;
       }

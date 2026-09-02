@@ -40,12 +40,27 @@ export class BaseHealthBars {
   // All created objects (for destroy)
   private readonly objects: Phaser.GameObjects.GameObject[] = [];
 
+  /** Which slot draws in friendly colours; 'both' in a spectate match. */
+  private readonly friendlySlot: 'player' | 'ai' | 'both';
+
+  private isFriendly(slot: 'player' | 'ai'): boolean {
+    return this.friendlySlot === 'both' || this.friendlySlot === slot;
+  }
+
   constructor(
     scene: Phaser.Scene,
     winSystem: WinConditionSystem,
     playerLabel: string = 'PLAYER BASE',
     aiLabel: string = 'AI BASE',
+    /**
+     * Which owner the human is playing, or null when spectating. The lobby can
+     * seat the human on either side, so friendly/hostile colouring has to
+     * follow this rather than the fixed left/right slots -- otherwise a
+     * flipped match paints the human's own base in enemy red.
+     */
+    humanOwner: 'player' | 'ai' | null = 'player',
   ) {
+    this.friendlySlot = humanOwner === null ? 'both' : humanOwner;
     this.scene = scene;
     this.winSystem = winSystem;
     this.playerHp = winSystem.getHp('player');
@@ -58,20 +73,20 @@ export class BaseHealthBars {
 
     // ── Background panels ──────────────────────────────────────────────────
     const playerBg = scene.add.graphics().setDepth(490);
-    this.drawPanel(playerBg, playerX, barY, NEON.blue);
+    this.drawPanel(playerBg, playerX, barY, this.isFriendly('player') ? NEON.blue : NEON.red);
 
     const aiBg = scene.add.graphics().setDepth(490);
-    this.drawPanel(aiBg, aiX, barY, NEON.red);
+    this.drawPanel(aiBg, aiX, barY, this.isFriendly('ai') ? NEON.blue : NEON.red);
 
     // ── Player label (left edge of player bar) ─────────────────────────────
     const plLabel = scene.add.text(playerX + PAD, barY + TEXT_Y, playerLabel, {
-      fontSize: '11px', color: NEON_STR.blue,
+      fontSize: '11px', color: this.isFriendly('player') ? NEON_STR.blue : NEON_STR.red,
       fontFamily: 'monospace', fontStyle: 'bold',
     }).setOrigin(0, 0.5).setDepth(492);
 
     // ── AI label (right edge of AI bar) ───────────────────────────────────
     const aiLbl = scene.add.text(aiX + BAR_W - PAD, barY + TEXT_Y, aiLabel, {
-      fontSize: '11px', color: NEON_STR.red,
+      fontSize: '11px', color: this.isFriendly('ai') ? NEON_STR.blue : NEON_STR.red,
       fontFamily: 'monospace', fontStyle: 'bold',
     }).setOrigin(1, 0.5).setDepth(492);
 
@@ -149,7 +164,9 @@ export class BaseHealthBars {
     this.playerFill.fillRoundedRect(pFillX, barY + FILL_Y, FILL_W, FILL_H, 4);
     // Filled section
     if (pPct > 0) {
-      const fillCol = pPct > 0.5 ? NEON.cyan : pPct > 0.25 ? NEON.yellow : NEON.red;
+      const fillCol = this.isFriendly('player')
+        ? (pPct > 0.5 ? NEON.cyan : pPct > 0.25 ? NEON.yellow : NEON.red)
+        : (pPct > 0.5 ? NEON.red : pPct > 0.25 ? NEON.orange : 0xff5555);
       this.playerFill.fillStyle(fillCol, 1);
       this.playerFill.fillRoundedRect(pFillX, barY + FILL_Y, Math.ceil(FILL_W * pPct), FILL_H, 4);
       // Shine stripe
@@ -170,7 +187,9 @@ export class BaseHealthBars {
     this.aiFill.fillStyle(0x220a0a, 1);
     this.aiFill.fillRoundedRect(aFillX, barY + FILL_Y, FILL_W, FILL_H, 4);
     if (aPct > 0) {
-      const fillCol = aPct > 0.5 ? NEON.red : aPct > 0.25 ? NEON.orange : 0xff5555;
+      const fillCol = this.isFriendly('ai')
+        ? (aPct > 0.5 ? NEON.cyan : aPct > 0.25 ? NEON.yellow : NEON.red)
+        : (aPct > 0.5 ? NEON.red : aPct > 0.25 ? NEON.orange : 0xff5555);
       // AI bar drains from right: fill starts at right edge
       this.aiFill.fillStyle(fillCol, 1);
       this.aiFill.fillRoundedRect(aFillX + FILL_W - aFillW, barY + FILL_Y, aFillW, FILL_H, 4);
@@ -186,7 +205,7 @@ export class BaseHealthBars {
   private flashBar(owner: 'player' | 'ai'): void {
     const cw   = this.scene.scale.width;
     const x    = owner === 'player' ? 6 : cw - 6 - BAR_W;
-    const col  = owner === 'player' ? NEON.blue : NEON.red;
+    const col  = this.isFriendly(owner) ? NEON.blue : NEON.red;
     const flash = this.scene.add.graphics().setDepth(493);
     flash.fillStyle(col, 0.35);
     flash.fillRoundedRect(x, 4, BAR_W, BAR_H, 7);

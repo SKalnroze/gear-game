@@ -33,6 +33,19 @@ test.describe('GameScene', () => {
     expect(errors).toEqual([]);
   });
 
+  test('a flipped match (AI left, human right) runs without errors', async ({ page }) => {
+    const errors = await bootGame(page);
+    await startScene(page, 'GameScene', {
+      left: { kind: 'ai', difficulty: 'medium', personality: 'random' },
+      right: { kind: 'human' },
+    });
+
+    await page.waitForTimeout(5000);
+
+    expect(await activeScenes(page)).toContain('GameScene');
+    expect(errors).toEqual([]);
+  });
+
   test('a spectate match (both sides AI) runs without errors', async ({ page }) => {
     const errors = await bootGame(page);
     await startScene(page, 'GameScene', {

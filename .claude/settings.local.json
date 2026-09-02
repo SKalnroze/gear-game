@@ -19,7 +19,17 @@
       "Bash(echo ✅ TypeCheck passed:*)",
       "Bash(true:*)",
       "Bash(echo Exit code: $?:*)",
-      "Bash(echo Exit: $?:*)"
+      "Bash(echo Exit: $?:*)",
+      "Bash(netstat:*)",
+      "WebFetch(domain:rexrainbow.github.io)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:bundlephobia.com)",
+      "Bash(npx vite:*)",
+      "Bash(grep:*)",
+      "Bash(npx playwright:*)",
+      "Bash(npx vitest:*)"
     ]
   }
 }

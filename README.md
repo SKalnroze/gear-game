@@ -124,7 +124,7 @@ src/
 ├── scenes/
 │   ├── BootScene.ts
 │   ├── MenuScene.ts
-│   ├── DifficultySelectScene.ts
+│   ├── LobbyScene.ts
 │   ├── GameScene.ts             # Orchestrator — wires systems, camera zoom/pan
 │   ├── UIScene.ts               # Parallel HUD scene
 │   ├── AboutScene.ts

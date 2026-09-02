@@ -468,7 +468,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Register shutdown hook to cleanup systems
-    this.events.on('shutdown', () => this.onShutdown());
+    this.events.once('shutdown', () => this.onShutdown());
   }
 
   private onShutdown(): void {
@@ -490,6 +490,7 @@ export class GameScene extends Phaser.Scene {
     this.aiDebugOverlay.destroy();
     this.gameEventLogger.destroy();
     this.gearUnitInteraction.destroy();
+    this.particleManager.destroy();
     // Clean up cold zone graphics
     for (const [, zg] of this.coldZoneGraphics) {
       const tw = (zg as any)._pulseTween;

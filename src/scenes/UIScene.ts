@@ -31,6 +31,8 @@ export class UIScene extends Phaser.Scene {
   private toastManager!: ToastManager;
   private minimap!: Minimap;
   private healthBars!: BaseHealthBars;
+  /** Per-frame research-bar refresh; removed on shutdown. */
+  private onSceneUpdate: (() => void) | null = null;
 
   // Spectate state
   private spectateOwner: 'player' | 'ai' = 'player';
@@ -168,11 +170,15 @@ export class UIScene extends Phaser.Scene {
     }
 
     // ── Research progress update ───────────────────────────────────────────
-    this.events.on('update', () => {
+    // Held in a field so onShutdown can remove it: a scene emitter survives
+    // shutdown, so re-registering per session stacked one extra per-frame
+    // callback for every game played.
+    this.onSceneUpdate = () => {
       const owner = this.isSpectate ? this.spectateOwner : 'player';
       const progress = this.techSystem.getResearchProgress(owner);
       this.slidingPanel.updateResearch(progress);
-    });
+    };
+    this.events.on('update', this.onSceneUpdate);
 
     // ── Resize handler ─────────────────────────────────────────────────────
     this.layout.onResize = (newState) => {
@@ -182,7 +188,7 @@ export class UIScene extends Phaser.Scene {
     };
 
     // ── Shutdown cleanup ───────────────────────────────────────────────────
-    this.events.on('shutdown', () => this.onShutdown());
+    this.events.once('shutdown', () => this.onShutdown());
   }
 
   /**
@@ -285,9 +291,14 @@ export class UIScene extends Phaser.Scene {
   }
 
   private onShutdown(): void {
+    if (this.onSceneUpdate) {
+      this.events.off('update', this.onSceneUpdate);
+      this.onSceneUpdate = null;
+    }
     this.tooltipManager?.destroy();
     this.toastManager?.destroy();
     this.healthBars?.destroy();
+    this.actionsSection?.destroy();
     if (this.isSpectate) {
       eventBus.removeAllListeners('spectate:switch_view');
     }

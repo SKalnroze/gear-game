@@ -84,6 +84,8 @@ export class MusicEngine {
   private _volume = 0.6;
   private _masterVol: Tone.Volume | null = null;
   private _layers: AudioLayer[] = [];
+  /** Outgoing layers mid-crossfade, still awaiting disposal. */
+  private _fadingLayers: AudioLayer[] = [];
   private _timers: ReturnType<typeof setTimeout>[] = [];
 
   get playing(): boolean       { return this._playing; }
@@ -143,9 +145,13 @@ export class MusicEngine {
     this._layers = newLayers;
     this._playing = true;
 
-    // Dispose old layers once they're inaudible
+    // Dispose old layers once they are inaudible. Tracked on the instance so
+    // a stop() landing mid-transition can dispose them too: stop() clears the
+    // pending timers, which used to strand the whole outgoing layer set.
+    this._fadingLayers = oldLayers;
     this._timer(() => {
       oldLayers.forEach(l => l.dispose());
+      this._fadingLayers = [];
       this._transitioning = false;
     }, fullSecs * 1000 + 300);
   }
@@ -167,6 +173,8 @@ export class MusicEngine {
     Tone.getTransport().stop();
     Tone.getTransport().cancel();
     this._layers.forEach(l => { try { l.dispose(); } catch { /* */ } });
+    this._fadingLayers.forEach(l => { try { l.dispose(); } catch { /* */ } });
+    this._fadingLayers = [];
     if (this._masterVol) { try { this._masterVol.dispose(); } catch { /* */ } this._masterVol = null; }
     this._layers        = [];
     this._playing       = false;
@@ -179,7 +187,14 @@ export class MusicEngine {
   }
 
   private _timer(fn: () => void, ms: number): void {
-    this._timers.push(setTimeout(fn, ms));
+    // Drop the id once it fires, otherwise the array grows for the life of the
+    // page — every transition and every scheduled fade left an entry behind.
+    const id = setTimeout(() => {
+      const i = this._timers.indexOf(id);
+      if (i !== -1) this._timers.splice(i, 1);
+      fn();
+    }, ms);
+    this._timers.push(id);
   }
 
   private _vel(base: number, range = 0.1): number {

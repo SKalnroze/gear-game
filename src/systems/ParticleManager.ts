@@ -28,6 +28,7 @@ export class ParticleManager {
   private pool: Phaser.GameObjects.Graphics[] = [];
   private active: Particle[] = [];
   private ringGraphics: Phaser.GameObjects.Graphics;
+  private readonly onSceneUpdate: (time: number, delta: number) => void;
 
   constructor(scene: Phaser.Scene, eventBus: EventBus, world: World) {
     this.scene = scene;
@@ -48,10 +49,21 @@ export class ParticleManager {
 
     this.wireEvents();
 
-    // Update loop
-    scene.events.on('update', (_time: number, delta: number) => {
+    // Update loop. Kept in a field so destroy() can unhook it: this manager is
+    // re-created on every GameScene.create(), and a scene emitter outlives
+    // shutdown, so without teardown each restart left another particle
+    // simulation running over an orphaned pool of Graphics.
+    this.onSceneUpdate = (_time: number, delta: number) => {
       this.update(delta / 1000);
-    });
+    };
+    scene.events.on('update', this.onSceneUpdate);
+  }
+
+  destroy(): void {
+    this.scene.events.off('update', this.onSceneUpdate);
+    for (const g of this.pool) g.destroy();
+    this.pool.length = 0;
+    this.ringGraphics.destroy();
   }
 
   private wireEvents(): void {

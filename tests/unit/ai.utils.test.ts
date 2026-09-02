@@ -3,22 +3,22 @@ import { byPhase, assessThreatLevel } from '../../src/ai/ai.utils';
 import type { AIChainPlan } from '../../src/ai/AIChainPlanner';
 
 // Helper to build a minimal AIChainPlan
-function makePlan(phase: string, role: 'combat' | 'economy' | 'defense'): AIChainPlan {
+function makePlan(phase: AIChainPlan['phase'], role: AIChainPlan['role']): AIChainPlan {
   return {
     id: `${phase}-${role}`,
-    phase: phase as AIChainPlan['phase'],
+    origin: { x: 0, y: 0 },
+    phase,
     role,
-    originGearId: 'g0',
     gearIds: [],
     stats: {
       motorCount: 0, amplifierCount: 0, capacitorCount: 0,
       researcherCount: 0, minerCount: 0, converterCount: 0,
       healerCount: 0, spikedCount: 0, armoredCount: 0,
       overclockCount: 0, turretCount: 0,
+      spawnerTypes: [], estimatedOutput: 0,
     },
-    spawnerType: null,
-    totalCost: 0,
-  } as AIChainPlan;
+    createdAt: 0,
+  };
 }
 
 // ─── byPhase ─────────────────────────────────────────────────────────────────
@@ -60,7 +60,9 @@ describe('byPhase', () => {
 
   it('unknown phase gets priority 99 (treated as last)', () => {
     const full = makePlan('full', 'combat');
-    const unknown = makePlan('nonexistent', 'combat');
+    // Deliberately outside ChainPhase: byPhase must tolerate a phase it does
+    // not know rather than sorting it to the front.
+    const unknown = makePlan('nonexistent' as AIChainPlan['phase'], 'combat');
     expect(byPhase(full, unknown)).toBeLessThan(0);
   });
 });

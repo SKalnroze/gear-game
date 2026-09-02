@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+// @vitest-environment happy-dom
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 
 // Mock phaser before importing anything that depends on it
 vi.mock('phaser', async () => {
@@ -21,12 +22,12 @@ import type { Label } from './__mocks__/phaser';
 
 describe('neonBtn', () => {
   let scene: Scene;
-  let onClick: ReturnType<typeof vi.fn>;
+  let onClick: Mock<() => void>;
   let btn: Label;
 
   beforeEach(() => {
     scene = new Scene();
-    onClick = vi.fn();
+    onClick = vi.fn<() => void>();
     btn = neonBtn(scene as unknown as Phaser.Scene, 0, 0, 100, 40, 0x00ffcc, '#00ffcc', 'TEST', 14, onClick) as unknown as Label;
   });
 
@@ -61,11 +62,11 @@ describe('neonDropdown', () => {
   ];
 
   let scene: Scene;
-  let onChange: ReturnType<typeof vi.fn>;
+  let onChange: Mock<(key: string) => void>;
 
   beforeEach(() => {
     scene = new Scene();
-    onChange = vi.fn();
+    onChange = vi.fn<(key: string) => void>();
   });
 
   it('getValue() returns initialKey immediately', () => {

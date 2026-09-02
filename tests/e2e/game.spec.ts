@@ -1,37 +1,48 @@
 import { test, expect } from '@playwright/test';
+import { bootGame, activeScenes, startScene, DEFAULT_MATCH } from './helpers';
 
 test.describe('GameScene', () => {
-  test('canvas loads and remains stable', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForSelector('canvas', { timeout: 15000 });
-    await page.waitForTimeout(1500);
+  test('a match runs with GameScene and UIScene active', async ({ page }) => {
+    const errors = await bootGame(page);
+    await startScene(page, 'GameScene', DEFAULT_MATCH);
 
-    const canvas = page.locator('canvas');
-    await expect(canvas).toBeVisible();
-
-    // Screenshot at t=0
-    await expect(page).toHaveScreenshot('game-t0.png', {
-      maxDiffPixelRatio: 0.02,
-    });
-
-    // Wait 3 seconds and check canvas is still present and stable
-    await page.waitForTimeout(3000);
-    const stillVisible = await canvas.isVisible();
-    expect(stillVisible).toBe(true);
+    const active = await activeScenes(page);
+    expect(active).toContain('GameScene');
+    // Without the parallel UIScene the match renders no HUD at all.
+    expect(active).toContain('UIScene');
+    expect(errors).toEqual([]);
   });
 
-  test('no JavaScript errors on load', async ({ page }) => {
-    const errors: string[] = [];
-    page.on('pageerror', (err) => errors.push(err.message));
+  test('match screenshot', async ({ page }) => {
+    await bootGame(page);
+    await startScene(page, 'GameScene', DEFAULT_MATCH);
+    await page.waitForTimeout(1500);
 
-    await page.goto('/');
-    await page.waitForSelector('canvas', { timeout: 15000 });
-    await page.waitForTimeout(2000);
+    // The previous baseline under this name was a picture of the menu.
+    expect(await activeScenes(page)).toContain('GameScene');
+    await expect(page).toHaveScreenshot('game-t0.png', { maxDiffPixelRatio: 0.02 });
+  });
 
-    // Filter out known non-critical warnings if any
-    const criticalErrors = errors.filter(e =>
-      !e.includes('Warning:') && !e.includes('ResizeObserver'),
-    );
-    expect(criticalErrors).toHaveLength(0);
+  test('stays alive and error-free after several seconds of simulation', async ({ page }) => {
+    const errors = await bootGame(page);
+    await startScene(page, 'GameScene', DEFAULT_MATCH);
+
+    await page.waitForTimeout(5000);
+
+    expect(await activeScenes(page)).toContain('GameScene');
+    expect(errors).toEqual([]);
+  });
+
+  test('a spectate match (both sides AI) runs without errors', async ({ page }) => {
+    const errors = await bootGame(page);
+    await startScene(page, 'GameScene', {
+      left: { kind: 'ai', difficulty: 'medium', personality: 'random' },
+      right: { kind: 'ai', difficulty: 'medium', personality: 'random' },
+    });
+
+    await page.waitForTimeout(4000);
+
+    expect(await activeScenes(page)).toContain('GameScene');
+    expect(errors).toEqual([]);
   });
 });

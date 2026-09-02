@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { describe, it, expect, vi } from 'vitest';
 
 // NeonUI.colorToStr and neonTextStyle don't call Phaser at runtime —

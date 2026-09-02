@@ -1,30 +1,39 @@
 import { test, expect } from '@playwright/test';
+import { bootGame, activeScenes, waitForScene, startScene, clickLabel } from './helpers';
 
 test.describe('LobbyScene', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForSelector('canvas', { timeout: 15000 });
-    await page.waitForTimeout(1500);
+  test('reachable from the menu', async ({ page }) => {
+    const errors = await bootGame(page);
+    await waitForScene(page, 'MenuScene');
 
-    // Click on the canvas where the PLAY/START button is in MenuScene
-    // Using keyboard shortcut or clicking center of canvas to navigate to lobby
-    const canvas = page.locator('canvas');
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error('Canvas not found');
+    await clickLabel(page, 'SINGLEPLAYER');
+    await waitForScene(page, 'LobbyScene');
 
-    // Click the center of the canvas (where PLAY button typically is)
-    await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } });
-    await page.waitForTimeout(1000);
-  });
-
-  test('lobby or menu canvas is visible after click', async ({ page }) => {
-    const canvas = page.locator('canvas');
-    await expect(canvas).toBeVisible();
+    expect(await activeScenes(page)).toEqual(['LobbyScene']);
+    expect(errors).toEqual([]);
   });
 
   test('lobby screenshot', async ({ page }) => {
-    await expect(page).toHaveScreenshot('lobby.png', {
-      maxDiffPixelRatio: 0.02,
-    });
+    await bootGame(page);
+    await startScene(page, 'LobbyScene');
+
+    // Guard against the previous suite's failure mode, where this snapshot was
+    // silently a picture of the menu.
+    expect(await activeScenes(page)).toContain('LobbyScene');
+    await expect(page).toHaveScreenshot('lobby.png', { maxDiffPixelRatio: 0.02 });
+  });
+
+  test('starting a match brings up GameScene and UIScene together', async ({ page }) => {
+    await bootGame(page);
+    await startScene(page, 'LobbyScene');
+
+    await clickLabel(page, 'START GAME');
+    await waitForScene(page, 'GameScene');
+    await waitForScene(page, 'UIScene');
+
+    const active = await activeScenes(page);
+    expect(active).toContain('GameScene');
+    expect(active).toContain('UIScene');
+    expect(active).not.toContain('LobbyScene');
   });
 });

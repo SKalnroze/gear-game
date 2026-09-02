@@ -1,37 +1,38 @@
 import { test, expect } from '@playwright/test';
+import { bootGame, activeScenes, waitForScene, startScene, clickLabel } from './helpers';
 
 test.describe('SettingsScene', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForSelector('canvas', { timeout: 15000 });
-    await page.waitForTimeout(1500);
+  test('reachable from the menu', async ({ page }) => {
+    const errors = await bootGame(page);
+    await waitForScene(page, 'MenuScene');
+
+    await clickLabel(page, 'SETTINGS');
+    await waitForScene(page, 'SettingsScene');
+
+    expect(await activeScenes(page)).toEqual(['SettingsScene']);
+    expect(errors).toEqual([]);
   });
 
-  test('settings screenshot from menu', async ({ page }) => {
-    const canvas = page.locator('canvas');
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error('Canvas not found');
+  test('settings screenshot', async ({ page }) => {
+    await bootGame(page);
+    await startScene(page, 'SettingsScene');
 
-    // Click where Settings button typically appears (lower area of menu)
-    await canvas.click({ position: { x: box.width / 2, y: box.height * 0.7 } });
-    await page.waitForTimeout(800);
+    // The previous baseline under this name was actually AboutScene, reached by
+    // clicking a guessed canvas fraction.
+    const active = await activeScenes(page);
+    expect(active).toContain('SettingsScene');
+    expect(active).not.toContain('AboutScene');
 
-    await expect(page).toHaveScreenshot('settings.png', {
-      maxDiffPixelRatio: 0.02,
-    });
+    await expect(page).toHaveScreenshot('settings.png', { maxDiffPixelRatio: 0.02 });
   });
+});
 
-  test('canvas remains visible throughout settings navigation', async ({ page }) => {
-    const canvas = page.locator('canvas');
-    await expect(canvas).toBeVisible();
+test.describe('AboutScene', () => {
+  test('about screenshot', async ({ page }) => {
+    await bootGame(page);
+    await startScene(page, 'AboutScene');
 
-    // Navigate around
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error('Canvas not found');
-
-    await canvas.click({ position: { x: box.width / 2, y: box.height * 0.7 } });
-    await page.waitForTimeout(500);
-
-    await expect(canvas).toBeVisible();
+    expect(await activeScenes(page)).toContain('AboutScene');
+    await expect(page).toHaveScreenshot('about.png', { maxDiffPixelRatio: 0.02 });
   });
 });

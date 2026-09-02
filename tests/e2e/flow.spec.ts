@@ -1,48 +1,45 @@
 import { test, expect } from '@playwright/test';
+import { bootGame, activeScenes, waitForScene, clickLabel } from './helpers';
 
 test.describe('Full game flow', () => {
-  test('game loads without crashing', async ({ page }) => {
-    await page.goto('/');
+  test('menu → lobby → back → menu', async ({ page }) => {
+    const errors = await bootGame(page);
+    await waitForScene(page, 'MenuScene');
 
-    // Canvas should appear within reasonable time
-    await page.waitForSelector('canvas', { timeout: 15000 });
+    await clickLabel(page, 'SINGLEPLAYER');
+    await waitForScene(page, 'LobbyScene');
 
-    const canvas = page.locator('canvas');
-    await expect(canvas).toBeVisible();
+    await clickLabel(page, '< BACK');
+    await waitForScene(page, 'MenuScene');
+
+    expect(await activeScenes(page)).toEqual(['MenuScene']);
+    expect(errors).toEqual([]);
   });
 
-  test('Phaser game initializes successfully', async ({ page }) => {
-    const errors: string[] = [];
-    page.on('pageerror', err => errors.push(err.message));
+  test('menu → lobby → match, entirely through the UI', async ({ page }) => {
+    const errors = await bootGame(page);
+    await waitForScene(page, 'MenuScene');
 
-    await page.goto('/');
-    await page.waitForSelector('canvas', { timeout: 15000 });
-    await page.waitForTimeout(2000);
+    await clickLabel(page, 'SINGLEPLAYER');
+    await waitForScene(page, 'LobbyScene');
 
-    // No critical JS errors means Phaser initialized
-    const critical = errors.filter(e => !e.includes('ResizeObserver'));
-    expect(critical).toHaveLength(0);
+    await clickLabel(page, 'START GAME');
+    await waitForScene(page, 'GameScene');
+    await waitForScene(page, 'UIScene');
+
+    expect(errors).toEqual([]);
   });
 
-  test('full navigation flow: menu → lobby → back', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForSelector('canvas', { timeout: 15000 });
-    await page.waitForTimeout(1500);
+  test('settings → back → menu', async ({ page }) => {
+    await bootGame(page);
+    await waitForScene(page, 'MenuScene');
 
-    const canvas = page.locator('canvas');
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error('Canvas not found');
+    await clickLabel(page, 'SETTINGS');
+    await waitForScene(page, 'SettingsScene');
 
-    // Step 1: Screenshot of initial state (menu)
-    await expect(page).toHaveScreenshot('flow-menu.png', { maxDiffPixelRatio: 0.02 });
+    await clickLabel(page, '< BACK');
+    await waitForScene(page, 'MenuScene');
 
-    // Step 2: Click into the scene (attempt to navigate)
-    await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } });
-    await page.waitForTimeout(1000);
-
-    // Step 3: Canvas should still be present after navigation attempt
-    await expect(canvas).toBeVisible();
-
-    await expect(page).toHaveScreenshot('flow-after-click.png', { maxDiffPixelRatio: 0.02 });
+    expect(await activeScenes(page)).toEqual(['MenuScene']);
   });
 });

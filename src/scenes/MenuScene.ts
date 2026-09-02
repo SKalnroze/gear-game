@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { NeonUI } from '../ui/NeonUI';
-import { NEON, NEON_STR, BG } from '../constants/ui.constants';
+import { neonBtn } from '../ui/NeonRex';
+import { NEON, NEON_STR, BG, GAME_SETTINGS } from '../constants/ui.constants';
+import { musicEngine } from '../audio/MusicEngine';
 
 /**
  * MenuScene: Modern, sophisticated main menu with structured layout.
@@ -16,6 +18,13 @@ export class MenuScene extends Phaser.Scene {
 
   create(): void {
     const { width, height } = this.scale;
+
+    // ─── Music ────────────────────────────────────────────────────────
+    if (GAME_SETTINGS.soundEnabled && (!musicEngine.playing || musicEngine.mood !== 'menu')) {
+      musicEngine.play('menu');
+    } else if (!GAME_SETTINGS.soundEnabled && musicEngine.playing) {
+      musicEngine.stop();
+    }
 
     // ─── Background ───────────────────────────────────────────────────
     const bg = this.add.graphics();
@@ -79,7 +88,7 @@ export class MenuScene extends Phaser.Scene {
       {
         label: 'SINGLEPLAYER',
         color: NEON.green,
-        action: () => this.scene.start('DifficultySelectScene'),
+        action: () => this.scene.start('LobbyScene'),
       },
       {
         label: 'MULTIPLAYER',
@@ -108,65 +117,30 @@ export class MenuScene extends Phaser.Scene {
       const bx = centerX - btnW / 2;
       const by = buttonsStartY + i * (btnH + gap);
 
-      // Button container
-      const container = this.add.container(bx, by);
-      container.setDepth(10);
-
-      // Button background
-      const g = this.add.graphics();
-      NeonUI.drawButton(g, 0, 0, btnW, btnH, btn.color, false);
-      container.add(g);
-
-      // Button label
-      const label = this.add.text(btnW / 2, btnH / 2, btn.label, {
-        fontSize: '16px',
-        color: btn.dimmed ? '#556666' : '#ffffff',
-        fontFamily: 'monospace',
-        fontStyle: 'bold',
-      }).setOrigin(0.5);
-      container.add(label);
-
-      // Dimmed state for unavailable buttons
-      if (btn.dimmed) {
-        container.setAlpha(0.4);
-      }
-
-      // Hover text for dimmed buttons - positioned BELOW the button stack, not overlapping
+      // Hover text for dimmed buttons
       let hoverLabel: Phaser.GameObjects.Text | null = null;
       if (btn.hoverText) {
-        // Position below all buttons, not overlapping button area
         const hoverY = buttonsStartY + totalBtnH + 20;
         hoverLabel = this.add.text(centerX, hoverY, btn.hoverText, {
           fontSize: '11px', color: '#887766', fontFamily: 'monospace', fontStyle: 'italic',
         }).setOrigin(0.5).setAlpha(0).setDepth(10);
       }
 
-      // Interactive zone for button
-      container.setInteractive(
-        new Phaser.Geom.Rectangle(0, 0, btnW, btnH),
-        Phaser.Geom.Rectangle.Contains,
-      );
-
-      container.on('pointerover', () => {
-        if (!btn.dimmed) {
-          g.clear();
-          NeonUI.drawButton(g, 0, 0, btnW, btnH, btn.color, true);
-          label.setColor('#ffffff');
+      if (btn.dimmed) {
+        // Draw a non-interactive dimmed button graphic
+        const g = this.add.graphics().setDepth(10).setAlpha(0.4);
+        NeonUI.drawButton(g, bx, by, btnW, btnH, btn.color, false);
+        this.add.text(bx + btnW / 2, by + btnH / 2, btn.label, {
+          fontSize: '16px', color: '#556666', fontFamily: 'monospace', fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(10).setAlpha(0.4);
+      } else {
+        const label = neonBtn(this, bx, by, btnW, btnH, btn.color, '#ffffff', btn.label, 16, btn.action);
+        label.setDepth(10);
+        if (hoverLabel) {
+          label.on('pointerover', () => hoverLabel!.setAlpha(1));
+          label.on('pointerout',  () => hoverLabel!.setAlpha(0));
         }
-        if (hoverLabel) hoverLabel.setAlpha(1);
-      });
-
-      container.on('pointerout', () => {
-        if (!btn.dimmed) {
-          g.clear();
-          NeonUI.drawButton(g, 0, 0, btnW, btnH, btn.color, false);
-        }
-        if (hoverLabel) hoverLabel.setAlpha(0);
-      });
-
-      container.on('pointerdown', () => {
-        if (!btn.dimmed) btn.action();
-      });
+      }
     });
 
     // ─── Footer Info ──────────────────────────────────────────────────

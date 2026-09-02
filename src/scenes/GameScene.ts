@@ -32,7 +32,9 @@ import {
   CANVAS_HEIGHT, PANEL_COLLAPSED_H, PANEL_EXPANDED_H,
 } from '../constants/world.constants';
 import { AI_INITIAL_DECISION_DELAY, REPOSITION_COOLDOWN_MS, CAPACITOR_BURST_ROTATIONS } from '../constants/balance.constants';
-import { SoundManager } from '../systems/SoundManager';
+import { GameSoundManager } from '../systems/SoundManager';
+import { musicEngine } from '../audio/MusicEngine';
+import { soundManager } from '../audio/SoundManager';
 import { ParticleManager } from '../systems/ParticleManager';
 import { FloatingTextManager } from '../ui/FloatingTextManager';
 import { GAME_SETTINGS } from '../constants/ui.constants';
@@ -60,11 +62,24 @@ export class GameScene extends Phaser.Scene {
   private winSystem!: WinConditionSystem;
   private techSystem!: TechSystem;
   private gearUnitInteraction!: GearUnitInteractionSystem;
-  private aiController!: AIController;
+  // AI controllers. "aiController" handles the right/AI side, while
+  // "playerAIController" is used when the left/player side is also
+  // controlled by an AI (practice spectate or flipped lobby).
+  private aiController: AIController | null = null;
   private playerAIController: AIController | null = null;
+
+  // Which sides are occupied by humans/AI – populated during init().
+  private leftSlot: import('../types/ai.types').AISlotConfig = { kind: 'human' };
+  private rightSlot: import('../types/ai.types').AISlotConfig = { kind: 'ai', difficulty: 'medium', personality: 'random' };
+
+  // true when the human player is playing on the right side (slot flipped).
+  private playerIsRight: boolean = false;
+
+  // Spectate flag (true when both slots are AI)
   private isSpectate: boolean = false;
+
   private abilitySystem!: AbilitySystem;
-  private soundManager!: SoundManager;
+  private soundManager!: GameSoundManager;
   private particleManager!: ParticleManager;
   private floatingTextManager!: FloatingTextManager;
   private projectileSystem!: ProjectileSystem;
@@ -73,6 +88,9 @@ export class GameScene extends Phaser.Scene {
   private turretSystem!: TurretSystem;
   private aiDebugOverlay!: AIDebugOverlay;
   private gameEventLogger!: GameEventLogger;
+
+  // Cold zone visuals (crystal sentinel icy areas)
+  private coldZoneGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
 
   // Entity maps
   private gearEntities: Map<string, GearEntity> = new Map();
@@ -110,18 +128,54 @@ export class GameScene extends Phaser.Scene {
 
   private playerTech!: TechState;
   private tickNumber: number = 0;
-  private difficulty: AIStrategyProfile = 'medium';
+  // default difficulties for each side (valid only if that side is AI)
+  private leftAIDifficulty: AIStrategyProfile = 'medium';
+  private rightAIDifficulty: AIStrategyProfile = 'medium';
+  private leftAIPersonality: import('../types/ai.types').AIPersonality | 'random' = 'random';
+  private rightAIPersonality: import('../types/ai.types').AIPersonality | 'random' = 'random';
 
   private gameStatsTracker!: GameStatsTracker;
   private gameStartTime = 0;
+  // ── Music combat-mood state ──────────────────────────────────────────────
+  // Combat mood activates when enemy units cross the midpoint OR when the
+  // player's own gears/base are damaged.  It reverts to build after 30 s of
+  // neither condition being true.
+  private _musicCombatActive = false;
+  private _lastCombatAt      = 0;   // Date.now() of most recent combat event
+  private _musicCheckAccum   = 0;   // ms accumulator for 1-s periodic position scan
 
   constructor() {
     super({ key: 'GameScene' });
   }
 
-  init(data: { difficulty?: AIStrategyProfile | 'spectate' }): void {
-    this.isSpectate = data.difficulty === 'spectate';
-    this.difficulty = this.isSpectate ? 'hard' : (data.difficulty as AIStrategyProfile ?? 'medium');
+  init(data: { difficulty?: AIStrategyProfile | 'spectate' } | import('../types/ai.types').LobbyConfig): void {
+    // support old callers for backwards compatibility
+    if ('left' in data) {
+      this.leftSlot = data.left;
+      this.rightSlot = data.right;
+
+      const leftHuman = this.leftSlot.kind === 'human';
+      const rightHuman = this.rightSlot.kind === 'human';
+      const leftAI = this.leftSlot.kind === 'ai';
+      const rightAI = this.rightSlot.kind === 'ai';
+
+      this.playerIsRight = !leftHuman && rightHuman;
+      this.isSpectate = leftAI && rightAI;
+      this.leftAIDifficulty = this.leftSlot.difficulty ?? 'medium';
+      this.rightAIDifficulty = this.rightSlot.difficulty ?? 'medium';
+      this.leftAIPersonality = this.leftSlot.personality ?? 'random';
+      this.rightAIPersonality = this.rightSlot.personality ?? 'random';
+    } else {
+      // legacy path (difficulty / practice / spectate screen)
+      this.isSpectate = data.difficulty === 'spectate';
+      const diff = (data.difficulty as AIStrategyProfile) ?? 'medium';
+      // old flow: human always left, AI right
+      this.leftSlot = { kind: 'human' };
+      this.rightSlot = { kind: 'ai', difficulty: diff, personality: 'random' };
+      this.playerIsRight = false;
+      this.leftAIDifficulty = 'medium';
+      this.rightAIDifficulty = this.isSpectate ? 'hard' : diff;
+    }
   }
 
   create(): void {
@@ -135,11 +189,20 @@ export class GameScene extends Phaser.Scene {
     this.playerTech = { researched: new Set(), queue: [], unlockedTeeth: [DEFAULT_TEETH] };
 
     this.world = new World();
+    // orientation must be applied to world before any placement tests occur
+    this.world.setPlayerOnRight(this.playerIsRight);
     this.meshGraph = new GearMeshGraph();
     this.worldRenderer = new WorldRenderer(this);
+    // let renderer know about orientation as well
+    this.worldRenderer.setPlayerOnRight(this.playerIsRight);
 
     // ─── Systems ─────────────────────────────────────────────────────────
-    const isPractice = this.difficulty === 'practice';
+    // practice occurs when neither side is handled by an AI (i.e. both
+    // slots are human).  spectate occurs when both sides have AI.
+    const leftAI = this.leftSlot.kind === 'ai';
+    const rightAI = this.rightSlot.kind === 'ai';
+    const isPractice = !leftAI && !rightAI;
+
     this.gearSystem = new GearSystem(this.world, this.meshGraph, eventBus, this.playerTech);
     this.rotationPhysics = new RotationPhysicsSystem(this.world, this.meshGraph, eventBus);
     this.economySystem = new EconomySystem(eventBus, this.world);
@@ -160,23 +223,38 @@ export class GameScene extends Phaser.Scene {
       this.abilitySystem,
     );
 
-    this.aiController = new AIController(
-      eventBus, this.gearSystem, this.economySystem, this.unitSystem,
-      this.winSystem, this.rotationPhysics, this.world, this.meshGraph, this.difficulty,
-      this.techSystem, 'ai',
-    );
+    // create controllers based on lobby slots
+    if (rightAI) {
+      this.aiController = new AIController(
+        eventBus, this.gearSystem, this.economySystem, this.unitSystem,
+        this.winSystem, this.rotationPhysics, this.world, this.meshGraph,
+        this.rightAIDifficulty, this.rightAIPersonality, this.techSystem, 'ai',
+      );
+    } else {
+      this.aiController = null;
+    }
 
-    if (this.isSpectate) {
+    if (leftAI) {
       this.playerAIController = new AIController(
         eventBus, this.gearSystem, this.economySystem, this.unitSystem,
         this.winSystem, this.rotationPhysics, this.world, this.meshGraph,
-        'hard', this.techSystem, 'player',
+        this.leftAIDifficulty, this.leftAIPersonality, this.techSystem, 'player',
       );
+    } else {
+      this.playerAIController = null;
     }
 
     this.economySystem.setUnitSystem(this.unitSystem);
 
-    this.soundManager = new SoundManager(this, eventBus);
+    this.soundManager = new GameSoundManager(eventBus);
+    // ─── Music: transition to build phase ─────────────────────────────
+    if (GAME_SETTINGS.soundEnabled) {
+      if (musicEngine.playing) {
+        musicEngine.transition('build', 'normal');
+      } else {
+        musicEngine.play('build');
+      }
+    }
     this.particleManager = new ParticleManager(this, eventBus, this.world);
     this.floatingTextManager = new FloatingTextManager(this, eventBus, this.world);
     this.projectileSystem = new ProjectileSystem();
@@ -193,6 +271,102 @@ export class GameScene extends Phaser.Scene {
     eventBus.on('projectile:hit', ({ x, y, aoeRadius }: { x: number; y: number; aoeRadius: number }) => {
       if (aoeRadius <= 0) return; // crystal shards don't explode
       this.showExplosionAnimation(x, y, aoeRadius);
+    });
+
+    // Cold beam (crystal sentinel) — brief icy line flash
+    eventBus.on('cold_beam:fired', ({ srcX, srcY, dstX, dstY }: { srcX: number; srcY: number; dstX: number; dstY: number }) => {
+      const beamG = this.add.graphics().setDepth(148);
+      const data = { alpha: 0.9 };
+      beamG.lineStyle(3, 0x88eeff, data.alpha);
+      beamG.beginPath();
+      beamG.moveTo(srcX, srcY);
+      beamG.lineTo(dstX, dstY);
+      beamG.strokePath();
+      // Glow line
+      beamG.lineStyle(7, 0xaaffff, data.alpha * 0.35);
+      beamG.beginPath();
+      beamG.moveTo(srcX, srcY);
+      beamG.lineTo(dstX, dstY);
+      beamG.strokePath();
+      this.tweens.add({
+        targets: data,
+        alpha: 0,
+        duration: 280,
+        ease: 'Cubic.easeOut',
+        onUpdate: () => {
+          beamG.clear();
+          beamG.lineStyle(3, 0x88eeff, data.alpha);
+          beamG.beginPath();
+          beamG.moveTo(srcX, srcY);
+          beamG.lineTo(dstX, dstY);
+          beamG.strokePath();
+          beamG.lineStyle(7, 0xaaffff, data.alpha * 0.35);
+          beamG.beginPath();
+          beamG.moveTo(srcX, srcY);
+          beamG.lineTo(dstX, dstY);
+          beamG.strokePath();
+        },
+        onComplete: () => beamG.destroy(),
+      });
+    });
+
+    // Cold zone created (persistent icy area)
+    eventBus.on('cold_zone:created', ({ id, x, y, radius }: { id: string; x: number; y: number; radius: number }) => {
+      const zg = this.add.graphics().setDepth(90);
+      this.coldZoneGraphics.set(id, zg);
+      // Draw pulsing icy circle
+      const drawZone = (alpha: number) => {
+        zg.clear();
+        zg.fillStyle(0x44ccff, alpha * 0.22);
+        zg.fillCircle(x, y, radius);
+        zg.lineStyle(1.5, 0x88eeff, alpha * 0.7);
+        zg.strokeCircle(x, y, radius);
+        // Inner frost pattern
+        zg.lineStyle(1, 0xaaffff, alpha * 0.4);
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2;
+          const ex = x + Math.cos(angle) * radius * 0.7;
+          const ey = y + Math.sin(angle) * radius * 0.7;
+          zg.beginPath();
+          zg.moveTo(x, y);
+          zg.lineTo(ex, ey);
+          zg.strokePath();
+        }
+      };
+      drawZone(1.0);
+      // Slow pulse
+      const data = { t: 0 };
+      const tween = this.tweens.add({
+        targets: data,
+        t: 1,
+        duration: 1200,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+        onUpdate: () => drawZone(0.6 + data.t * 0.4),
+      });
+      (zg as any)._pulseTween = tween;
+    });
+
+    // Cold zone expired — remove visual
+    eventBus.on('cold_zone:expired', ({ id }: { id: string }) => {
+      const zg = this.coldZoneGraphics.get(id);
+      if (zg) {
+        const tween = (zg as any)._pulseTween;
+        if (tween) tween.stop();
+        this.coldZoneGraphics.delete(id);
+        this.tweens.add({
+          targets: { alpha: 1 },
+          alpha: 0,
+          duration: 600,
+          ease: 'Cubic.easeOut',
+          onUpdate: (tw: any) => {
+            const a = tw.targets[0].alpha;
+            zg.setAlpha(a);
+          },
+          onComplete: () => zg.destroy(),
+        });
+      }
     });
 
     // Healer pulse visual effect
@@ -235,7 +409,7 @@ export class GameScene extends Phaser.Scene {
     const enableDebug = (on: boolean) => {
       this.aiDebugOverlay.setEnabled(on);
       this.gameEventLogger.setEnabled(on);
-      this.aiController.setDebugEnabled(on);
+      this.aiController?.setDebugEnabled(on);
       this.playerAIController?.setDebugEnabled(on);
     };
 
@@ -252,7 +426,7 @@ export class GameScene extends Phaser.Scene {
 
     // ─── Initial AI decision (head start) ─────────────────────────────
     this.time.delayedCall(AI_INITIAL_DECISION_DELAY, () => {
-      this.aiController.update(Date.now());
+      this.aiController?.update(Date.now());
       this.playerAIController?.update(Date.now());
     });
 
@@ -272,6 +446,10 @@ export class GameScene extends Phaser.Scene {
         isPractice,
         aiTech: this.techSystem.getAITech(),
         isSpectate: this.isSpectate,
+        spectateOwner: this.isSpectate ? 'player' : undefined,
+        playerIsRight: this.playerIsRight,
+        leftHuman: !leftAI,
+        rightHuman: !rightAI,
       });
     });
 
@@ -286,13 +464,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onShutdown(): void {
+    this._musicCombatActive = false;
+    this._lastCombatAt = 0;
+    this._musicCheckAccum = 0;
     this.scene.stop('UIScene');
     this.gameStatsTracker?.destroy();
     this.rotationPhysics.destroy();
     this.economySystem.destroy();
     this.unitSystem.destroy();
     this.winSystem.destroy();
-    this.aiController.destroy();
+    this.aiController?.destroy();
     this.playerAIController?.destroy();
     this.playerAIController = null;
     this.projectileSystem.destroy();
@@ -300,6 +481,13 @@ export class GameScene extends Phaser.Scene {
     this.techSystem.destroy();
     this.aiDebugOverlay.destroy();
     this.gameEventLogger.destroy();
+    // Clean up cold zone graphics
+    for (const [, zg] of this.coldZoneGraphics) {
+      const tw = (zg as any)._pulseTween;
+      if (tw) tw.stop();
+      zg.destroy();
+    }
+    this.coldZoneGraphics.clear();
     eventBus.removeAllListeners();
   }
 
@@ -353,11 +541,19 @@ export class GameScene extends Phaser.Scene {
         this.worldRenderer.flashBase(owner as 'player' | 'ai');
       }
       this.cameras.main.shake(300, 0.03);
+      // Player's base taking damage → immediate combat mood
+      if (!this.isSpectate && owner === this._playerOwner()) {
+        this._onCombatEvent();
+      }
     });
 
     eventBus.on('gear:destroyed', ({ owner }) => {
       if (owner === 'player') {
         this.cameras.main.shake(150, 0.015);
+      }
+      // Player's gear destroyed → immediate combat mood
+      if (!this.isSpectate && owner === this._playerOwner()) {
+        this._onCombatEvent();
       }
     });
 
@@ -495,7 +691,7 @@ export class GameScene extends Phaser.Scene {
 
       // ─── Palette drag (updates ghost even while cursor is over panel) ───
       if (this.isDragging && this.dragGearType) {
-        const isPractice = this.difficulty === 'practice';
+        const isPractice = this.leftSlot.kind === 'human' && this.rightSlot.kind === 'human';
         const ghostOwner: 'player' | 'ai' = (isPractice && this.asEnemyMode) ? 'ai' : 'player';
         const snap = this.gearSystem.getSnapPosition(pointer.worldX, pointer.worldY, this.dragGearTeeth, ghostOwner);
         this.worldRenderer.drawGhostGear(snap.x, snap.y, this.dragGearTeeth, snap.valid, snap.snapTargetId !== null);
@@ -638,7 +834,7 @@ export class GameScene extends Phaser.Scene {
 
       const worldX = pointer.worldX;
       const worldY = pointer.worldY;
-      const isPractice = this.difficulty === 'practice';
+      const isPractice = this.leftSlot.kind === 'human' && this.rightSlot.kind === 'human';
       const placeOwner: 'player' | 'ai' = (isPractice && this.asEnemyMode) ? 'ai' : 'player';
       const snap = this.gearSystem.getSnapPosition(worldX, worldY, this.dragGearTeeth, placeOwner);
 
@@ -736,7 +932,7 @@ export class GameScene extends Phaser.Scene {
         const clickX = pointer.worldX;
         const clickY = pointer.worldY;
         // In practice+asEnemy mode, allow removing enemy gears too
-        const isPractice = this.difficulty === 'practice';
+        const isPractice = this.leftSlot.kind === 'human' && this.rightSlot.kind === 'human';
         const canRemoveEnemy = isPractice && this.asEnemyMode;
         for (const [, gear] of this.world.getAllGears()) {
           if (gear.owner !== 'player' && !canRemoveEnemy) continue;
@@ -1040,6 +1236,23 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // ─── Music mood update ────────────────────────────────────────────────
+    if (!this.isSpectate && GAME_SETTINGS.soundEnabled && musicEngine.playing) {
+      // Scan enemy unit positions once per second
+      this._musicCheckAccum += delta;
+      if (this._musicCheckAccum >= 1000) {
+        this._musicCheckAccum = 0;
+        this._checkEnemyPositions();
+      }
+      // Decay back to build if no combat pressure for 30 s
+      if (this._musicCombatActive && now - this._lastCombatAt >= 30_000) {
+        this._musicCombatActive = false;
+        if (musicEngine.mood === 'combat') {
+          musicEngine.transition('build', 'slow');
+        }
+      }
+    }
+
     // Cache allGears once per frame — shared by all subsystems below
     const allGears = this.world.getAllGears();
 
@@ -1048,7 +1261,7 @@ export class GameScene extends Phaser.Scene {
       this.combatSystem.update(now);
       this.techSystem.update(now);
       this.turretSystem.update(deltaSec, now);
-      this.aiController.update(now);
+      this.aiController?.update(now);
       this.playerAIController?.update(now);
     }
 
@@ -1082,8 +1295,9 @@ export class GameScene extends Phaser.Scene {
 
     // ─── AI debug overlay ─────────────────────────────────────────────────
     if (this.aiDebugOverlay.isEnabled()) {
-      const states = [this.aiController.getDebugState()];
-      if (this.playerAIController) states.unshift(this.playerAIController.getDebugState());
+      const states: import('../types/ai.types').AIDebugState[] = [];
+      if (this.aiController) states.push(this.aiController.getDebugState());
+      if (this.playerAIController) states.push(this.playerAIController.getDebugState());
       this.aiDebugOverlay.update(states);
     }
   }
@@ -1115,9 +1329,67 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  /** Which owner label corresponds to the human player's side. */
+  private _playerOwner(): 'player' | 'ai' {
+    return this.playerIsRight ? 'ai' : 'player';
+  }
+
+  /** Called whenever a combat-pressure event occurs. Starts or sustains combat mood. */
+  private _onCombatEvent(): void {
+    this._lastCombatAt = Date.now();
+    if (!this._musicCombatActive) {
+      this._musicCombatActive = true;
+      if (GAME_SETTINGS.soundEnabled && musicEngine.playing) {
+        musicEngine.transition('combat', 'quick');
+      }
+    }
+  }
+
+  /**
+   * Checks whether any enemy unit has crossed the world midpoint onto the
+   * player's half of the arena. If so, registers a combat pressure event.
+   * Called once per second from update().
+   */
+  private _checkEnemyPositions(): void {
+    const mid         = WORLD_WIDTH / 2;
+    const enemyOwner  = this.playerIsRight ? 'player' : 'ai';
+    for (const [, unit] of this.unitSystem.getAllUnits()) {
+      if (unit.owner !== enemyOwner) continue;
+      const onPlayerSide = this.playerIsRight ? unit.x > mid : unit.x < mid;
+      if (onPlayerSide) {
+        this._onCombatEvent();
+        return; // one unit is enough to trigger
+      }
+    }
+  }
+
   private showGameOver(winner: 'player' | 'ai', reason: string): void {
+    // ─── Audio: stop music and play outcome SFX ───────────────────────
+    musicEngine.stop();
+    if (GAME_SETTINGS.soundEnabled) {
+      if (winner === 'player') {
+        soundManager.playVictory();
+      } else {
+        soundManager.playDefeat();
+      }
+    }
+
     this.gameStatsTracker.forceSnapshot(Date.now());
-    const data = this.gameStatsTracker.buildGameOverData(winner, reason, this.difficulty);
+    // create a simple descriptor to store in the stats record
+    const leftAI = this.leftSlot.kind === 'ai';
+    const rightAI = this.rightSlot.kind === 'ai';
+    let difficultyLabel: string;
+    if (!leftAI && !rightAI) {
+      difficultyLabel = 'practice';
+    } else if (leftAI && rightAI) {
+      difficultyLabel = 'spectate';
+    } else if (leftAI) {
+      difficultyLabel = `ai-left(${this.leftSlot.difficulty ?? 'medium'})`;
+    } else {
+      difficultyLabel = `ai-right(${this.rightSlot.difficulty ?? 'medium'})`;
+    }
+
+    const data = this.gameStatsTracker.buildGameOverData(winner, reason, difficultyLabel);
     // Launch the stats scene — GameScene/UIScene shut down via onShutdown()
     this.scene.start('GameOverScene', data);
   }

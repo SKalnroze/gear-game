@@ -12,7 +12,8 @@ import { BaseHealthBars } from '../ui/BaseHealthBars';
 import { TechState } from '../types/tech.types';
 import { AIStrategyProfile } from '../types/ai.types';
 import { PANEL_COLLAPSED_H, WORLD_WIDTH, WORLD_HEIGHT } from '../constants/world.constants';
-import { NEON_STR } from '../constants/ui.constants';
+import { NEON, NEON_STR, UI_DEPTH } from '../constants/ui.constants';
+import { neonBtn } from '../ui/NeonRex';
 
 /**
  * UIScene: runs in parallel with GameScene, provides all HUD elements.
@@ -34,6 +35,7 @@ export class UIScene extends Phaser.Scene {
   // Spectate state
   private spectateOwner: 'player' | 'ai' = 'player';
   private isSpectate: boolean = false;
+  private playerIsRight: boolean = false; // orientation flag
 
   // Spectate overlay elements (for toggle-button text update)
   private spectateToggleBtn: Phaser.GameObjects.Text | null = null;
@@ -51,8 +53,9 @@ export class UIScene extends Phaser.Scene {
     super({ key: 'UIScene', active: false });
   }
 
-  init(data: { difficulty: AIStrategyProfile; spectateOwner?: 'player' | 'ai' }): void {
+  init(data: { spectateOwner?: 'player' | 'ai'; playerIsRight?: boolean } = {}): void {
     if (data.spectateOwner) this.spectateOwner = data.spectateOwner;
+    if (data.playerIsRight !== undefined) this.playerIsRight = data.playerIsRight;
   }
 
   create(): void {
@@ -72,6 +75,7 @@ export class UIScene extends Phaser.Scene {
       isPractice: boolean;
       aiTech?: TechState;
       isSpectate?: boolean;
+      playerIsRight?: boolean;
     }) => {
       this.techSystem = data.techSystem;
       this.abilitySystem = data.abilitySystem;
@@ -81,6 +85,7 @@ export class UIScene extends Phaser.Scene {
       this.camera = data.camera;
       this.isPractice = data.isPractice;
       this.isSpectate = data.isSpectate ?? false;
+      if (data.playerIsRight !== undefined) this.playerIsRight = data.playerIsRight;
 
       this.setupUI(data);
 
@@ -105,8 +110,19 @@ export class UIScene extends Phaser.Scene {
     const { abilitySystem, world, camera, winSystem } = data;
 
     // ── Health bars (always visible, top of screen) ────────────────────────
-    const playerLabel = this.isSpectate ? 'PLAYER 1' : 'PLAYER BASE';
-    const aiLabel     = this.isSpectate ? 'PLAYER 2' : 'AI BASE';
+    let playerLabel: string;
+    let aiLabel: string;
+    if (this.isSpectate) {
+      playerLabel = 'PLAYER 1';
+      aiLabel     = 'PLAYER 2';
+    } else if (this.playerIsRight) {
+      // swap labels when human is on right side
+      playerLabel = 'AI BASE';
+      aiLabel     = 'PLAYER BASE';
+    } else {
+      playerLabel = 'PLAYER BASE';
+      aiLabel     = 'AI BASE';
+    }
     this.healthBars = new BaseHealthBars(this, winSystem, playerLabel, aiLabel);
 
     // ── Tooltip (must be first — high depth) ──────────────────────────────
@@ -144,6 +160,11 @@ export class UIScene extends Phaser.Scene {
       mapW, mapH,
     );
 
+    // ── Return-to-menu button (non-spectate games only) ───────────────────
+    if (!this.isSpectate) {
+      this.createMenuButton();
+    }
+
     // ── Research progress update ───────────────────────────────────────────
     this.events.on('update', () => {
       const owner = this.isSpectate ? this.spectateOwner : 'player';
@@ -160,6 +181,17 @@ export class UIScene extends Phaser.Scene {
 
     // ── Shutdown cleanup ───────────────────────────────────────────────────
     this.events.on('shutdown', () => this.onShutdown());
+  }
+
+  /**
+   * Small "MENU" button in the top-left corner for non-spectate games.
+   * Stops both GameScene and UIScene, then returns to MenuScene.
+   */
+  private createMenuButton(): void {
+    neonBtn(this, 8, 8, 72, 28, NEON.cyan, NEON_STR.cyan, 'MENU', 11, () => {
+      this.scene.stop('GameScene');
+      this.scene.start('MenuScene');
+    }).setDepth(UI_DEPTH.HUD_OVERLAY);
   }
 
   /**

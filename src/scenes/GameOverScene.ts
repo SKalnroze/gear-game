@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { GameOverData, StatSnapshot } from '../types/stats.types';
-import { NEON, NEON_STR, BG } from '../constants/ui.constants';
-import { NeonUI } from '../ui/NeonUI';
+import { NEON, NEON_STR, BG, GAME_SETTINGS } from '../constants/ui.constants';
+import { neonBtn } from '../ui/NeonRex';
+import { musicEngine } from '../audio/MusicEngine';
 
 // ── Layout constants ────────────────────────────────────────────────────────
 const HDR_H   = 64;
@@ -99,6 +100,15 @@ export class GameOverScene extends Phaser.Scene {
     const { width } = this.scale;
     this.CHTR = width - 72;
     this.CHTW = this.CHTR - CHT_L;
+
+    // ─── Music: fade in menu music after outcome SFX has played ───────
+    if (GAME_SETTINGS.soundEnabled) {
+      this.time.delayedCall(3500, () => {
+        if (!musicEngine.playing) {
+          musicEngine.play('menu');
+        }
+      });
+    }
 
     // Background
     const bg = this.add.graphics();
@@ -633,27 +643,16 @@ export class GameOverScene extends Phaser.Scene {
     const cx = width / 2;
     const btnW = 180, btnH = 38;
 
-    const menuBtnG = this.add.graphics().setDepth(5);
-    NeonUI.drawButton(menuBtnG, cx - btnW - 10, FOOTER_Y, btnW, btnH, NEON.cyan, false);
-    const menuLbl = this.add.text(cx - 10 - btnW / 2, FOOTER_Y + btnH / 2, 'MAIN MENU', {
-      fontSize: '13px', color: NEON_STR.cyan, fontFamily: 'monospace', fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(6);
+    neonBtn(this, cx - btnW - 10, FOOTER_Y, btnW, btnH, NEON.cyan, NEON_STR.cyan, 'MAIN MENU', 13, () => {
+      if (this.scene.isActive('UIScene') || this.scene.isPaused('UIScene')) {
+        this.scene.stop('UIScene');
+      }
+      this.scene.start('MenuScene');
+    });
 
-    const playBtnG = this.add.graphics().setDepth(5);
-    NeonUI.drawButton(playBtnG, cx + 10, FOOTER_Y, btnW, btnH, NEON.green, false);
-    const playLbl = this.add.text(cx + 10 + btnW / 2, FOOTER_Y + btnH / 2, 'PLAY AGAIN', {
-      fontSize: '13px', color: NEON_STR.green, fontFamily: 'monospace', fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(6);
-
-    void menuLbl; void playLbl;
-
-    const menuZone = this.add.zone(cx - 10 - btnW / 2, FOOTER_Y + btnH / 2, btnW, btnH)
-      .setInteractive({ cursor: 'pointer' }).setDepth(7);
-    menuZone.on('pointerdown', () => this.scene.start('MenuScene'));
-
-    const playZone = this.add.zone(cx + 10 + btnW / 2, FOOTER_Y + btnH / 2, btnW, btnH)
-      .setInteractive({ cursor: 'pointer' }).setDepth(7);
-    playZone.on('pointerdown', () => this.scene.start('DifficultySelectScene'));
+    neonBtn(this, cx + 10, FOOTER_Y, btnW, btnH, NEON.green, NEON_STR.green, 'PLAY AGAIN', 13, () => {
+      this.scene.start('LobbyScene');
+    });
   }
 
   // ── Hover / tooltip ───────────────────────────────────────────────────────

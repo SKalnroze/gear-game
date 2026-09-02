@@ -3,6 +3,7 @@ import { RotationPhysicsSystem } from '../../src/systems/RotationPhysicsSystem';
 import { World } from '../../src/world/World';
 import { GearMeshGraph } from '../../src/world/GearMeshGraph';
 import type { EventBus } from '../../src/systems/EventBus';
+import { GameClock } from '../../src/systems/GameClock';
 import type { GearState, GearType } from '../../src/types/gear.types';
 import { gearRadius, motorTorque, motorOutput, INERTIA_DENSITY } from '../../src/constants/gear.constants';
 import {
@@ -72,6 +73,7 @@ interface Rig {
   world: World;
   graph: GearMeshGraph;
   physics: RotationPhysicsSystem;
+  clock: GameClock;
   emitted: Emitted[];
   offCalls: string[];
   events: (name: string) => Emitted[];
@@ -90,11 +92,12 @@ function rig(gears: GearState[]): Rig {
     graph.rebuildEdgesFor(g, world.getAllGears());
   }
 
-  const physics = new RotationPhysicsSystem(world, graph, bus);
+  const clock = new GameClock();
+  const physics = new RotationPhysicsSystem(world, graph, bus, clock);
   physics.rebuildChains();
 
   return {
-    world, graph, physics, emitted, offCalls,
+    world, graph, physics, clock, emitted, offCalls,
     events: (name: string) => emitted.filter(e => e.event === name),
   };
 }
@@ -187,6 +190,12 @@ describe('RotationPhysicsSystem', () => {
   });
 
   describe('overclock', () => {
+    // Times are game-clock ms, which starts at 0 for a fresh rig -- the system
+    // no longer reads the wall clock, so pause and game speed apply to
+    // overclock windows like everything else.
+    const ACTIVE_UNTIL = 10_000;
+    const ALREADY_EXPIRED = -1;
+
     /** motor - driven - overclock in a line; only the driven gear neighbours the overclock. */
     function overclockRig(until: number) {
       return rig([
@@ -197,16 +206,40 @@ describe('RotationPhysicsSystem', () => {
     }
 
     it('an active overclock neighbour boosts omega', () => {
-      const active = overclockRig(Date.now() + 10_000);
-      const expired = overclockRig(Date.now() - 10_000);
+      const active = overclockRig(ACTIVE_UNTIL);
+      const expired = overclockRig(ALREADY_EXPIRED);
       const boosted = Math.abs(active.world.getGear('b')!.angularVelocity);
       const base = Math.abs(expired.world.getGear('b')!.angularVelocity);
       expect(boosted / base).toBeCloseTo(1 + OVERCLOCK_SPEED_BONUS, 6);
     });
 
+    it('the boost expires as game time passes the window', () => {
+      const r = overclockRig(ACTIVE_UNTIL);
+      const boosted = Math.abs(r.world.getGear('b')!.angularVelocity);
+
+      r.clock.advance(ACTIVE_UNTIL + 1);
+      r.physics.rebuildChains();
+
+      const after = Math.abs(r.world.getGear('b')!.angularVelocity);
+      expect(after).toBeLessThan(boosted);
+      expect(boosted / after).toBeCloseTo(1 + OVERCLOCK_SPEED_BONUS, 6);
+    });
+
+    it('a paused clock keeps the boost alive', () => {
+      const r = overclockRig(ACTIVE_UNTIL);
+      const boosted = Math.abs(r.world.getGear('b')!.angularVelocity);
+
+      r.clock.setPaused(true);
+      r.clock.advance(ACTIVE_UNTIL * 10);
+      r.physics.rebuildChains();
+
+      expect(Math.abs(r.world.getGear('b')!.angularVelocity)).toBeCloseTo(boosted, 6);
+      expect(r.physics.checkOverclockBurnouts(r.clock.now)).toEqual([]);
+    });
+
     it('burns out an overclock gear once its window closes', () => {
-      const r = overclockRig(Date.now() - 1);
-      const burnt = r.physics.checkOverclockBurnouts(Date.now());
+      const r = overclockRig(ALREADY_EXPIRED);
+      const burnt = r.physics.checkOverclockBurnouts(r.clock.now);
       expect(burnt).toEqual(['oc']);
       expect(r.world.getGear('oc')!.isBurntOut).toBe(true);
       expect(r.world.getGear('oc')!.isSpinning).toBe(false);
@@ -214,15 +247,15 @@ describe('RotationPhysicsSystem', () => {
     });
 
     it('does not burn out before the window closes', () => {
-      const r = overclockRig(Date.now() + 10_000);
-      expect(r.physics.checkOverclockBurnouts(Date.now())).toEqual([]);
+      const r = overclockRig(ACTIVE_UNTIL);
+      expect(r.physics.checkOverclockBurnouts(r.clock.now)).toEqual([]);
       expect(r.world.getGear('oc')!.isBurntOut).toBe(false);
     });
 
     it('the no-burnout ability spares a player gear', () => {
-      const r = overclockRig(Date.now() - 1);
+      const r = overclockRig(ALREADY_EXPIRED);
       r.physics.setAbilitySystem({ isUnlocked: (id) => id === 'overclock_no_burnout' });
-      expect(r.physics.checkOverclockBurnouts(Date.now())).toEqual([]);
+      expect(r.physics.checkOverclockBurnouts(r.clock.now)).toEqual([]);
       expect(r.world.getGear('oc')!.isBurntOut).toBe(false);
     });
   });
@@ -422,7 +455,7 @@ describe('RotationPhysicsSystem', () => {
 
     it('the tech power bonus scales the result', () => {
       const r = rig([makeGear('m', 0, 0, 10, 'motor')]);
-      r.physics.setPowerBonusPct(0.25);
+      r.physics.setPowerBonusPct('player', 0.25);
       expect(outputOf(r)).toBeCloseTo(motorOutput(10) * 1.25, 6);
     });
 
@@ -476,7 +509,7 @@ describe('RotationPhysicsSystem', () => {
 
     it('setCapacitorBurstMultiplier overrides the default', () => {
       const r = capRig();
-      r.physics.setCapacitorBurstMultiplier(10);
+      r.physics.setCapacitorBurstMultiplier('player', 10);
       spin(r, CAPACITOR_BURST_ROTATIONS);
 
       const chain = r.physics.getChainForGear('cap')!;

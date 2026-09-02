@@ -7,6 +7,7 @@ import { EconomySystem } from '../systems/EconomySystem';
 import { WinConditionSystem } from '../systems/WinConditionSystem';
 import { World } from '../world/World';
 import { GearMeshGraph } from '../world/GearMeshGraph';
+import { GameClock, NEVER } from '../systems/GameClock';
 import { AIChainPlanner, AIPlacementContext } from './AIChainPlanner';
 import type { AIChainPlan, ChainRole } from './AIChainPlanner';
 import { AIResearchPlan } from './AIResearchPlan';
@@ -83,7 +84,8 @@ export class AIController {
   private lastThreatLevel: ThreatLevel | null = null;
 
   /** Epoch when this controller was created — used for elapsed-time stamps in logs */
-  private readonly startTime = Date.now();
+  private clock: GameClock;
+  private startTime = 0;
 
   /** Expandable ability handler registry */
   private readonly abilityHandlers: AIAbilityHandler[] = [...AI_ABILITY_HANDLERS];
@@ -105,9 +107,9 @@ export class AIController {
 
   private readonly onUnitSpawned = ({ unit }: { unit: UnitState }) => {
     if (unit.owner === this.owner) return; // ignore own units
-    this.opponentUnitWindow.push({ type: unit.type, at: Date.now() });
+    this.opponentUnitWindow.push({ type: unit.type, at: this.clock.now });
     // Trim entries older than 45 seconds
-    const cutoff = Date.now() - 45000;
+    const cutoff = this.clock.now - 45000;
     let trimTo = 0;
     while (trimTo < this.opponentUnitWindow.length && this.opponentUnitWindow[trimTo].at < cutoff) trimTo++;
     if (trimTo > 0) this.opponentUnitWindow.splice(0, trimTo);
@@ -128,8 +130,10 @@ export class AIController {
     personality: AIPersonality | 'random' = 'random',
     techSystem?: TechSystem,
     owner: 'player' | 'ai' = 'ai',
+    clock?: GameClock,
   ) {
     this.eventBus = eventBus;
+    this.clock = clock ?? new GameClock();
     this.gearSystem = gearSystem;
     this.economySystem = economySystem;
     this.winSystem = winSystem;
@@ -213,7 +217,7 @@ export class AIController {
       .map(h => ({
         id: h.abilityId,
         cooldownRemaining: Math.max(
-          0, h.cooldownMs - (Date.now() - (this.abilityCooldowns.get(h.abilityId) ?? 0)),
+          0, h.cooldownMs - (this.clock.now - (this.abilityCooldowns.get(h.abilityId) ?? NEVER)),
         ),
       }));
 
@@ -305,7 +309,7 @@ export class AIController {
    * Falls back to 'infantry' when data is sparse.
    */
   private getDominantOpponentUnit(): string {
-    const recent = this.opponentUnitWindow.filter(e => Date.now() - e.at < 30000);
+    const recent = this.opponentUnitWindow.filter(e => this.clock.now - e.at < 30000);
     if (recent.length < 3) return 'infantry';
     const counts = new Map<string, number>();
     for (const { type } of recent) counts.set(type, (counts.get(type) ?? 0) + 1);
@@ -368,7 +372,7 @@ export class AIController {
 
   /** Elapsed seconds since this controller was created (for log timestamps) */
   private ts(): string {
-    return `T+${((Date.now() - this.startTime) / 1000).toFixed(1)}s`;
+    return `T+${((this.clock.now - this.startTime) / 1000).toFixed(1)}s`;
   }
 
   /** Console log — action events (always shown when debug enabled) */
@@ -386,7 +390,7 @@ export class AIController {
   private lastStatusLogAt = 0;
   private logThrottled(msg: string): void {
     if (!this.debugEnabled) return;
-    const now = Date.now();
+    const now = this.clock.now;
     if (now - this.lastStatusLogAt < 8000) return;
     this.lastStatusLogAt = now;
     const gold = this.economySystem.getResources(this.owner).gold.toFixed(0);
@@ -424,7 +428,7 @@ export class AIController {
       // Tech gate
       if (!handler.requiredTech.every(t => this.aiResearched.has(t))) continue;
       // Cooldown gate
-      const lastUsed = this.abilityCooldowns.get(handler.abilityId) ?? 0;
+      const lastUsed = this.abilityCooldowns.get(handler.abilityId) ?? NEVER;
       if (now - lastUsed < handler.cooldownMs) continue;
 
       if (!handler.shouldUse(ctx)) {
@@ -955,7 +959,7 @@ export class AIController {
   }
 
   private maybeRebuildResearchPlan(): void {
-    const now = Date.now();
+    const now = this.clock.now;
     // Rebuild more frequently on medium/hard to catch opponent adaptation windows
     const interval = this.strategyProfile === 'easy' ? 10000 : 5000;
     if (this.researchPlan.prioritizedQueue.length > 0 && now - this.researchPlan.lastRebuildAt < interval) return;
@@ -1082,7 +1086,7 @@ export class AIController {
     });
 
     if (available.length === 0) {
-      this.researchPlan = { prioritizedQueue: [], currentGoal: 'nothing to research', lastRebuildAt: Date.now() };
+      this.researchPlan = { prioritizedQueue: [], currentGoal: 'nothing to research', lastRebuildAt: this.clock.now };
       return;
     }
 
@@ -1113,7 +1117,7 @@ export class AIController {
       goal = queue.length > 0 ? (TECH_NODES[queue[0]]?.name ?? queue[0]) : 'complete';
     }
 
-    this.researchPlan = { prioritizedQueue: queue, currentGoal: goal, lastRebuildAt: Date.now() };
+    this.researchPlan = { prioritizedQueue: queue, currentGoal: goal, lastRebuildAt: this.clock.now };
   }
 
   private tryAutoResearch(): void {
@@ -1146,7 +1150,15 @@ export class AIController {
         if (!decision.gearType || !decision.teeth || decision.x === undefined || decision.y === undefined) break;
         const cost = this.getGearPlacementCost(decision.teeth);
         if (this.economySystem.spendGold(this.owner, cost)) {
-          this.gearSystem.tryPlace(decision.gearType, decision.teeth, decision.x, decision.y, this.owner);
+          const placed = this.gearSystem.tryPlace(
+            decision.gearType, decision.teeth, decision.x, decision.y, this.owner,
+          );
+          // tryPlace can refuse (zone, overlap, tech gate). The gold was
+          // already spent, so refund it rather than silently burning it.
+          if (!placed) {
+            this.economySystem.earnGold(this.owner, cost);
+            this.log(`placement refused for ${decision.gearType} @ ${decision.x},${decision.y} — refunded ${cost}g`);
+          }
         }
         break;
       }

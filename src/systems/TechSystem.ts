@@ -8,6 +8,7 @@ import { WinConditionSystem } from './WinConditionSystem';
 import { AbilitySystem } from './AbilitySystem';
 import { AbilityId } from '../types/ability.types';
 import { UnitType } from '../types/unit.types';
+import { GameClock } from './GameClock';
 
 /**
  * Manages the research queue, unlock gate checking, and effect application.
@@ -23,15 +24,16 @@ export class TechSystem {
   private playerTech: TechState;
   private aiTech: TechState;
 
-  private playerPowerBonusPct: number = 0;
+  private powerBonusPct: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
 
   private abilitySystem: AbilitySystem | null = null;
+  private clock: GameClock;
 
   private readonly onGearResearchBoost = ({ owner, amount }: { owner: 'player' | 'ai'; amount: number }) => {
     const tech = owner === 'player' ? this.playerTech : this.aiTech;
-    if (!tech.inProgress || !tech.progressStartedAt) return;
+    if (!tech.inProgress || tech.progressStartedAt === undefined) return;
     // Advance research by 'amount' ms by moving progressStartedAt back
-    tech.progressStartedAt = Math.max(0, tech.progressStartedAt - amount);
+    tech.progressStartedAt = tech.progressStartedAt - amount;
   };
 
   constructor(
@@ -41,6 +43,8 @@ export class TechSystem {
     rotationPhysics: RotationPhysicsSystem,
     winSystem: WinConditionSystem,
     playerTech: TechState,
+    aiTech: TechState,
+    clock: GameClock,
     abilitySystem?: AbilitySystem,
   ) {
     this.eventBus = eventBus;
@@ -49,7 +53,8 @@ export class TechSystem {
     this.rotationPhysics = rotationPhysics;
     this.winSystem = winSystem;
     this.playerTech = playerTech;
-    this.aiTech = { researched: new Set(), queue: [], unlockedTeeth: [10] };
+    this.aiTech = aiTech;
+    this.clock = clock;
     this.abilitySystem = abilitySystem ?? null;
 
     this.eventBus.on('gear:research_boost', this.onGearResearchBoost);
@@ -88,7 +93,7 @@ export class TechSystem {
 
     this.economySystem.spendGold(owner, node.goldCost);
     tech.inProgress = nodeId;
-    tech.progressStartedAt = Date.now();
+    tech.progressStartedAt = this.clock.now;
 
     this.eventBus.emit('tech:research_started', { nodeId, owner });
     return true;
@@ -107,7 +112,7 @@ export class TechSystem {
       if (tech.queue.length > 0) {
         const next = tech.queue.shift()!;
         tech.inProgress = next;
-        tech.progressStartedAt = Date.now();
+        tech.progressStartedAt = this.clock.now;
         this.eventBus.emit('tech:research_started', { nodeId: next, owner });
       }
       this.eventBus.emit('tech:cancelled', { nodeId, owner });
@@ -132,7 +137,7 @@ export class TechSystem {
 
   private checkResearchCompletion(owner: 'player' | 'ai', now: number): void {
     const tech = owner === 'player' ? this.playerTech : this.aiTech;
-    if (!tech.inProgress || !tech.progressStartedAt) return;
+    if (!tech.inProgress || tech.progressStartedAt === undefined) return;
 
     const node = TECH_NODES[tech.inProgress];
     if (!node) return;
@@ -151,7 +156,7 @@ export class TechSystem {
         const next = tech.queue.shift()!;
         // Start directly (already paid gold at queue time)
         tech.inProgress = next;
-        tech.progressStartedAt = Date.now();
+        tech.progressStartedAt = this.clock.now;
         this.eventBus.emit('tech:research_started', { nodeId: next, owner });
       }
 
@@ -189,39 +194,30 @@ export class TechSystem {
         this.unitSystem.unlockUnitType(effect.unitType as UnitType);
         break;
 
-      case 'power_bonus_pct':
-        if (owner === 'player') {
-          this.playerPowerBonusPct += effect.value;
-          this.rotationPhysics.setPowerBonusPct(this.playerPowerBonusPct);
-        }
+      case 'power_bonus_pct': {
+        const bonus = (this.powerBonusPct[owner] += effect.value);
+        this.rotationPhysics.setPowerBonusPct(owner, bonus);
         break;
+      }
 
       case 'gold_bonus_per_sec':
         this.economySystem.applyGoldBonus(owner, effect.value);
         break;
 
       case 'unit_hp_pct':
-        if (owner === 'player') {
-          this.unitSystem.applyHpBonus(effect.unitType as UnitType, effect.value);
-        }
+        this.unitSystem.applyHpBonus(owner, effect.unitType as UnitType, effect.value);
         break;
 
       case 'unit_speed_pct':
-        if (owner === 'player') {
-          this.unitSystem.applySpeedBonus(effect.unitType as UnitType, effect.value);
-        }
+        this.unitSystem.applySpeedBonus(owner, effect.unitType as UnitType, effect.value);
         break;
 
       case 'unit_damage_pct':
-        if (owner === 'player') {
-          this.unitSystem.applyDamageBonus(effect.unitType as UnitType, effect.value);
-        }
+        this.unitSystem.applyDamageBonus(owner, effect.unitType as UnitType, effect.value);
         break;
 
       case 'capacitor_burst_multiplier':
-        if (owner === 'player') {
-          this.rotationPhysics.setCapacitorBurstMultiplier(2.5 + effect.value);
-        }
+        this.rotationPhysics.setCapacitorBurstMultiplier(owner, 2.5 + effect.value);
         break;
 
       case 'base_hp_bonus':
@@ -250,10 +246,10 @@ export class TechSystem {
 
   getResearchProgress(owner: 'player' | 'ai'): { nodeId: TechNodeId; progress: number } | null {
     const tech = owner === 'player' ? this.playerTech : this.aiTech;
-    if (!tech.inProgress || !tech.progressStartedAt) return null;
+    if (!tech.inProgress || tech.progressStartedAt === undefined) return null;
     const node = TECH_NODES[tech.inProgress];
     if (!node) return null;
-    const progress = Math.min(1, (Date.now() - tech.progressStartedAt) / node.researchTime);
+    const progress = Math.min(1, (this.clock.now - tech.progressStartedAt) / node.researchTime);
     return { nodeId: tech.inProgress, progress };
   }
 }

@@ -2,7 +2,7 @@ import { UnitState } from '../types/unit.types';
 import { EventBus } from './EventBus';
 import { World } from '../world/World';
 import { distance } from '../utils/MathUtils';
-import { gearRadius } from '../constants/gear.constants';
+import { gearRadius, crackLevelFor } from '../constants/gear.constants';
 
 let _nextProjId = 1;
 function nextProjId(): string {
@@ -206,8 +206,9 @@ export class ProjectileSystem {
         if (d <= r + gr) {
           const dmg = proj.damage * (1 - d / (r * 1.5));
           const actualDmg = Math.max(1, dmg);
+          const wasAlive = gear.hp > 0;
           gear.hp = Math.max(0, gear.hp - actualDmg);
-          gear.crackLevel = Math.min(4, Math.floor((1 - gear.hp / gear.maxHp) * 5));
+          gear.crackLevel = crackLevelFor(gear.hp, gear.maxHp);
           world.updateGear(gear);
           eventBus.emit('gear:damaged', {
             gearId: gear.id,
@@ -215,7 +216,7 @@ export class ProjectileSystem {
             remainingHp: gear.hp,
             source: 'combat',
           });
-          if (gear.hp <= 0) {
+          if (wasAlive && gear.hp <= 0) {
             eventBus.emit('gear:destroyed', { gearId: gear.id, owner: gear.owner, cause: 'combat' });
           }
         }

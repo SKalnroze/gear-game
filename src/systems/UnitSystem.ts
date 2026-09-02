@@ -1,7 +1,7 @@
 import { UnitState, UnitType, UnitDefinition } from '../types/unit.types';
 import { EventBus } from './EventBus';
 import { UNIT_DEFINITIONS } from '../constants/unit.constants';
-import { gearRadius } from '../constants/gear.constants';
+import { gearRadius, crackLevelFor } from '../constants/gear.constants';
 import {
   WORLD_WIDTH, LANE_Y_MIN, LANE_Y_MAX,
   PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X,
@@ -28,6 +28,13 @@ function nextUnitId(): string {
 let _coldZoneId = 1;
 function nextColdZoneId(): string {
   return `cold_${_coldZoneId++}`;
+}
+
+/** Accumulated per-side tech multipliers applied to a unit type at spawn. */
+interface UnitBonuses {
+  hp: number;
+  speed: number;
+  damage: number;
 }
 
 interface ColdZone {
@@ -89,10 +96,10 @@ export class UnitSystem {
   private coldZones: ColdZone[] = [];
   private gearsWithColdFriction: Set<string> = new Set();
 
-  // Tech modifiers
-  private unitHpBonuses: Map<UnitType, number> = new Map();
-  private unitSpeedBonuses: Map<UnitType, number> = new Map();
-  private unitDamageBonuses: Map<UnitType, number> = new Map();
+  // Tech modifiers, keyed `${owner}:${unitType}`. These used to be keyed by
+  // unit type alone, so a tech node one side researched buffed *both* sides'
+  // units of that type.
+  private unitBonuses: Map<string, UnitBonuses> = new Map();
   private unlockedUnits: Set<UnitType> = new Set(['infantry']);
 
   private readonly onGearFullRotation = ({ gearId, owner }: { gearId: string; owner: 'player' | 'ai' }) => {
@@ -130,16 +137,32 @@ export class UnitSystem {
     this.unlockedUnits.add(type);
   }
 
-  applyHpBonus(unitType: UnitType, pct: number): void {
-    this.unitHpBonuses.set(unitType, (this.unitHpBonuses.get(unitType) ?? 0) + pct);
+  /** Accumulated tech bonuses for one side's units of one type. */
+  private bonusesFor(owner: 'player' | 'ai', unitType: UnitType): UnitBonuses {
+    const key = `${owner}:${unitType}`;
+    let bonuses = this.unitBonuses.get(key);
+    if (!bonuses) {
+      bonuses = { hp: 0, speed: 0, damage: 0 };
+      this.unitBonuses.set(key, bonuses);
+    }
+    return bonuses;
   }
 
-  applySpeedBonus(unitType: UnitType, pct: number): void {
-    this.unitSpeedBonuses.set(unitType, (this.unitSpeedBonuses.get(unitType) ?? 0) + pct);
+  applyHpBonus(owner: 'player' | 'ai', unitType: UnitType, pct: number): void {
+    this.bonusesFor(owner, unitType).hp += pct;
   }
 
-  applyDamageBonus(unitType: UnitType, pct: number): void {
-    this.unitDamageBonuses.set(unitType, (this.unitDamageBonuses.get(unitType) ?? 0) + pct);
+  applySpeedBonus(owner: 'player' | 'ai', unitType: UnitType, pct: number): void {
+    this.bonusesFor(owner, unitType).speed += pct;
+  }
+
+  applyDamageBonus(owner: 'player' | 'ai', unitType: UnitType, pct: number): void {
+    this.bonusesFor(owner, unitType).damage += pct;
+  }
+
+  /** Read-only view of a side's bonuses, for tests and debug overlays. */
+  getUnitBonuses(owner: 'player' | 'ai', unitType: UnitType): Readonly<UnitBonuses> {
+    return this.unitBonuses.get(`${owner}:${unitType}`) ?? { hp: 0, speed: 0, damage: 0 };
   }
 
   /**
@@ -150,9 +173,7 @@ export class UnitSystem {
     const def = UNIT_DEFINITIONS[unitType];
     const scaled = computeScaledStats(def, teeth, unitType);
 
-    const hpBonus = this.unitHpBonuses.get(unitType) ?? 0;
-    const speedBonus = this.unitSpeedBonuses.get(unitType) ?? 0;
-    const dmgBonus = this.unitDamageBonuses.get(unitType) ?? 0;
+    const { hp: hpBonus, speed: speedBonus, damage: dmgBonus } = this.getUnitBonuses(owner, unitType);
     const frictionVal = def.frictionValue ?? 0;
 
     const playerRight = this.world?.isPlayerOnRight() ?? false;
@@ -282,20 +303,31 @@ export class UnitSystem {
     }
 
     // 5. Emit unit:moved for all living units
+    const arrivedUnits: UnitState[] = [];
     for (const [, unit] of allUnits) {
-      if (!unit.reachedBase) {
-        this.eventBus.emit('unit:moved', { unitId: unit.id, x: unit.x, y: unit.y });
-      }
+      if (unit.reachedBase) continue;
 
-      // Check if unit reached the enemy base (guard !reachedBase to prevent repeat fires)
-      if (!unit.reachedBase && unit.owner === 'player' && unit.x >= AI_BASE_X) {
+      this.eventBus.emit('unit:moved', { unitId: unit.id, x: unit.x, y: unit.y });
+
+      if (this.hasReachedEnemyBase(unit)) {
         unit.reachedBase = true;
-        this.eventBus.emit('unit:reached_base', { unit: { ...unit } });
-      } else if (!unit.reachedBase && unit.owner === 'ai' && unit.x <= PLAYER_BASE_X) {
-        unit.reachedBase = true;
-        this.eventBus.emit('unit:reached_base', { unit: { ...unit } });
+        arrivedUnits.push(unit);
       }
     }
+
+    // A unit that reaches the enemy base is spent. Drop it from the map here:
+    // GameScene already tears down its entity and its World record on this
+    // event, but nothing used to remove it from ours, so every unit that ever
+    // reached a base stayed in memory and got re-scanned for the whole match.
+    for (const unit of arrivedUnits) {
+      this.eventBus.emit('unit:reached_base', { unit: { ...unit } });
+      this.units.delete(unit.id);
+    }
+  }
+
+  /** True when a unit has crossed into the base it is attacking. */
+  private hasReachedEnemyBase(unit: UnitState): boolean {
+    return unit.owner === 'player' ? unit.x >= AI_BASE_X : unit.x <= PLAYER_BASE_X;
   }
 
   // ─── Behavior update methods ────────────────────────────────────────────
@@ -499,8 +531,9 @@ export class UnitSystem {
       if (d <= contactDist) {
         // Hit gear — deal damage and retreat
         const chargeDmg = computeChargeDamage(unit.baseDamage, unit.chargeAccum);
+        const wasAlive = gear.hp > 0;
         gear.hp = Math.max(0, gear.hp - chargeDmg);
-        gear.crackLevel = Math.min(4, Math.floor((1 - gear.hp / gear.maxHp) * 5));
+        gear.crackLevel = crackLevelFor(gear.hp, gear.maxHp);
         if (this.world) this.world.updateGear(gear);
         this.eventBus.emit('gear:damaged', {
           gearId: gear.id,
@@ -508,7 +541,7 @@ export class UnitSystem {
           remainingHp: gear.hp,
           source: 'combat',
         });
-        if (gear.hp <= 0) {
+        if (wasAlive && gear.hp <= 0) {
           this.eventBus.emit('gear:destroyed', { gearId: gear.id, owner: gear.owner, cause: 'combat' });
         }
         // Retreat on gear impact
@@ -1002,9 +1035,9 @@ export class UnitSystem {
     for (const [, gear] of allGears) {
       const d = distance(unit.x, unit.y, gear.x, gear.y);
       if (d <= radius) {
-        const prev = gear.hp;
+        const wasAlive = gear.hp > 0;
         gear.hp = Math.max(0, gear.hp - damage);
-        gear.crackLevel = Math.min(4, Math.floor((1 - gear.hp / gear.maxHp) * 5));
+        gear.crackLevel = crackLevelFor(gear.hp, gear.maxHp);
         if (this.world) this.world.updateGear(gear);
         this.eventBus.emit('gear:damaged', {
           gearId: gear.id,
@@ -1012,7 +1045,7 @@ export class UnitSystem {
           remainingHp: gear.hp,
           source: 'combat',
         });
-        if (gear.hp <= 0 && prev > 0) {
+        if (wasAlive && gear.hp <= 0) {
           this.eventBus.emit('gear:destroyed', { gearId: gear.id, owner: gear.owner, cause: 'combat' });
         }
       }

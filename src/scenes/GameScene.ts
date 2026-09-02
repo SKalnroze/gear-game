@@ -4,6 +4,7 @@ import { World } from '../world/World';
 import { GearMeshGraph } from '../world/GearMeshGraph';
 import { WorldRenderer } from '../world/WorldRenderer';
 import { GearSystem } from '../systems/GearSystem';
+import { GameClock } from '../systems/GameClock';
 import { RotationPhysicsSystem } from '../systems/RotationPhysicsSystem';
 import { EconomySystem } from '../systems/EconomySystem';
 import { UnitSystem } from '../systems/UnitSystem';
@@ -127,6 +128,8 @@ export class GameScene extends Phaser.Scene {
   };
 
   private playerTech!: TechState;
+  private aiTech!: TechState;
+  private gameClock!: GameClock;
   private tickNumber: number = 0;
   // default difficulties for each side (valid only if that side is AI)
   private leftAIDifficulty: AIStrategyProfile = 'medium';
@@ -187,6 +190,9 @@ export class GameScene extends Phaser.Scene {
 
     // ─── Initialize data model ───────────────────────────────────────────
     this.playerTech = { researched: new Set(), queue: [], unlockedTeeth: [DEFAULT_TEETH] };
+    this.aiTech = { researched: new Set(), queue: [], unlockedTeeth: [DEFAULT_TEETH] };
+    // One time base for the whole simulation: stops on pause, scales with game speed.
+    this.gameClock = new GameClock();
 
     this.world = new World();
     // orientation must be applied to world before any placement tests occur
@@ -203,8 +209,8 @@ export class GameScene extends Phaser.Scene {
     const rightAI = this.rightSlot.kind === 'ai';
     const isPractice = !leftAI && !rightAI;
 
-    this.gearSystem = new GearSystem(this.world, this.meshGraph, eventBus, this.playerTech);
-    this.rotationPhysics = new RotationPhysicsSystem(this.world, this.meshGraph, eventBus);
+    this.gearSystem = new GearSystem(this.world, this.meshGraph, eventBus, this.playerTech, this.aiTech, this.gameClock);
+    this.rotationPhysics = new RotationPhysicsSystem(this.world, this.meshGraph, eventBus, this.gameClock);
     this.economySystem = new EconomySystem(eventBus, this.world);
     this.economySystem.setRotationPhysics(this.rotationPhysics);
     if (isPractice) this.economySystem.setPracticeMode(true);
@@ -214,13 +220,13 @@ export class GameScene extends Phaser.Scene {
     this.combatSystem = new CombatSystem(eventBus, this.unitSystem);
     this.winSystem = new WinConditionSystem(eventBus, isPractice);
     this.gearUnitInteraction = new GearUnitInteractionSystem(this.world, eventBus);
-    this.abilitySystem = new AbilitySystem(eventBus, this.economySystem);
+    this.abilitySystem = new AbilitySystem(eventBus, this.economySystem, this.gameClock);
     this.rotationPhysics.setAbilitySystem(this.abilitySystem);
 
     this.techSystem = new TechSystem(
       eventBus, this.economySystem, this.unitSystem,
-      this.rotationPhysics, this.winSystem, this.playerTech,
-      this.abilitySystem,
+      this.rotationPhysics, this.winSystem, this.playerTech, this.aiTech,
+      this.gameClock, this.abilitySystem,
     );
 
     // create controllers based on lobby slots
@@ -229,6 +235,7 @@ export class GameScene extends Phaser.Scene {
         eventBus, this.gearSystem, this.economySystem, this.unitSystem,
         this.winSystem, this.rotationPhysics, this.world, this.meshGraph,
         this.rightAIDifficulty, this.rightAIPersonality, this.techSystem, 'ai',
+        this.gameClock,
       );
     } else {
       this.aiController = null;
@@ -239,6 +246,7 @@ export class GameScene extends Phaser.Scene {
         eventBus, this.gearSystem, this.economySystem, this.unitSystem,
         this.winSystem, this.rotationPhysics, this.world, this.meshGraph,
         this.leftAIDifficulty, this.leftAIPersonality, this.techSystem, 'player',
+        this.gameClock,
       );
     } else {
       this.playerAIController = null;
@@ -426,8 +434,8 @@ export class GameScene extends Phaser.Scene {
 
     // ─── Initial AI decision (head start) ─────────────────────────────
     this.time.delayedCall(AI_INITIAL_DECISION_DELAY, () => {
-      this.aiController?.update(Date.now());
-      this.playerAIController?.update(Date.now());
+      this.aiController?.update(this.gameClock.now);
+      this.playerAIController?.update(this.gameClock.now);
     });
 
     eventBus.emit('game:started', {});
@@ -618,7 +626,7 @@ export class GameScene extends Phaser.Scene {
     // Pause/resume simulation
     eventBus.on('ui:pause_toggled', ({ paused }) => {
       this.isPaused = paused;
-      this.gearSystem.setPaused(paused);
+      this.gameClock.setPaused(paused);
     });
   }
 
@@ -1050,7 +1058,7 @@ export class GameScene extends Phaser.Scene {
       if (gear.isBurntOut) {
         lines.push('⚠ BURNT OUT');
       } else if (gear.overclockUntil) {
-        const remaining = Math.max(0, (gear.overclockUntil - Date.now()) / 1000);
+        const remaining = Math.max(0, (gear.overclockUntil - this.gameClock.now) / 1000);
         lines.push(`Active: ${remaining.toFixed(1)}s remaining`);
       }
     } else if (gear.type === 'spiked') {
@@ -1102,7 +1110,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (gear.lastRepositionedAt) {
-      const cdLeft = Math.max(0, REPOSITION_COOLDOWN_MS - (Date.now() - gear.lastRepositionedAt));
+      const cdLeft = Math.max(0, REPOSITION_COOLDOWN_MS - (this.gameClock.now - gear.lastRepositionedAt));
       if (cdLeft > 0) {
         lines.push(`Move cooldown: ${(cdLeft / 1000).toFixed(1)}s`);
       }
@@ -1197,8 +1205,11 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     if (this.winSystem.isGameOver()) return;
 
-    const now = Date.now();
-    this.gameStatsTracker.tick(now);
+    // Advance game time first; every system below reads it rather than the
+    // wall clock, so pause and game speed apply uniformly.
+    this.gameClock.advance(delta, GAME_SETTINGS.gameSpeed);
+    const now = this.gameClock.now;
+    this.gameStatsTracker.tick(Date.now());
     const deltaSec = (delta / 1000) * GAME_SETTINGS.gameSpeed;
 
     // ─── Edge-scroll camera ────────────────────────────────────────────────
@@ -1266,9 +1277,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     // ─── Overclock burnout ────────────────────────────────────────────────
-    const burntOut = this.rotationPhysics.checkOverclockBurnouts(now);
-    for (const gearId of burntOut) {
-      this.gearSystem.markBurntOut(gearId, now);
+    // Inside the pause guard: burnout used to keep running while stopped.
+    if (!this.isPaused) {
+      const burntOut = this.rotationPhysics.checkOverclockBurnouts(now);
+      for (const gearId of burntOut) {
+        this.gearSystem.markBurntOut(gearId, now);
+      }
     }
 
     // ─── Update gear visuals ──────────────────────────────────────────────

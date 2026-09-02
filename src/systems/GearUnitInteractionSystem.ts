@@ -2,7 +2,7 @@ import { GearState } from '../types/gear.types';
 import { UnitState } from '../types/unit.types';
 import { World } from '../world/World';
 import { EventBus } from './EventBus';
-import { gearRadius, spikeDamage, MAX_TEETH, GEAR_MODULE } from '../constants/gear.constants';
+import { gearRadius, spikeDamage, MAX_TEETH, GEAR_MODULE, crackLevelFor } from '../constants/gear.constants';
 import { UNIT_DEFINITIONS } from '../constants/unit.constants';
 import { ARMORED_DAMAGE_RATE, UNIT_COLLISION_RADIUS, UNIT_GEAR_DAMAGE_RATE } from '../constants/balance.constants';
 import { distance } from '../utils/MathUtils';
@@ -159,7 +159,11 @@ export class GearUnitInteractionSystem {
 
     if (unit.hp <= 0) {
       unit.hp = 0;
+      // The unit:died handlers run synchronously and remove the unit, so this
+      // must be the last thing we do with it — writing it back afterwards
+      // would put the corpse straight back into the world.
       this.eventBus.emit('unit:died', { unitId: unit.id, owner: unit.owner });
+      return;
     }
 
     // Push unit slightly away from gear to avoid deep penetration
@@ -185,8 +189,9 @@ export class GearUnitInteractionSystem {
     if (unit.type !== 'wrench') {
       // Bug 1.2 fix: rate-based damage (not per-frame), normalised to 1 second
       const damage = unit.baseDamage * ARMORED_DAMAGE_RATE * deltaSec;
+      const wasAlive = gear.hp > 0;
       gear.hp = Math.max(0, gear.hp - damage);
-      gear.crackLevel = Math.min(4, Math.floor((1 - gear.hp / gear.maxHp) * 5));
+      gear.crackLevel = crackLevelFor(gear.hp, gear.maxHp);
       this.world.updateGear(gear);
 
       this.eventBus.emit('gear:damaged', {
@@ -196,7 +201,7 @@ export class GearUnitInteractionSystem {
         source: 'combat',
       });
 
-      if (gear.hp <= 0) {
+      if (wasAlive && gear.hp <= 0) {
         // Armored gear is destroyed when HP reaches 0
         this.eventBus.emit('gear:destroyed', {
           gearId: gear.id,
@@ -220,8 +225,9 @@ export class GearUnitInteractionSystem {
 
     // Meaningful damage: baseDamage HP/sec
     const damage = unit.baseDamage * UNIT_GEAR_DAMAGE_RATE * deltaSec;
+    const wasAlive = gear.hp > 0;
     gear.hp = Math.max(0, gear.hp - damage);
-    gear.crackLevel = Math.min(4, Math.floor((1 - gear.hp / gear.maxHp) * 5));
+    gear.crackLevel = crackLevelFor(gear.hp, gear.maxHp);
     this.world.updateGear(gear);
 
     this.eventBus.emit('gear:damaged', {
@@ -231,7 +237,7 @@ export class GearUnitInteractionSystem {
       source: 'combat',
     });
 
-    if (gear.hp <= 0) {
+    if (wasAlive && gear.hp <= 0) {
       this.eventBus.emit('gear:destroyed', {
         gearId: gear.id,
         owner: gear.owner,

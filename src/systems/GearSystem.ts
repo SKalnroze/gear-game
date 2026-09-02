@@ -6,6 +6,7 @@ import { GEAR_DEFINITIONS, GEAR_MESH_TOLERANCE, gearRadius, gearPowerCost, gearM
 import { SNAP_THRESHOLD, PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X } from '../constants/world.constants';
 import { REPOSITION_COOLDOWN_MS, GEAR_PLACEMENT_COST_BASE, GEAR_PLACEMENT_COST_MULTIPLIER } from '../constants/balance.constants';
 import { TechState } from '../types/tech.types';
+import { GameClock } from './GameClock';
 import { distance } from '../utils/MathUtils';
 
 let _nextGearId = 1;
@@ -30,35 +31,36 @@ export class GearSystem {
   private meshGraph: GearMeshGraph;
   private eventBus: EventBus;
   private playerTech: TechState;
+  private aiTech: TechState;
+  private clock: GameClock;
 
-  // Pause tracking: accumulated ms the game was paused, to exclude from cooldown
-  private totalPausedMs: number = 0;
-  private pauseStart: number | null = null;
-
-  constructor(world: World, meshGraph: GearMeshGraph, eventBus: EventBus, playerTech: TechState) {
+  constructor(
+    world: World,
+    meshGraph: GearMeshGraph,
+    eventBus: EventBus,
+    playerTech: TechState,
+    aiTech: TechState,
+    clock: GameClock,
+  ) {
     this.world = world;
     this.meshGraph = meshGraph;
     this.eventBus = eventBus;
     this.playerTech = playerTech;
+    this.aiTech = aiTech;
+    this.clock = clock;
   }
 
-  /** Called by GameScene when pause state changes */
-  setPaused(paused: boolean): void {
-    if (paused && this.pauseStart === null) {
-      this.pauseStart = Date.now();
-    } else if (!paused && this.pauseStart !== null) {
-      this.totalPausedMs += Date.now() - this.pauseStart;
-      this.pauseStart = null;
-    }
-  }
-
-  /** Check if a gear type is unlocked for the given owner */
+  /**
+   * Check if a gear type is unlocked for the given owner.
+   * This used to return true unconditionally for the AI, letting it place any
+   * gear in the game without researching anything while the player was gated.
+   */
   isUnlocked(type: GearType, owner: 'player' | 'ai'): boolean {
-    if (owner === 'ai') return true;
     const def = GEAR_DEFINITIONS[type];
     if (!def) return false;
     if (!def.unlockNode) return true;
-    return this.playerTech.researched.has(def.unlockNode);
+    const tech = owner === 'player' ? this.playerTech : this.aiTech;
+    return tech.researched.has(def.unlockNode);
   }
 
   /**
@@ -240,7 +242,7 @@ export class GearSystem {
     const oldY = gear.y;
     gear.x = newX;
     gear.y = newY;
-    gear.lastRepositionedAt = Date.now();
+    gear.lastRepositionedAt = this.clock.now;
     this.world.updateGear(gear);
 
     // Rebuild mesh edges for this gear
@@ -268,9 +270,7 @@ export class GearSystem {
   isOnCooldown(gearId: string): boolean {
     const gear = this.world.getGear(gearId);
     if (!gear || !gear.lastRepositionedAt) return false;
-    const currentPausedMs = this.pauseStart !== null ? Date.now() - this.pauseStart : 0;
-    const effectiveNow = Date.now() - this.totalPausedMs - currentPausedMs;
-    return effectiveNow - gear.lastRepositionedAt < REPOSITION_COOLDOWN_MS;
+    return this.clock.now - gear.lastRepositionedAt < REPOSITION_COOLDOWN_MS;
   }
 
   /**

@@ -41,6 +41,16 @@ export function gearMaxHp(teeth: number, type: GearType): number {
   return base;
 }
 
+/**
+ * Visual damage tier, 0 (pristine) to 4 (near-destroyed).
+ * Guards maxHp of 0, which would otherwise yield NaN and skip every clamp.
+ */
+export function crackLevelFor(hp: number, maxHp: number): number {
+  if (maxHp <= 0) return 4;
+  const ratio = 1 - hp / maxHp;
+  return Math.max(0, Math.min(4, Math.floor(ratio * 5)));
+}
+
 
 /** Mining gear output per full rotation */
 export function miningOutput(teeth: number): number {

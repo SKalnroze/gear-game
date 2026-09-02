@@ -2,7 +2,7 @@ import { GearState } from '../types/gear.types';
 import { World } from '../world/World';
 import { GearMeshGraph } from '../world/GearMeshGraph';
 import { EventBus } from './EventBus';
-import { GEAR_DEFINITIONS, INERTIA_DENSITY, gearRadius, motorTorque, motorOutput } from '../constants/gear.constants';
+import { GEAR_DEFINITIONS, INERTIA_DENSITY, gearRadius, motorTorque, motorOutput, crackLevelFor } from '../constants/gear.constants';
 import {
   AMPLIFIER_CHAIN_MULTIPLIER,
   OVERCLOCK_SPEED_BONUS,
@@ -12,6 +12,7 @@ import {
   JAM_STRESS_MULTIPLIER,
 } from '../constants/balance.constants';
 import { meshOmega } from '../utils/MathUtils';
+import { GameClock } from './GameClock';
 
 const TWO_PI = Math.PI * 2;
 
@@ -33,6 +34,7 @@ export class RotationPhysicsSystem {
   private world: World;
   private meshGraph: GearMeshGraph;
   private eventBus: EventBus;
+  private clock: GameClock;
 
   private chains: Map<string, ChainInfo> = new Map();
   private capacitorRotationCount: Map<string, number> = new Map();
@@ -41,9 +43,13 @@ export class RotationPhysicsSystem {
   private jammedPairs: Map<string, string> = new Map();     // gearId → conflictingGearId
   private jamStressMap: Map<string, number> = new Map();    // gearId → stress value
 
-  // Tech modifiers
-  private powerBonusPct: number = 0;
-  private capacitorBurstMultiplier: number = CAPACITOR_BURST_MULTIPLIER;
+  // Tech modifiers, per side. These were single values shared by both owners,
+  // so one side's research changed the other side's chain output too.
+  private powerBonusPct: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
+  private capacitorBurstMultiplier: Record<'player' | 'ai', number> = {
+    player: CAPACITOR_BURST_MULTIPLIER,
+    ai: CAPACITOR_BURST_MULTIPLIER,
+  };
 
   // Optional ability system ref (set after construction)
   private abilitySystem: { isUnlocked: (id: 'power_surge' | 'counter_intel' | 'overclock_no_burnout') => boolean } | null = null;
@@ -52,22 +58,23 @@ export class RotationPhysicsSystem {
   private readonly onGearPlaced = () => this.rebuildChains();
   private readonly onGearRemoved = () => this.rebuildChains();
 
-  constructor(world: World, meshGraph: GearMeshGraph, eventBus: EventBus) {
+  constructor(world: World, meshGraph: GearMeshGraph, eventBus: EventBus, clock: GameClock) {
     this.world = world;
     this.meshGraph = meshGraph;
     this.eventBus = eventBus;
+    this.clock = clock;
 
     this.eventBus.on('gear:mesh_updated', this.onMeshUpdated);
     this.eventBus.on('gear:placed', this.onGearPlaced);
     this.eventBus.on('gear:removed', this.onGearRemoved);
   }
 
-  setPowerBonusPct(pct: number): void {
-    this.powerBonusPct = pct;
+  setPowerBonusPct(owner: 'player' | 'ai', pct: number): void {
+    this.powerBonusPct[owner] = pct;
   }
 
-  setCapacitorBurstMultiplier(multiplier: number): void {
-    this.capacitorBurstMultiplier = multiplier;
+  setCapacitorBurstMultiplier(owner: 'player' | 'ai', multiplier: number): void {
+    this.capacitorBurstMultiplier[owner] = multiplier;
   }
 
   rebuildChains(): void {
@@ -324,7 +331,7 @@ export class RotationPhysicsSystem {
   }
 
   private getOverclockBoost(gearId: string, allGears: Map<string, GearState>): number {
-    const now = Date.now();
+    const now = this.clock.now;
     const neighbors = this.meshGraph.getNeighbors(gearId);
     for (const nId of neighbors) {
       const n = allGears.get(nId);
@@ -339,7 +346,7 @@ export class RotationPhysicsSystem {
    * Main update — accumulate angles, fire full-rotation events, and apply jam damage.
    */
   update(deltaSec: number): void {
-    const now = Date.now();
+    const now = this.clock.now;
     const allGears = this.world.getAllGears();
 
     for (const [, gear] of allGears) {
@@ -367,7 +374,7 @@ export class RotationPhysicsSystem {
 
       const dmg = stress * JAM_DAMAGE_RATE * deltaSec;
       gear.hp = Math.max(0, gear.hp - dmg);
-      gear.crackLevel = Math.min(4, Math.floor((1 - gear.hp / gear.maxHp) * 5));
+      gear.crackLevel = crackLevelFor(gear.hp, gear.maxHp);
       this.world.updateGear(gear);
 
       this.eventBus.emit('gear:damaged', {
@@ -406,7 +413,7 @@ export class RotationPhysicsSystem {
 
     if (gear.type === 'capacitor' && rotationCount % CAPACITOR_BURST_ROTATIONS === 0) {
       const chainOutput = this.computeChainOutput(chain, allGears);
-      const burstPower = chainOutput * this.capacitorBurstMultiplier;
+      const burstPower = chainOutput * this.capacitorBurstMultiplier[gear.owner];
       this.eventBus.emit('power:capacitor_burst', { gearId: gear.id, owner: gear.owner, powerReleased: burstPower });
     }
   }
@@ -432,7 +439,7 @@ export class RotationPhysicsSystem {
       }
     }
 
-    return totalOutput * multiplier * (1 + this.powerBonusPct);
+    return totalOutput * multiplier * (1 + this.powerBonusPct[chain.owner]);
   }
 
   checkOverclockBurnouts(now: number): string[] {

@@ -219,14 +219,6 @@ export class GearSystem {
     this.eventBus.emit('gear:burnt_out', { gearId });
   }
 
-  startOverclock(gearId: string, duration: number, now: number): void {
-    const gear = this.world.getGear(gearId);
-    if (!gear || gear.type !== 'overclock' || gear.isBurntOut) return;
-    gear.overclockUntil = now + duration;
-    this.world.updateGear(gear);
-    this.eventBus.emit('gear:overclock_started', { gearId, duration });
-  }
-
   /**
    * Reposition an existing gear to a new location.
    * Validates ownership, cooldown, and placement legality (excluding self).

@@ -38,7 +38,7 @@ The world is 2800×520px with a scrollable camera (zoom 0.4–1.5×):
 | **Amplifier** | ×1.4 power multiplier on downstream chain |
 | **Converter** | Changes unit output type of the chain |
 | **Capacitor** | Accumulates rotations, releases a 2.5× burst every 8 rotations |
-| **Overclock** | +50% torque/omega to neighbours for 10s, then burns out |
+| **Overclock** | Starts automatically when placed: +50% torque/omega to meshed neighbours for 10s, burns out for 5s, then restarts. Tech extends the boost window |
 | **Spiked** | Damages units on contact; damage scales with omega × teeth |
 | **Armored** | Blocks unit movement; high HP (3× base), must be destroyed to pass |
 | **Iron/Crystal/Aether Miner** | Generates the matching resource per rotation (tech-unlocked) |
@@ -90,7 +90,7 @@ Counter system: Infantry → Artillery → Cavalry → Infantry (2× damage)
 |---------|--------|
 | Power Surge | Instant power injection |
 | Counter Intel | Reveals AI next action |
-| Overclock (No Burnout) | Overclock gears skip burnout for one cycle |
+| Overclock (No Burnout) | Your Overclock gears refresh instead of burning out, boosting continuously |
 
 ---
 

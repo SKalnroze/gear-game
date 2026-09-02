@@ -25,6 +25,7 @@ export class TechSystem {
   private aiTech: TechState;
 
   private powerBonusPct: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
+  private overclockDurationBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
 
   private abilitySystem: AbilitySystem | null = null;
   private clock: GameClock;
@@ -230,7 +231,12 @@ export class TechSystem {
         }
         break;
 
-      case 'overclock_duration_bonus':
+      case 'overclock_duration_bonus': {
+        const bonus = (this.overclockDurationBonus[owner] += effect.value);
+        this.rotationPhysics.setOverclockDurationBonus(owner, bonus);
+        break;
+      }
+
       case 'chain_combo_bonus':
         break;
     }

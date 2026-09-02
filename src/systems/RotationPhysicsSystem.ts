@@ -8,6 +8,9 @@ import {
   OVERCLOCK_SPEED_BONUS,
   CAPACITOR_BURST_MULTIPLIER,
   CAPACITOR_BURST_ROTATIONS,
+  CAPACITOR_OVERCLOCK_BURST_BONUS,
+  OVERCLOCK_DURATION,
+  OVERCLOCK_BURNOUT_DURATION,
   JAM_DAMAGE_RATE,
   JAM_STRESS_MULTIPLIER,
 } from '../constants/balance.constants';
@@ -50,12 +53,19 @@ export class RotationPhysicsSystem {
     player: CAPACITOR_BURST_MULTIPLIER,
     ai: CAPACITOR_BURST_MULTIPLIER,
   };
+  /** Extra boost-window ms from researched overclock duration nodes, per side. */
+  private overclockDurationBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
 
   // Optional ability system ref (set after construction)
   private abilitySystem: { isUnlocked: (id: 'power_surge' | 'counter_intel' | 'overclock_no_burnout') => boolean } | null = null;
 
   private readonly onMeshUpdated = () => this.rebuildChains();
-  private readonly onGearPlaced = () => this.rebuildChains();
+  private readonly onGearPlaced = ({ gear }: { gear: GearState }) => {
+    // Overclock gears run on their own from the moment they are placed;
+    // nothing else in the game ever started them.
+    if (gear?.type === 'overclock') this.startOverclock(gear, this.clock.now);
+    this.rebuildChains();
+  };
   private readonly onGearRemoved = () => this.rebuildChains();
 
   constructor(world: World, meshGraph: GearMeshGraph, eventBus: EventBus, clock: GameClock) {
@@ -330,6 +340,11 @@ export class RotationPhysicsSystem {
     });
   }
 
+  /** True when a meshed neighbour is an overclock gear inside its boost window. */
+  private hasActiveOverclockNeighbor(gearId: string, allGears: Map<string, GearState>): boolean {
+    return this.getOverclockBoost(gearId, allGears) > 0;
+  }
+
   private getOverclockBoost(gearId: string, allGears: Map<string, GearState>): number {
     const now = this.clock.now;
     const neighbors = this.meshGraph.getNeighbors(gearId);
@@ -413,7 +428,12 @@ export class RotationPhysicsSystem {
 
     if (gear.type === 'capacitor' && rotationCount % CAPACITOR_BURST_ROTATIONS === 0) {
       const chainOutput = this.computeChainOutput(chain, allGears);
-      const burstPower = chainOutput * this.capacitorBurstMultiplier[gear.owner];
+      // Declared synergy: a capacitor meshed to a live overclock gear bursts
+      // harder. The constant existed but nothing read it.
+      const synergy = this.hasActiveOverclockNeighbor(gear.id, allGears)
+        ? CAPACITOR_OVERCLOCK_BURST_BONUS
+        : 0;
+      const burstPower = chainOutput * (this.capacitorBurstMultiplier[gear.owner] + synergy);
       this.eventBus.emit('power:capacitor_burst', { gearId: gear.id, owner: gear.owner, powerReleased: burstPower });
     }
   }
@@ -442,26 +462,79 @@ export class RotationPhysicsSystem {
     return totalOutput * multiplier * (1 + this.powerBonusPct[chain.owner]);
   }
 
+  /** Boost window length for a side, including researched extensions. */
+  private overclockDuration(owner: 'player' | 'ai'): number {
+    return OVERCLOCK_DURATION + this.overclockDurationBonus[owner];
+  }
+
+  /**
+   * Open a boost window on an overclock gear, clearing any burnout.
+   * This is the single writer of `overclockUntil`.
+   */
+  private startOverclock(gear: GearState, now: number): void {
+    if (gear.type !== 'overclock') return;
+    const duration = this.overclockDuration(gear.owner);
+    gear.overclockUntil = now + duration;
+    gear.isBurntOut = false;
+    gear.burntOutAt = undefined;
+    this.world.updateGear(gear);
+    this.eventBus.emit('gear:overclock_started', { gearId: gear.id, duration });
+  }
+
+  /**
+   * Advance every overclock gear through its cycle: boost for its duration,
+   * burn out for OVERCLOCK_BURNOUT_DURATION, then spin back up and repeat.
+   *
+   * Returns the gears that burnt out on this tick.
+   */
   checkOverclockBurnouts(now: number): string[] {
     const burntOut: string[] = [];
+    // Torque is only recomputed when the mesh changes, so a gear starting or
+    // ending its boost has to ask for a re-propagation — otherwise neighbours
+    // keep spinning at the old speed, including while the gear is burnt out.
+    let changed = false;
+
     for (const [, gear] of this.world.getAllGears()) {
       if (gear.type !== 'overclock') continue;
-      if (gear.isBurntOut) continue;
-      if (!gear.overclockUntil) continue;
-      if (now >= gear.overclockUntil) {
-        if (this.abilitySystem?.isUnlocked('overclock_no_burnout') && gear.owner === 'player') {
-          continue;
+
+      // Recover from a previous burnout once the downtime has elapsed.
+      if (gear.isBurntOut) {
+        if (gear.burntOutAt === undefined) continue;
+        if (now - gear.burntOutAt >= OVERCLOCK_BURNOUT_DURATION) {
+          this.startOverclock(gear, now);
+          changed = true;
         }
-        burntOut.push(gear.id);
-        gear.isBurntOut = true;
-        gear.burntOutAt = now;
-        gear.isSpinning = false;
-        gear.angularVelocity = 0;
-        this.world.updateGear(gear);
-        this.eventBus.emit('gear:burnt_out', { gearId: gear.id });
+        continue;
       }
+
+      if (gear.overclockUntil === undefined) continue;
+      if (now < gear.overclockUntil) continue;
+
+      // Overclock Mastery: refresh the window instead of burning out. Skipping
+      // the burnout alone would leave the gear alive but past its window, so
+      // it would stop boosting — the opposite of what the ability promises.
+      if (this.abilitySystem?.isUnlocked('overclock_no_burnout') && gear.owner === 'player') {
+        this.startOverclock(gear, now);
+        continue;
+      }
+
+      changed = true;
+
+      burntOut.push(gear.id);
+      gear.isBurntOut = true;
+      gear.burntOutAt = now;
+      gear.isSpinning = false;
+      gear.angularVelocity = 0;
+      this.world.updateGear(gear);
+      this.eventBus.emit('gear:burnt_out', { gearId: gear.id });
     }
+
+    if (changed) this.propagateTorque();
     return burntOut;
+  }
+
+  setOverclockDurationBonus(owner: 'player' | 'ai', bonusMs: number): void {
+    this.overclockDurationBonus[owner] = bonusMs;
   }
 
   setAbilitySystem(abilitySystem: { isUnlocked: (id: 'power_surge' | 'counter_intel' | 'overclock_no_burnout') => boolean }): void {

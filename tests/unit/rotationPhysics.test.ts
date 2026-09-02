@@ -9,8 +9,11 @@ import { gearRadius, motorTorque, motorOutput, INERTIA_DENSITY } from '../../src
 import {
   AMPLIFIER_CHAIN_MULTIPLIER,
   OVERCLOCK_SPEED_BONUS,
+  OVERCLOCK_DURATION,
+  OVERCLOCK_BURNOUT_DURATION,
   CAPACITOR_BURST_MULTIPLIER,
   CAPACITOR_BURST_ROTATIONS,
+  CAPACITOR_OVERCLOCK_BURST_BONUS,
 } from '../../src/constants/balance.constants';
 
 const TWO_PI = Math.PI * 2;
@@ -24,9 +27,17 @@ interface Emitted { event: string; payload: any }
 function makeBus() {
   const emitted: Emitted[] = [];
   const offCalls: string[] = [];
+  const handlers = new Map<string, ((p: any) => void)[]>();
   const bus = {
-    emit: (event: string, payload: unknown) => { emitted.push({ event, payload }); },
-    on: () => {},
+    emit: (event: string, payload: any) => {
+      emitted.push({ event, payload });
+      for (const h of handlers.get(event) ?? []) h(payload);
+    },
+    on: (event: string, handler: (p: any) => void) => {
+      const list = handlers.get(event) ?? [];
+      list.push(handler);
+      handlers.set(event, list);
+    },
     once: () => {},
     off: (event: string) => { offCalls.push(event); },
     removeAllListeners: () => {},
@@ -74,6 +85,7 @@ interface Rig {
   graph: GearMeshGraph;
   physics: RotationPhysicsSystem;
   clock: GameClock;
+  bus: EventBus;
   emitted: Emitted[];
   offCalls: string[];
   events: (name: string) => Emitted[];
@@ -97,7 +109,7 @@ function rig(gears: GearState[]): Rig {
   physics.rebuildChains();
 
   return {
-    world, graph, physics, clock, emitted, offCalls,
+    world, graph, physics, clock, bus, emitted, offCalls,
     events: (name: string) => emitted.filter(e => e.event === name),
   };
 }
@@ -190,73 +202,231 @@ describe('RotationPhysicsSystem', () => {
   });
 
   describe('overclock', () => {
-    // Times are game-clock ms, which starts at 0 for a fresh rig -- the system
-    // no longer reads the wall clock, so pause and game speed apply to
-    // overclock windows like everything else.
+    // Game-clock ms; a fresh rig starts at 0.
     const ACTIVE_UNTIL = 10_000;
     const ALREADY_EXPIRED = -1;
 
     /** motor - driven - overclock in a line; only the driven gear neighbours the overclock. */
-    function overclockRig(until: number) {
+    function overclockRig(until?: number) {
       return rig([
         makeGear('m', 0, 0, 10, 'motor'),
         makeGear('b', 50, 0, 10, 'amplifier'),
-        makeGear('oc', 100, 0, 10, 'overclock', { overclockUntil: until }),
+        makeGear('oc', 100, 0, 10, 'overclock',
+          until === undefined ? {} : { overclockUntil: until }),
       ]);
     }
 
-    it('an active overclock neighbour boosts omega', () => {
-      const active = overclockRig(ACTIVE_UNTIL);
-      const expired = overclockRig(ALREADY_EXPIRED);
-      const boosted = Math.abs(active.world.getGear('b')!.angularVelocity);
-      const base = Math.abs(expired.world.getGear('b')!.angularVelocity);
-      expect(boosted / base).toBeCloseTo(1 + OVERCLOCK_SPEED_BONUS, 6);
+    /** Driven-gear omega relative to the same layout with a dormant overclock. */
+    function boostRatio(r: Rig): number {
+      const driven = Math.abs(r.world.getGear('b')!.angularVelocity);
+      const plain = Math.abs(overclockRig(ALREADY_EXPIRED).world.getGear('b')!.angularVelocity);
+      return driven / plain;
+    }
+
+    describe('activation', () => {
+      it('placing an overclock gear starts it boosting', () => {
+        // Nothing used to call startOverclock, so overclockUntil stayed
+        // undefined forever and the gear did nothing at all.
+        const r = overclockRig();
+        const gear = r.world.getGear('oc')!;
+        expect(gear.overclockUntil).toBeUndefined();
+        expect(boostRatio(r)).toBeCloseTo(1, 6);
+
+        // gear:placed is what GearSystem emits after a successful placement.
+        r.bus.emit('gear:placed', { gear });
+
+        expect(gear.overclockUntil).toBe(OVERCLOCK_DURATION);
+        expect(r.events('gear:overclock_started')).toHaveLength(1);
+        expect(r.events('gear:overclock_started')[0].payload.duration).toBe(OVERCLOCK_DURATION);
+        expect(boostRatio(r)).toBeCloseTo(1 + OVERCLOCK_SPEED_BONUS, 6);
+      });
+
+      it('placing a non-overclock gear starts nothing', () => {
+        const r = overclockRig();
+        r.bus.emit('gear:placed', { gear: r.world.getGear('b')! });
+        expect(r.events('gear:overclock_started')).toHaveLength(0);
+      });
+
+      it('researched duration extends the window, per side', () => {
+        const mine = overclockRig();
+        mine.physics.setOverclockDurationBonus('player', 5_000);
+        mine.bus.emit('gear:placed', { gear: mine.world.getGear('oc')! });
+        expect(mine.world.getGear('oc')!.overclockUntil).toBe(OVERCLOCK_DURATION + 5_000);
+
+        // The gear is player-owned, so an AI-side bonus must not reach it.
+        const theirs = overclockRig();
+        theirs.physics.setOverclockDurationBonus('ai', 5_000);
+        theirs.bus.emit('gear:placed', { gear: theirs.world.getGear('oc')! });
+        expect(theirs.world.getGear('oc')!.overclockUntil).toBe(OVERCLOCK_DURATION);
+      });
     });
 
-    it('the boost expires as game time passes the window', () => {
-      const r = overclockRig(ACTIVE_UNTIL);
-      const boosted = Math.abs(r.world.getGear('b')!.angularVelocity);
+    describe('boost window', () => {
+      it('an active overclock neighbour boosts omega', () => {
+        expect(boostRatio(overclockRig(ACTIVE_UNTIL))).toBeCloseTo(1 + OVERCLOCK_SPEED_BONUS, 6);
+      });
 
-      r.clock.advance(ACTIVE_UNTIL + 1);
-      r.physics.rebuildChains();
+      it('an expired one does not', () => {
+        expect(boostRatio(overclockRig(ALREADY_EXPIRED))).toBeCloseTo(1, 6);
+      });
 
-      const after = Math.abs(r.world.getGear('b')!.angularVelocity);
-      expect(after).toBeLessThan(boosted);
-      expect(boosted / after).toBeCloseTo(1 + OVERCLOCK_SPEED_BONUS, 6);
+      it('the boost expires as game time passes the window', () => {
+        const r = overclockRig(ACTIVE_UNTIL);
+        expect(boostRatio(r)).toBeCloseTo(1 + OVERCLOCK_SPEED_BONUS, 6);
+
+        r.clock.advance(ACTIVE_UNTIL + 1);
+        r.physics.rebuildChains();
+        expect(boostRatio(r)).toBeCloseTo(1, 6);
+      });
+
+      it('a paused clock keeps the boost alive', () => {
+        const r = overclockRig(ACTIVE_UNTIL);
+        r.clock.setPaused(true);
+        r.clock.advance(ACTIVE_UNTIL * 10);
+        r.physics.rebuildChains();
+
+        expect(boostRatio(r)).toBeCloseTo(1 + OVERCLOCK_SPEED_BONUS, 6);
+        expect(r.physics.checkOverclockBurnouts(r.clock.now)).toEqual([]);
+      });
     });
 
-    it('a paused clock keeps the boost alive', () => {
-      const r = overclockRig(ACTIVE_UNTIL);
-      const boosted = Math.abs(r.world.getGear('b')!.angularVelocity);
+    describe('burn out and recovery cycle', () => {
+      it('burns out once the window closes', () => {
+        const r = overclockRig(ALREADY_EXPIRED);
+        expect(r.physics.checkOverclockBurnouts(r.clock.now)).toEqual(['oc']);
+        expect(r.world.getGear('oc')!.isBurntOut).toBe(true);
+        expect(r.world.getGear('oc')!.isSpinning).toBe(false);
+        expect(r.events('gear:burnt_out')).toHaveLength(1);
+      });
 
-      r.clock.setPaused(true);
-      r.clock.advance(ACTIVE_UNTIL * 10);
-      r.physics.rebuildChains();
+      it('does not burn out before the window closes', () => {
+        const r = overclockRig(ACTIVE_UNTIL);
+        expect(r.physics.checkOverclockBurnouts(r.clock.now)).toEqual([]);
+        expect(r.world.getGear('oc')!.isBurntOut).toBe(false);
+      });
 
-      expect(Math.abs(r.world.getGear('b')!.angularVelocity)).toBeCloseTo(boosted, 6);
-      expect(r.physics.checkOverclockBurnouts(r.clock.now)).toEqual([]);
+      it('stays down for the downtime, then restarts by itself', () => {
+        const r = overclockRig(ALREADY_EXPIRED);
+        r.physics.checkOverclockBurnouts(r.clock.now);
+        const burntAt = r.clock.now;
+
+        // Still down partway through the downtime.
+        r.clock.advance(OVERCLOCK_BURNOUT_DURATION - 1);
+        r.physics.checkOverclockBurnouts(r.clock.now);
+        expect(r.world.getGear('oc')!.isBurntOut).toBe(true);
+
+        // Recovers once it has fully elapsed.
+        r.clock.advance(2);
+        r.physics.checkOverclockBurnouts(r.clock.now);
+
+        const gear = r.world.getGear('oc')!;
+        expect(gear.isBurntOut).toBe(false);
+        expect(gear.burntOutAt).toBeUndefined();
+        expect(gear.overclockUntil).toBe(burntAt + OVERCLOCK_BURNOUT_DURATION + 1 + OVERCLOCK_DURATION);
+
+        r.physics.rebuildChains();
+        expect(boostRatio(r)).toBeCloseTo(1 + OVERCLOCK_SPEED_BONUS, 6);
+      });
+
+      it('the cycle repeats rather than running once', () => {
+        const r = overclockRig(ALREADY_EXPIRED);
+        for (let i = 0; i < 3; i++) {
+          r.physics.checkOverclockBurnouts(r.clock.now);   // burn out
+          r.clock.advance(OVERCLOCK_BURNOUT_DURATION + 1);
+          r.physics.checkOverclockBurnouts(r.clock.now);   // recover
+          r.clock.advance(OVERCLOCK_DURATION + 1);
+        }
+        expect(r.events('gear:burnt_out')).toHaveLength(3);
+        expect(r.events('gear:overclock_started')).toHaveLength(3);
+      });
+
+      /**
+       * Four gears in a line: tail - motor - driven - overclock.
+       *
+       * A burnt-out gear also leaves the chain, and ratio-weighted inertia is
+       * the same for every gear regardless of teeth, so in a three-gear line
+       * "boosted with the overclock present" and "unboosted without it" come
+       * out to exactly the same omega — 1.5x either way. A fourth gear breaks
+       * that tie so the two states are actually distinguishable.
+       */
+      function fourGearRig(until: number, burnt = false) {
+        return rig([
+          makeGear('tail', -50, 0, 10, 'amplifier'),
+          makeGear('m', 0, 0, 10, 'motor'),
+          makeGear('b', 50, 0, 10, 'amplifier'),
+          makeGear('oc', 100, 0, 10, 'overclock', { overclockUntil: until, isBurntOut: burnt }),
+        ]);
+      }
+
+      const drivenOmega = (r: Rig) => Math.abs(r.world.getGear('b')!.angularVelocity);
+
+      it('neighbours stop being boosted the moment it burns out', () => {
+        // Torque is otherwise only recomputed on a mesh change, so without an
+        // explicit re-propagation the neighbour kept spinning at the boosted
+        // speed for the whole burnout.
+        const r = fourGearRig(ACTIVE_UNTIL);
+        const boosted = drivenOmega(r);
+        const expectedAfter = drivenOmega(fourGearRig(ALREADY_EXPIRED, true));
+        expect(boosted).not.toBeCloseTo(expectedAfter, 6);
+
+        r.clock.advance(ACTIVE_UNTIL + 1);
+        r.physics.checkOverclockBurnouts(r.clock.now);
+
+        expect(r.world.getGear('oc')!.isBurntOut).toBe(true);
+        expect(drivenOmega(r)).toBeCloseTo(expectedAfter, 6);
+      });
+
+      it('neighbours are boosted again the moment it recovers', () => {
+        const r = fourGearRig(ALREADY_EXPIRED);
+        r.physics.checkOverclockBurnouts(r.clock.now);
+        expect(drivenOmega(r)).toBeCloseTo(drivenOmega(fourGearRig(ALREADY_EXPIRED, true)), 6);
+
+        r.clock.advance(OVERCLOCK_BURNOUT_DURATION + 1);
+        r.physics.checkOverclockBurnouts(r.clock.now);
+
+        expect(r.world.getGear('oc')!.isBurntOut).toBe(false);
+        expect(drivenOmega(r)).toBeCloseTo(drivenOmega(fourGearRig(ACTIVE_UNTIL)), 6);
+      });
+
+      it('a paused clock freezes the downtime too', () => {
+        const r = overclockRig(ALREADY_EXPIRED);
+        r.physics.checkOverclockBurnouts(r.clock.now);
+
+        r.clock.setPaused(true);
+        r.clock.advance(OVERCLOCK_BURNOUT_DURATION * 10);
+        r.physics.checkOverclockBurnouts(r.clock.now);
+
+        expect(r.world.getGear('oc')!.isBurntOut).toBe(true);
+      });
     });
 
-    it('burns out an overclock gear once its window closes', () => {
-      const r = overclockRig(ALREADY_EXPIRED);
-      const burnt = r.physics.checkOverclockBurnouts(r.clock.now);
-      expect(burnt).toEqual(['oc']);
-      expect(r.world.getGear('oc')!.isBurntOut).toBe(true);
-      expect(r.world.getGear('oc')!.isSpinning).toBe(false);
-      expect(r.events('gear:burnt_out')).toHaveLength(1);
-    });
+    describe('Overclock Mastery (no-burnout ability)', () => {
+      it('refreshes the window instead of burning out', () => {
+        const r = overclockRig(ALREADY_EXPIRED);
+        r.physics.setAbilitySystem({ isUnlocked: (id) => id === 'overclock_no_burnout' });
 
-    it('does not burn out before the window closes', () => {
-      const r = overclockRig(ACTIVE_UNTIL);
-      expect(r.physics.checkOverclockBurnouts(r.clock.now)).toEqual([]);
-      expect(r.world.getGear('oc')!.isBurntOut).toBe(false);
-    });
+        expect(r.physics.checkOverclockBurnouts(r.clock.now)).toEqual([]);
 
-    it('the no-burnout ability spares a player gear', () => {
-      const r = overclockRig(ALREADY_EXPIRED);
-      r.physics.setAbilitySystem({ isUnlocked: (id) => id === 'overclock_no_burnout' });
-      expect(r.physics.checkOverclockBurnouts(r.clock.now)).toEqual([]);
-      expect(r.world.getGear('oc')!.isBurntOut).toBe(false);
+        const gear = r.world.getGear('oc')!;
+        expect(gear.isBurntOut).toBe(false);
+        // Skipping the burnout alone would leave it past its window and so
+        // silently not boosting -- the opposite of what the ability promises.
+        expect(gear.overclockUntil).toBe(r.clock.now + OVERCLOCK_DURATION);
+
+        r.physics.rebuildChains();
+        expect(boostRatio(r)).toBeCloseTo(1 + OVERCLOCK_SPEED_BONUS, 6);
+      });
+
+      it('only spares the player side', () => {
+        const r = rig([
+          makeGear('m', 0, 0, 10, 'motor', { owner: 'ai' }),
+          makeGear('oc', 50, 0, 10, 'overclock', { owner: 'ai', overclockUntil: ALREADY_EXPIRED }),
+        ]);
+        r.physics.setAbilitySystem({ isUnlocked: (id) => id === 'overclock_no_burnout' });
+
+        expect(r.physics.checkOverclockBurnouts(r.clock.now)).toEqual(['oc']);
+        expect(r.world.getGear('oc')!.isBurntOut).toBe(true);
+      });
     });
   });
 
@@ -516,6 +686,30 @@ describe('RotationPhysicsSystem', () => {
       const chainOutput = r.physics.computeChainOutput(chain, r.world.getAllGears());
       expect(r.events('power:capacitor_burst')[0].payload.powerReleased)
         .toBeCloseTo(chainOutput * 10, 6);
+    });
+
+    it('an adjacent live overclock gear makes the burst bigger', () => {
+      // The capacitor advertises this synergy in its gear definition, but the
+      // constant behind it had no reader.
+      function burstWith(overclockUntil: number): number {
+        const r = rig([
+          makeGear('m', 0, 0, 10, 'motor'),
+          makeGear('cap', 50, 0, 10, 'capacitor'),
+          makeGear('oc', 100, 0, 10, 'overclock', { overclockUntil }),
+        ]);
+        const omega = Math.abs(r.world.getGear('cap')!.angularVelocity);
+        const oneTurn = (TWO_PI / omega) * 1.001;
+        for (let i = 0; i < CAPACITOR_BURST_ROTATIONS; i++) r.physics.update(oneTurn);
+
+        const chain = r.physics.getChainForGear('cap')!;
+        const output = r.physics.computeChainOutput(chain, r.world.getAllGears());
+        return r.events('power:capacitor_burst')[0].payload.powerReleased / output;
+      }
+
+      expect(burstWith(-1)).toBeCloseTo(CAPACITOR_BURST_MULTIPLIER, 6);
+      expect(burstWith(60_000)).toBeCloseTo(
+        CAPACITOR_BURST_MULTIPLIER + CAPACITOR_OVERCLOCK_BURST_BONUS, 6,
+      );
     });
 
     it('a non-capacitor gear never bursts', () => {

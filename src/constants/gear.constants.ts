@@ -127,7 +127,7 @@ export const GEAR_DEFINITIONS: Record<GearType, GearDefinition> = {
       {
         requiredNeighbor: 'overclock',
         bonus: { type: 'burst_multiplier', value: 1.0 },
-        description: 'Burst at 4× instead of 3× when adjacent to Overclock gear',
+        description: 'Burst at 3.5× instead of 2.5× when adjacent to an Overclock gear',
       },
     ],
     description: 'Stores rotations and releases a 2.5× burst every 8 full rotations.',
@@ -139,7 +139,7 @@ export const GEAR_DEFINITIONS: Record<GearType, GearDefinition> = {
     basePowerCost: 40,
     goldCost: 10,
     synergies: [],
-    description: '+50% torque/omega to adjacent gears for 10s, then burns out.',
+    description: '+50% torque/omega to adjacent gears. Runs 10s, burns out for 5s, then restarts.',
     unlockNode: 'basic_overclock',
   },
 

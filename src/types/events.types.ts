@@ -48,6 +48,11 @@ export interface GameEventMap {
   'projectile:fired': { id: string; type: string; owner: 'player' | 'ai'; x: number; y: number };
   'projectile:hit': { id: string; x: number; y: number; aoeRadius: number };
 
+  // Crystal sentinel cold zone events
+  'cold_beam:fired': { owner: 'player' | 'ai'; srcX: number; srcY: number; dstX: number; dstY: number };
+  'cold_zone:created': { id: string; x: number; y: number; radius: number };
+  'cold_zone:expired': { id: string };
+
   // Combat events
   'combat:damage_dealt': { attackerId: string; defenderId: string; damage: number; multiplier: number };
   'combat:base_damaged': { owner: 'player' | 'ai'; damage: number; remainingHp: number };

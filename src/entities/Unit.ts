@@ -39,6 +39,9 @@ const UNIT_SIZES: Record<UnitType, number> = {
  */
 export class UnitEntity extends Phaser.GameObjects.Container {
   private unitGraphics: Phaser.GameObjects.Graphics;
+  private turretG: Phaser.GameObjects.Graphics;  // artillery barrel (rotates independently)
+  private sweepG: Phaser.GameObjects.Graphics;   // infantry attack sweep arc
+  private trailG: Phaser.GameObjects.Graphics;   // cavalry velocity trail
   private hpBar: Phaser.GameObjects.Graphics;
   public unitState: UnitState;
 
@@ -52,19 +55,40 @@ export class UnitEntity extends Phaser.GameObjects.Container {
   // Cavalry direction tracking: redraw when moving direction flips
   private lastCavalryDir: 'forward' | 'backward' = 'forward';
 
+  // Cavalry trail history (world positions)
+  private trailPositions: { x: number; y: number }[] = [];
+
+  // Infantry attack animation
+  private lastKnownAttackTime: number = -1;
+  private sweepTimer: number = 0; // ms remaining in sweep
+
   constructor(scene: Phaser.Scene, state: UnitState) {
     super(scene, state.x, state.y);
     this.unitState = state;
 
+    this.trailG = scene.add.graphics();
     this.unitGraphics = scene.add.graphics();
+    this.sweepG = scene.add.graphics();
+    this.turretG = scene.add.graphics();
     this.hpBar = scene.add.graphics();
+    this.add(this.trailG);
     this.add(this.unitGraphics);
+    this.add(this.sweepG);
+    this.add(this.turretG);
     this.add(this.hpBar);
 
     // Derive a stable phase offset from the unit id for aether phantom
     this.phantomPhase = this.stableHashPhase(state.id);
 
     this.drawUnit(state);
+
+    // Initialize artillery turret barrel
+    if (state.type === 'artillery' || state.type === 'elite_artillery') {
+      const size = state.size > 0 ? state.size : (UNIT_SIZES[state.type] ?? 10);
+      this.drawArtilleryTurret(size);
+      this.turretG.setRotation(state.owner === 'player' ? 0 : Math.PI);
+    }
+
     scene.add.existing(this);
   }
 
@@ -199,13 +223,17 @@ export class UnitEntity extends Phaser.GameObjects.Container {
     color: number,
     ownerColor: number,
     size: number,
-    owner: 'player' | 'ai',
+    _owner: 'player' | 'ai',
   ): void {
-    // Rectangle body
-    const bodyW = size * 1.6;
-    const bodyH = size * 1.2;
+    // Turret base circle
+    g.fillStyle(0x666666, 1);
+    g.fillCircle(0, 0, size * 0.55);
+
+    // Body: hexagonal turret ring
+    const bodyW = size * 1.5;
+    const bodyH = size * 1.1;
     g.fillStyle(color, 1);
-    g.lineStyle(1, 0xffffff, 0.8);
+    g.lineStyle(1.5, 0xffffff, 0.8);
     g.fillRect(-bodyW / 2, -bodyH / 2, bodyW, bodyH);
     g.strokeRect(-bodyW / 2, -bodyH / 2, bodyW, bodyH);
 
@@ -213,14 +241,27 @@ export class UnitEntity extends Phaser.GameObjects.Container {
     g.fillStyle(ownerColor, 0.3);
     g.fillRect(-bodyW / 2, -bodyH / 2, bodyW, bodyH);
 
-    // Barrel: rectangle pointing forward
-    const barrelW = size * 0.4;
-    const barrelLen = size * 1.0;
-    const barrelX = owner === 'player' ? bodyW / 2 : -(bodyW / 2 + barrelLen);
+    // Turret ring indicator (center pivot for barrel)
+    g.fillStyle(0x555555, 1);
+    g.fillCircle(0, 0, size * 0.45);
+    g.lineStyle(1, 0xaaaaaa, 0.7);
+    g.strokeCircle(0, 0, size * 0.45);
+  }
+
+  /** Draw the artillery barrel in turretG, pointing right (+x). Rotated independently. */
+  private drawArtilleryTurret(size: number): void {
+    const g = this.turretG;
+    g.clear();
+    const barrelW = size * 0.42;
+    const barrelLen = size * 1.4;
+    // Barrel from center outward (along +x)
     g.fillStyle(0x888888, 1);
-    g.fillRect(barrelX, -barrelW / 2, barrelLen, barrelW);
-    g.lineStyle(1, 0xffffff, 0.5);
-    g.strokeRect(barrelX, -barrelW / 2, barrelLen, barrelW);
+    g.fillRect(size * 0.2, -barrelW / 2, barrelLen, barrelW);
+    g.lineStyle(1.5, 0xdddddd, 0.7);
+    g.strokeRect(size * 0.2, -barrelW / 2, barrelLen, barrelW);
+    // Muzzle cap
+    g.fillStyle(0xaaaaaa, 1);
+    g.fillRect(size * 0.2 + barrelLen - barrelW * 0.6, -barrelW * 0.7, barrelW * 1.2, barrelW * 1.4);
   }
 
   private drawIronGuard(
@@ -265,19 +306,32 @@ export class UnitEntity extends Phaser.GameObjects.Container {
     ownerColor: number,
     size: number,
   ): void {
-    // Slightly elongated oval (ghost blob)
-    g.fillStyle(color, 0.7);
-    g.lineStyle(1, 0xffffff, 0.4);
-    // Draw as scaled circle (use fillEllipse if available, otherwise approximate with arc)
+    // Octagonal ghost shape — ghostly, ethereal, no legs
+    const sides = 8;
+
+    // Outer glow ring
+    g.fillStyle(color, 0.18);
     g.beginPath();
-    // Manually draw ellipse: width=size, height=size*1.2
-    const rx = size;
-    const ry = size * 1.2;
-    const steps = 24;
-    for (let i = 0; i <= steps; i++) {
-      const angle = (i / steps) * Math.PI * 2;
-      const px = Math.cos(angle) * rx;
-      const py = Math.sin(angle) * ry;
+    for (let i = 0; i < sides; i++) {
+      const angle = (i / sides) * Math.PI * 2 - Math.PI / sides;
+      const r = size * 1.35;
+      const px = Math.cos(angle) * r;
+      const py = Math.sin(angle) * r;
+      if (i === 0) g.moveTo(px, py);
+      else g.lineTo(px, py);
+    }
+    g.closePath();
+    g.fillPath();
+
+    // Main octagon body (semi-transparent)
+    g.fillStyle(color, 0.62);
+    g.lineStyle(1.5, 0xffffff, 0.55);
+    g.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const angle = (i / sides) * Math.PI * 2 - Math.PI / sides;
+      const r = size;
+      const px = Math.cos(angle) * r;
+      const py = Math.sin(angle) * r;
       if (i === 0) g.moveTo(px, py);
       else g.lineTo(px, py);
     }
@@ -285,19 +339,37 @@ export class UnitEntity extends Phaser.GameObjects.Container {
     g.fillPath();
     g.strokePath();
 
-    // Owner tint
-    g.fillStyle(ownerColor, 0.2);
-    g.fillCircle(0, 0, size);
-
-    // 3 tentacle lines hanging below
-    g.lineStyle(1.5, color, 0.6);
-    const tentacleOffsets = [-size * 0.5, 0, size * 0.5];
-    for (const tx of tentacleOffsets) {
-      g.beginPath();
-      g.moveTo(tx, ry * 0.7);
-      g.lineTo(tx + (tx * 0.3), ry + size * 0.5);
-      g.strokePath();
+    // Owner tint overlay
+    g.fillStyle(ownerColor, 0.18);
+    g.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const angle = (i / sides) * Math.PI * 2 - Math.PI / sides;
+      const r = size;
+      const px = Math.cos(angle) * r;
+      const py = Math.sin(angle) * r;
+      if (i === 0) g.moveTo(px, py);
+      else g.lineTo(px, py);
     }
+    g.closePath();
+    g.fillPath();
+
+    // Inner glowing core
+    g.fillStyle(0xffffff, 0.3);
+    g.fillCircle(0, 0, size * 0.3);
+
+    // Ethereal inner ring
+    g.lineStyle(1, color, 0.8);
+    g.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const angle = (i / sides) * Math.PI * 2 - Math.PI / sides;
+      const r = size * 0.55;
+      const px = Math.cos(angle) * r;
+      const py = Math.sin(angle) * r;
+      if (i === 0) g.moveTo(px, py);
+      else g.lineTo(px, py);
+    }
+    g.closePath();
+    g.strokePath();
   }
 
   private drawCrystalSentinel(
@@ -411,25 +483,110 @@ export class UnitEntity extends Phaser.GameObjects.Container {
     this.setPosition(state.x, state.y);
     this.drawHpBar(state);
 
-    // Cavalry: redraw when direction changes (retreating flips the triangle)
+    // Artillery: rotate turret toward target angle
+    if (state.type === 'artillery' || state.type === 'elite_artillery') {
+      const targetAngle = state.turretAngle ?? (state.owner === 'player' ? 0 : Math.PI);
+      // Smooth rotation: lerp 20% per frame toward target
+      const cur = this.turretG.rotation;
+      let diff = targetAngle - cur;
+      while (diff > Math.PI)  diff -= 2 * Math.PI;
+      while (diff < -Math.PI) diff += 2 * Math.PI;
+      this.turretG.setRotation(cur + diff * 0.2);
+    }
+
+    // Cavalry: direction change redraw + velocity trail
     if (state.type === 'cavalry' || state.type === 'elite_cavalry') {
       const newDir: 'forward' | 'backward' = state.behaviorState === 'retreating' ? 'backward' : 'forward';
       if (newDir !== this.lastCavalryDir) {
         this.lastCavalryDir = newDir;
         this.drawUnit(state);
+        this.trailPositions = []; // clear trail on direction change
+      }
+      // Record position for trail when charging fast
+      const speed = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
+      if (state.behaviorState === 'charging' && speed > state.speed * 1.1) {
+        this.trailPositions.push({ x: state.x, y: state.y });
+        if (this.trailPositions.length > 14) this.trailPositions.shift();
+      } else if (speed < state.speed * 0.5) {
+        this.trailPositions = [];
+      }
+      this.drawCavalryTrail(state);
+    } else {
+      this.trailG.clear();
+    }
+
+    // Infantry: sword sweep animation on new attack
+    if (state.type === 'infantry' || state.type === 'elite_infantry' || state.type === 'mixed') {
+      if (state.lastAttackTime !== this.lastKnownAttackTime && state.lastAttackTime > 0) {
+        this.lastKnownAttackTime = state.lastAttackTime;
+        this.sweepTimer = 320; // ms
+      }
+      const now = gameTime ?? Date.now();
+      if (this.sweepTimer > 0) {
+        this.sweepTimer -= 16; // approximate ~60fps tick
+        this.drawSwordSweep(state, this.sweepTimer);
+      } else {
+        this.sweepG.clear();
       }
     }
 
     if (state.type === 'aether_phantom') {
-      // Pulsing alpha for aether phantom based on game time and stable phase offset
+      // Pulsing alpha for aether phantom
       const t = (gameTime ?? Date.now()) * 0.002;
-      const pulse = 0.5 + 0.2 * Math.sin(t + this.phantomPhase);
+      const pulse = 0.45 + 0.25 * Math.sin(t + this.phantomPhase);
       this.setAlpha(pulse);
     } else if (state.inCombat && state.behaviorState === 'attacking') {
-      // Flash red when actively attacking
-      this.setAlpha(0.7 + Math.sin(Date.now() * 0.01) * 0.3);
+      // Flash when actively attacking
+      this.setAlpha(0.75 + Math.sin(Date.now() * 0.015) * 0.25);
     } else {
       this.setAlpha(1);
+    }
+  }
+
+  private drawCavalryTrail(state: UnitState): void {
+    this.trailG.clear();
+    if (this.trailPositions.length < 2) return;
+    const color = UNIT_COLORS[state.type];
+    for (let i = 1; i < this.trailPositions.length; i++) {
+      const t = i / this.trailPositions.length;
+      const alpha = t * 0.55;
+      const width = Math.max(1, t * state.size * 0.9);
+      const lx1 = this.trailPositions[i - 1].x - state.x;
+      const ly1 = this.trailPositions[i - 1].y - state.y;
+      const lx2 = this.trailPositions[i].x - state.x;
+      const ly2 = this.trailPositions[i].y - state.y;
+      this.trailG.lineStyle(width, color, alpha);
+      this.trailG.beginPath();
+      this.trailG.moveTo(lx1, ly1);
+      this.trailG.lineTo(lx2, ly2);
+      this.trailG.strokePath();
+    }
+  }
+
+  private drawSwordSweep(state: UnitState, timerRemaining: number): void {
+    const g = this.sweepG;
+    g.clear();
+    const size = state.size > 0 ? state.size : (UNIT_SIZES[state.type] ?? 10);
+    const progress = 1 - timerRemaining / 320; // 0 → 1 as sweep completes
+    const alpha = (1 - progress) * 0.85;
+    if (alpha <= 0) return;
+
+    // Sweep arc direction: forward from the unit
+    const facingDir = state.owner === 'player' ? 0 : Math.PI;
+    const sweepHalf = (Math.PI / 2.5) * progress; // arc expands as it sweeps
+    const r = size * 1.6;
+
+    g.lineStyle(size * 0.35 * (1 - progress * 0.5), 0xffffff, alpha);
+    g.beginPath();
+    g.arc(0, 0, r, facingDir - sweepHalf, facingDir + sweepHalf, false);
+    g.strokePath();
+
+    // Tip flash
+    if (progress < 0.4) {
+      const tipX = Math.cos(facingDir) * r;
+      const tipY = Math.sin(facingDir) * r;
+      g.fillStyle(0xffffff, alpha * 0.9);
+      g.fillCircle(tipX, tipY, size * 0.2);
     }
   }
 }

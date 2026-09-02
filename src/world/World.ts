@@ -16,6 +16,12 @@ export class World {
     ['ai', new Set()],
   ]);
 
+  /** When true the "player" base is on the right side of the map. */
+  private playerOnRight: boolean = false;
+
+  setPlayerOnRight(v: boolean): void { this.playerOnRight = v; }
+  isPlayerOnRight(): boolean { return this.playerOnRight; }
+
   // ── Gear operations ───────────────────────────────────────────────────────
 
   getGear(gearId: string): GearState | undefined {
@@ -52,9 +58,15 @@ export class World {
   canPlaceExcluding(x: number, y: number, teeth: number, owner: GearState['owner'], excludeGearId: string | undefined): boolean {
     const myRadius = gearRadius(teeth);
 
-    // Zone check
-    if (owner === 'player' && x > PLAYER_ZONE_MAX_X) return false;
-    if (owner === 'ai' && x < AI_ZONE_MIN_X) return false;
+    // Zone check – owner must stay on their side.  When the player is on
+    // the right side we simply swap the restrictions.
+    if (!this.playerOnRight) {
+      if (owner === 'player' && x > PLAYER_ZONE_MAX_X) return false;
+      if (owner === 'ai' && x < AI_ZONE_MIN_X) return false;
+    } else {
+      if (owner === 'player' && x < AI_ZONE_MIN_X) return false;
+      if (owner === 'ai' && x > PLAYER_ZONE_MAX_X) return false;
+    }
 
     // Overlap check — reject only true geometric overlap, not meshing contact
     for (const [id, existing] of this.gears) {

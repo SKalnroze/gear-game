@@ -357,6 +357,13 @@ export class AIChainPlanner {
           const tech = requiredTechForSpawner(spawner);
           if (!tech || aiResearched.has(tech)) return spawner;
         }
+        // Natural diversification: add artillery as a secondary spawner once researched.
+        // Artillery provides valuable ranged support alongside any melee spawner.
+        if (!plan.stats.spawnerTypes.includes('artillery_spawner')
+            && plan.stats.spawnerTypes.length > 0
+            && aiResearched.has('unlock_artillery_spawner')) {
+          return 'artillery_spawner';
+        }
         // Defensive/utility upgrades — hard AI, one of each per chain
         if (profile === 'hard') {
           if (plan.stats.armoredCount   === 0 && aiResearched.has('armored_gears'))        return 'armored';

@@ -34,6 +34,9 @@ export class WorldRenderer {
   private labelAiZone!: Phaser.GameObjects.Text;
   private labelLane!: Phaser.GameObjects.Text;
 
+  // orientation state mirrors World.playerOnRight so renderer can flip
+  private playerOnRight: boolean = false;
+
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.worldGraphics = scene.add.graphics();
@@ -56,23 +59,63 @@ export class WorldRenderer {
       8, 'LANE',
       { fontSize: '11px', color: '#446644', fontFamily: 'monospace' },
     );
+
+    this.redrawLabels();
+  }
+
+  /**
+   * Notify the renderer that the player side has been flipped.
+   */
+  setPlayerOnRight(v: boolean): void {
+    if (this.playerOnRight === v) return;
+    this.playerOnRight = v;
+    this.drawWorld();
+    this.redrawLabels();
+  }
+
+  private redrawLabels(): void {
+    if (!this.playerOnRight) {
+      this.labelPlayerZone.setText('PLAYER ZONE').setPosition(10, 8);
+      this.labelAiZone.setText('AI ZONE').setPosition(AI_ZONE_MIN_X + 10, 8);
+    } else {
+      this.labelPlayerZone.setText('AI ZONE').setPosition(10, 8);
+      this.labelAiZone.setText('PLAYER ZONE').setPosition(AI_ZONE_MIN_X + 10, 8);
+    }
+    // lane label remains centered
+    this.labelLane.setPosition(
+      PLAYER_ZONE_MAX_X + (AI_ZONE_MIN_X - PLAYER_ZONE_MAX_X) / 2 - 20,
+      8,
+    );
   }
 
   private drawWorld(): void {
     const g = this.worldGraphics;
     g.clear();
 
-    // Player zone background
-    g.fillStyle(COLOR_PLAYER_ZONE, 1);
-    g.fillRect(0, 0, PLAYER_ZONE_MAX_X, WORLD_HEIGHT);
+    // Zone backgrounds – swapped when player is on the right side
+    if (!this.playerOnRight) {
+      // Player left, AI right (default)
+      g.fillStyle(COLOR_PLAYER_ZONE, 1);
+      g.fillRect(0, 0, PLAYER_ZONE_MAX_X, WORLD_HEIGHT);
 
-    // AI zone background
-    g.fillStyle(COLOR_AI_ZONE, 1);
-    g.fillRect(AI_ZONE_MIN_X, 0, WORLD_WIDTH - AI_ZONE_MIN_X, WORLD_HEIGHT);
+      g.fillStyle(COLOR_AI_ZONE, 1);
+      g.fillRect(AI_ZONE_MIN_X, 0, WORLD_WIDTH - AI_ZONE_MIN_X, WORLD_HEIGHT);
 
-    // Center no-man's land
-    g.fillStyle(0x111122, 1);
-    g.fillRect(PLAYER_ZONE_MAX_X, 0, AI_ZONE_MIN_X - PLAYER_ZONE_MAX_X, WORLD_HEIGHT);
+      // Center no-man's land
+      g.fillStyle(0x111122, 1);
+      g.fillRect(PLAYER_ZONE_MAX_X, 0, AI_ZONE_MIN_X - PLAYER_ZONE_MAX_X, WORLD_HEIGHT);
+    } else {
+      // Player right, AI left
+      g.fillStyle(COLOR_AI_ZONE, 1);
+      g.fillRect(0, 0, PLAYER_ZONE_MAX_X, WORLD_HEIGHT);
+
+      g.fillStyle(COLOR_PLAYER_ZONE, 1);
+      g.fillRect(AI_ZONE_MIN_X, 0, WORLD_WIDTH - AI_ZONE_MIN_X, WORLD_HEIGHT);
+
+      // center region stays same color
+      g.fillStyle(0x111122, 1);
+      g.fillRect(PLAYER_ZONE_MAX_X, 0, AI_ZONE_MIN_X - PLAYER_ZONE_MAX_X, WORLD_HEIGHT);
+    }
 
     // Lane band
     g.fillStyle(COLOR_LANE, 0.85);
@@ -132,15 +175,28 @@ export class WorldRenderer {
     const g = this.overlayGraphics;
     g.clear();
 
-    g.fillStyle(COLOR_PLAYER_BASE, 0.9);
-    g.fillRect(PLAYER_BASE_X - BASE_WIDTH / 2, 0, BASE_WIDTH, WORLD_HEIGHT);
-    g.lineStyle(5, 0x88bbff, 1);
-    g.strokeRect(PLAYER_BASE_X - BASE_WIDTH / 2, 0, BASE_WIDTH, WORLD_HEIGHT);
+    if (!this.playerOnRight) {
+      g.fillStyle(COLOR_PLAYER_BASE, 0.9);
+      g.fillRect(PLAYER_BASE_X - BASE_WIDTH / 2, 0, BASE_WIDTH, WORLD_HEIGHT);
+      g.lineStyle(5, 0x88bbff, 1);
+      g.strokeRect(PLAYER_BASE_X - BASE_WIDTH / 2, 0, BASE_WIDTH, WORLD_HEIGHT);
 
-    g.fillStyle(COLOR_AI_BASE, 0.9);
-    g.fillRect(AI_BASE_X - BASE_WIDTH / 2, 0, BASE_WIDTH, WORLD_HEIGHT);
-    g.lineStyle(5, 0xff8888, 1);
-    g.strokeRect(AI_BASE_X - BASE_WIDTH / 2, 0, BASE_WIDTH, WORLD_HEIGHT);
+      g.fillStyle(COLOR_AI_BASE, 0.9);
+      g.fillRect(AI_BASE_X - BASE_WIDTH / 2, 0, BASE_WIDTH, WORLD_HEIGHT);
+      g.lineStyle(5, 0xff8888, 1);
+      g.strokeRect(AI_BASE_X - BASE_WIDTH / 2, 0, BASE_WIDTH, WORLD_HEIGHT);
+    } else {
+      // swapped colours when player is on right
+      g.fillStyle(COLOR_AI_BASE, 0.9);
+      g.fillRect(PLAYER_BASE_X - BASE_WIDTH / 2, 0, BASE_WIDTH, WORLD_HEIGHT);
+      g.lineStyle(5, 0xff8888, 1);
+      g.strokeRect(PLAYER_BASE_X - BASE_WIDTH / 2, 0, BASE_WIDTH, WORLD_HEIGHT);
+
+      g.fillStyle(COLOR_PLAYER_BASE, 0.9);
+      g.fillRect(AI_BASE_X - BASE_WIDTH / 2, 0, BASE_WIDTH, WORLD_HEIGHT);
+      g.lineStyle(5, 0x88bbff, 1);
+      g.strokeRect(AI_BASE_X - BASE_WIDTH / 2, 0, BASE_WIDTH, WORLD_HEIGHT);
+    }
   }
 
   /** Draw a ghost gear following the cursor (during drag placement) */

@@ -14,11 +14,38 @@ import { EconomySystem } from './EconomySystem';
 import { GearType } from '../types/gear.types';
 import { ProjectileSystem } from './ProjectileSystem';
 import { distance } from '../utils/MathUtils';
+import {
+  TYPE_MASS_MULT,
+  computeScaledStats,
+  isInFront,
+  gearInLane,
+  computeAttackCooldown,
+  computeChargeDamage,
+} from './unit.utils';
 
 let _nextUnitId = 1;
 function nextUnitId(): string {
   return `unit_${_nextUnitId++}`;
 }
+
+let _coldZoneId = 1;
+function nextColdZoneId(): string {
+  return `cold_${_coldZoneId++}`;
+}
+
+interface ColdZone {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  endTime: number; // seconds (game time / 1000)
+  owner: 'player' | 'ai'; // who created it — freezes ENEMY units/gears
+}
+
+const COLD_ZONE_RADIUS = 55;
+const COLD_ZONE_DURATION = 5.0; // seconds
+const COLD_ZONE_SLOW_FACTOR = 0.45;
+const COLD_GEAR_FRICTION = 20;
 
 const UNIT_SPACING = 40; // px between units in same wave
 
@@ -31,65 +58,7 @@ const MELEE_CONTACT_DIST = 2; // extra beyond size+size
 /** Cavalry retreat duration (seconds) */
 const CAVALRY_RETREAT_DURATION = 3.5;
 
-/**
- * Mass multipliers by unit type
- */
-const TYPE_MASS_MULT: Partial<Record<UnitType, number>> = {
-  iron_guard: 3,
-  cavalry: 0.8,
-  aether_phantom: 0.5,
-  artillery: 1.5,
-  crystal_sentinel: 1.0,
-  infantry: 1.0,
-};
-
-/**
- * Compute per-unit stats scaled from gear teeth count.
- *
- * Base values in UNIT_DEFINITIONS are calibrated at DEFAULT_TEETH (10).
- * Scaling rules:
- *   size (visual radius)  = teeth × 1.2              — matches gear silhouette
- *   hp                    ∝ teeth^1.5                — bigger = tankier
- *   speed                 ∝ teeth^(-0.5)             — bigger = slower (min 15 px/s)
- *   baseDamage / damage   ∝ teeth^1.2                — bigger hits harder
- *   attackRange           ∝ teeth^0.8  × ENGAGE_BASE — bigger reaches further
- *   mass                  ∝ teeth^2                  — quadratic (area-based)
- *   costAmount            ∝ teeth^1.3                — larger units cost more
- */
-function computeScaledStats(def: UnitDefinition, teeth: number, unitType: UnitType): {
-  hp: number; speed: number; baseDamage: number; damage: number;
-  size: number; attackRange: number; mass: number; costAmount: number;
-} {
-  const s = teeth / DEFAULT_TEETH;
-  const baseMass = Math.max(1, Math.round(10 * s * s));
-  const massMult = TYPE_MASS_MULT[unitType] ?? 1.0;
-  return {
-    hp:          Math.max(1, Math.round(def.hp          * Math.pow(s, 1.5))),
-    speed:       Math.max(15, Math.round(def.speed      * Math.pow(s, -0.5))),
-    baseDamage:  Math.max(1, Math.round(def.baseDamage  * Math.pow(s, 1.2))),
-    damage:      Math.max(1, Math.round(def.damage      * Math.pow(s, 1.2))),
-    size:        Math.max(4, Math.round(teeth * 1.2)),
-    // Artillery: stop-and-fire range = 5 unit diameters (10 × size)
-    // Crystal sentinel: ranged, stops ~3 diameters away (6 × size)
-    attackRange: (unitType === 'artillery' || unitType === 'elite_artillery')
-      ? Math.max(4, Math.round(teeth * 1.2)) * 10
-      : (unitType === 'crystal_sentinel')
-        ? Math.max(4, Math.round(teeth * 1.2)) * 6
-        : Math.max(ENGAGE_DISTANCE, Math.round(ENGAGE_DISTANCE * Math.pow(s, 0.8))),
-    mass:        Math.max(1, Math.round(baseMass * massMult)),
-    costAmount:  Math.max(1, Math.round(def.costAmount  * Math.pow(s, 1.3))),
-  };
-}
-
-/** Returns true if targetX is in front of the unit (the direction it naturally marches). */
-function isInFront(unit: UnitState, targetX: number): boolean {
-  return unit.owner === 'player' ? targetX >= unit.x : targetX <= unit.x;
-}
-
-/** Returns true if a gear at gearY overlaps the lane band (melee reachability). */
-function gearInLane(gearY: number): boolean {
-  return gearY >= LANE_Y_MIN && gearY <= LANE_Y_MAX;
-}
+// TYPE_MASS_MULT, computeScaledStats, isInFront, gearInLane imported from unit.utils
 
 /** Build initial UnitState fields for new fields. */
 function newPhysicsFields(unitType: UnitType): {
@@ -120,6 +89,10 @@ export class UnitSystem {
   private units: Map<string, UnitState> = new Map();
   private world: World | null = null;
   private economySystem: EconomySystem | null = null;
+
+  // Cold zone system (crystal sentinel)
+  private coldZones: ColdZone[] = [];
+  private gearsWithColdFriction: Set<string> = new Set();
 
   // Tech modifiers
   private unitHpBonuses: Map<UnitType, number> = new Map();
@@ -192,7 +165,13 @@ export class UnitSystem {
     const dmgBonus = this.unitDamageBonuses.get(unitType) ?? 0;
     const frictionVal = def.frictionValue ?? 0;
 
-    const startX = owner === 'player' ? PLAYER_ZONE_MAX_X : AI_ZONE_MIN_X;
+    const playerRight = this.world?.isPlayerOnRight() ?? false;
+    let startX: number;
+    if (!playerRight) {
+      startX = owner === 'player' ? PLAYER_ZONE_MAX_X : AI_ZONE_MIN_X;
+    } else {
+      startX = owner === 'player' ? AI_ZONE_MIN_X : PLAYER_ZONE_MAX_X;
+    }
     const margin = 20;
     const y = randomInt(LANE_Y_MIN + margin, LANE_Y_MAX - margin);
 
@@ -228,8 +207,14 @@ export class UnitSystem {
   spawnWave(owner: 'player' | 'ai', unitType: UnitType, _lane: number): void {
     const def = UNIT_DEFINITIONS[unitType];
     const scaled = computeScaledStats(def, DEFAULT_TEETH, unitType);
+    const playerRight = this.world?.isPlayerOnRight() ?? false;
     const direction = owner === 'player' ? 1 : -1;
-    const startX = owner === 'player' ? PLAYER_ZONE_MAX_X : AI_ZONE_MIN_X;
+    let startX: number;
+    if (!playerRight) {
+      startX = owner === 'player' ? PLAYER_ZONE_MAX_X : AI_ZONE_MIN_X;
+    } else {
+      startX = owner === 'player' ? AI_ZONE_MIN_X : PLAYER_ZONE_MAX_X;
+    }
 
     const hpBonus = this.unitHpBonuses.get(unitType) ?? 0;
     const speedBonus = this.unitSpeedBonuses.get(unitType) ?? 0;
@@ -322,6 +307,9 @@ export class UnitSystem {
       }
     }
 
+    // 1b. Update cold zones (crystal sentinel icy areas)
+    this.updateColdZones(now, allUnits, allGears);
+
     // 2. Integrate physics (vx/vy -> position)
     for (const [, unit] of allUnits) {
       if (unit.reachedBase) continue;
@@ -348,6 +336,9 @@ export class UnitSystem {
     for (const unit of deadUnits) {
       if (unit.type === 'iron_guard') {
         this.triggerIronGuardExplosion(unit, allUnits, allGears);
+        // Emit visual explosion event so GameScene shows the AoE circle
+        const explosionRadius = unit.size * 3;
+        this.eventBus.emit('projectile:hit', { id: 'iron_explode', x: unit.x, y: unit.y, aoeRadius: explosionRadius });
       }
       this.eventBus.emit('unit:died', { unitId: unit.id, owner: unit.owner });
     }
@@ -409,7 +400,7 @@ export class UnitSystem {
     for (const [, other] of allUnits) {
       if (other.owner === unit.owner) continue;
       if (other.reachedBase) continue;
-      if (!isInFront(unit, other.x)) continue; // don't chase targets behind
+      if (!isInFront(unit, other.x, this.world?.isPlayerOnRight() ?? false)) continue; // don't chase targets behind
       const d = distance(unit.x, unit.y, other.x, other.y);
       if (d < nearestDist) {
         nearestDist = d;
@@ -420,7 +411,7 @@ export class UnitSystem {
     // Also find nearest reachable enemy gear (must be in lane for melee)
     for (const [, gear] of allGears) {
       if (gear.owner === unit.owner) continue;
-      if (!isInFront(unit, gear.x)) continue; // don't chase gears behind
+      if (!isInFront(unit, gear.x, this.world?.isPlayerOnRight() ?? false)) continue; // don't chase gears behind
       if (!gearInLane(gear.y)) continue; // melee can't reach gears outside lane
       const d = distance(unit.x, unit.y, gear.x, gear.y);
       if (d < nearestGearDist) {
@@ -444,7 +435,9 @@ export class UnitSystem {
         unit.vx = 0;
         unit.vy = 0;
 
-        if (now - unit.lastAttackTime > 400) {
+        // Cooldown scales with size: 1000ms for 10-tooth (size=12), scales up for larger
+        const infantryAttackCooldown = computeAttackCooldown(unit.size); // 1000ms at 10 teeth
+        if (now - unit.lastAttackTime > infantryAttackCooldown) {
           nearestUnitTarget.hp -= unit.baseDamage;
           unit.lastAttackTime = now;
           this.eventBus.emit('unit:damaged', {
@@ -508,10 +501,10 @@ export class UnitSystem {
 
     // Only charge toward enemies that are in front
     const hasForwardTarget = Array.from(allUnits.values()).some(
-      u => u.owner !== unit.owner && !u.reachedBase && isInFront(unit, u.x),
+      u => u.owner !== unit.owner && !u.reachedBase && isInFront(unit, u.x, this.world?.isPlayerOnRight() ?? false),
     );
     const hasForwardGear = Array.from(allGears.values()).some(
-      g => g.owner !== unit.owner && isInFront(unit, g.x) && gearInLane(g.y),
+      g => g.owner !== unit.owner && isInFront(unit, g.x, this.world?.isPlayerOnRight() ?? false) && gearInLane(g.y),
     );
 
     // If no forward targets, just march forward (don't charge backward)
@@ -536,7 +529,7 @@ export class UnitSystem {
       if (d <= contactDist) {
         // Charge hit! Apply momentum impulse to target
         const chargeSpeed = Math.abs(unit.vx);
-        const chargeDmg = unit.baseDamage * (1 + unit.chargeAccum / 100);
+        const chargeDmg = computeChargeDamage(unit.baseDamage, unit.chargeAccum);
         other.hp -= chargeDmg;
         this.eventBus.emit('unit:damaged', {
           unitId: other.id,
@@ -567,7 +560,7 @@ export class UnitSystem {
       const contactDist = unit.size + gearRadius(gear.teeth) + MELEE_CONTACT_DIST;
       if (d <= contactDist) {
         // Hit gear — deal damage and retreat
-        const chargeDmg = unit.baseDamage * (1 + unit.chargeAccum / 100);
+        const chargeDmg = computeChargeDamage(unit.baseDamage, unit.chargeAccum);
         gear.hp = Math.max(0, gear.hp - chargeDmg);
         gear.crackLevel = Math.min(4, Math.floor((1 - gear.hp / gear.maxHp) * 5));
         if (this.world) this.world.updateGear(gear);
@@ -611,7 +604,7 @@ export class UnitSystem {
     for (const [, other] of allUnits) {
       if (other.owner === unit.owner) continue;
       if (other.reachedBase) continue;
-      if (!isInFront(unit, other.x)) continue; // don't fire backward
+      if (!isInFront(unit, other.x, this.world?.isPlayerOnRight() ?? false)) continue; // don't fire backward
       const d = distance(unit.x, unit.y, other.x, other.y);
       if (d < artilleryDetectRange && d < targetDist) {
         targetDist = d;
@@ -624,7 +617,7 @@ export class UnitSystem {
     if (targetX < 0) {
       for (const [, gear] of allGears) {
         if (gear.owner === unit.owner) continue;
-        if (!isInFront(unit, gear.x)) continue;
+        if (!isInFront(unit, gear.x, this.world?.isPlayerOnRight() ?? false)) continue;
         const d = distance(unit.x, unit.y, gear.x, gear.y);
         if (d < artilleryDetectRange && d < targetDist) {
           targetDist = d;
@@ -635,6 +628,9 @@ export class UnitSystem {
     }
 
     if (targetX >= 0) {
+      // Track turret toward target (always, even while marching)
+      unit.turretAngle = Math.atan2(targetY - unit.y, targetX - unit.x);
+
       if (targetDist <= unit.attackRange) {
         // Stop and fire
         unit.vx = 0;
@@ -664,7 +660,8 @@ export class UnitSystem {
         unit.inCombat = false;
       }
     } else {
-      // Default march
+      // Default march — turret points forward
+      unit.turretAngle = unit.owner === 'player' ? 0 : Math.PI;
       this.marchForward(unit, deltaSec);
       unit.inCombat = false;
     }
@@ -677,9 +674,13 @@ export class UnitSystem {
     allUnits: Map<string, UnitState>,
     allGears: ReturnType<World['getAllGears']>,
   ): void {
-    // Same as infantry but slower (speed already low due to type definition)
-    const effectiveSpeed = unit.speed * 0.7 * (unit.slowFactor ?? 1); // extra slow
+    // Heavy, slow unit. Frontal attack only. 3× slower than infantry. High push impulse.
+    const effectiveSpeed = unit.speed * 0.7 * (unit.slowFactor ?? 1);
     const direction = unit.owner === 'player' ? 1 : -1;
+    const playerRight = this.world?.isPlayerOnRight() ?? false;
+
+    // Iron Guard: attack cooldown is 3× infantry (3000ms at 10 teeth)
+    const ironAttackCooldown = (unit.size / 1.2) * 300;
 
     let nearestUnitTarget: UnitState | null = null;
     let nearestDist = 300;
@@ -691,7 +692,8 @@ export class UnitSystem {
     for (const [, other] of allUnits) {
       if (other.owner === unit.owner) continue;
       if (other.reachedBase) continue;
-      if (!isInFront(unit, other.x)) continue; // don't chase targets behind
+      // Frontal attack only: only engage enemies directly ahead
+      if (!isInFront(unit, other.x, playerRight)) continue;
       const d = distance(unit.x, unit.y, other.x, other.y);
       if (d < nearestDist) {
         nearestDist = d;
@@ -701,8 +703,8 @@ export class UnitSystem {
 
     for (const [, gear] of allGears) {
       if (gear.owner === unit.owner) continue;
-      if (!isInFront(unit, gear.x)) continue; // don't chase gears behind
-      if (!gearInLane(gear.y)) continue; // melee can't reach gears outside lane
+      if (!isInFront(unit, gear.x, playerRight)) continue;
+      if (!gearInLane(gear.y)) continue;
       const d = distance(unit.x, unit.y, gear.x, gear.y);
       if (d < nearestGearDist) {
         nearestGearDist = d;
@@ -724,7 +726,7 @@ export class UnitSystem {
         unit.vx = 0;
         unit.vy = 0;
 
-        if (now - unit.lastAttackTime > 400) {
+        if (now - unit.lastAttackTime > ironAttackCooldown) {
           nearestUnitTarget.hp -= unit.baseDamage;
           unit.lastAttackTime = now;
           this.eventBus.emit('unit:damaged', {
@@ -733,6 +735,12 @@ export class UnitSystem {
             x: nearestUnitTarget.x,
             y: nearestUnitTarget.y,
           });
+          // High impulse: push target back in the attack direction
+          const pushImpulse = unit.speed * 4 * direction;
+          nearestUnitTarget.vx += pushImpulse;
+          // Small perpendicular scatter
+          nearestUnitTarget.vy += (Math.random() - 0.5) * unit.speed * 1.5;
+
           if (nearestUnitTarget.hp <= 0) {
             nearestUnitTarget.hp = 0;
           }
@@ -772,26 +780,29 @@ export class UnitSystem {
     const direction = unit.owner === 'player' ? 1 : -1;
     const effectiveSpeed = unit.speed * (unit.slowFactor ?? 1);
 
-    // Always march forward fast
+    // Always march forward fast (passes through enemy units)
     unit.vx = direction * effectiveSpeed;
     unit.vy = 0;
     unit.behaviorState = 'marching';
     unit.inCombat = false;
 
-    // While overlapping enemy units: apply mutual damage (baseDamage * 0.3 * deltaSec each)
+    // While overlapping enemy units: deal damage (phantom phases through but burns on contact)
+    // Phantom deals more damage to enemies than it takes — it's a glass-cannon pasthrough unit
     for (const [, other] of allUnits) {
       if (other.owner === unit.owner) continue;
       if (other.reachedBase) continue;
-      if (!isInFront(unit, other.x)) continue; // only damage enemies in path (in front)
       const d = distance(unit.x, unit.y, other.x, other.y);
       const contactDist = unit.size + other.size;
       if (d < contactDist) {
-        const dmg = unit.baseDamage * 0.3 * deltaSec;
-        other.hp -= dmg;
-        unit.hp -= dmg;
+        // Phantom deals damage proportional to overlap intensity
+        const overlapFraction = 1 - d / contactDist;
+        const enemyDmg = unit.baseDamage * 1.8 * deltaSec * overlapFraction;
+        const selfDmg   = unit.baseDamage * 0.8 * deltaSec * overlapFraction;
+        other.hp -= enemyDmg;
+        unit.hp  -= selfDmg;
 
-        if (dmg > 0.1) {
-          this.eventBus.emit('unit:damaged', { unitId: other.id, damage: dmg, x: other.x, y: other.y });
+        if (enemyDmg > 0.1) {
+          this.eventBus.emit('unit:damaged', { unitId: other.id, damage: enemyDmg, x: other.x, y: other.y });
         }
         if (other.hp <= 0) other.hp = 0;
         if (unit.hp <= 0) unit.hp = 0;
@@ -803,7 +814,7 @@ export class UnitSystem {
     unit: UnitState,
     deltaSec: number,
     now: number,
-    projectileSystem: ProjectileSystem,
+    _projectileSystem: ProjectileSystem,
     allUnits: Map<string, UnitState>,
     allGears: ReturnType<World['getAllGears']>,
   ): void {
@@ -817,7 +828,7 @@ export class UnitSystem {
     for (const [, other] of allUnits) {
       if (other.owner === unit.owner) continue;
       if (other.reachedBase) continue;
-      if (!isInFront(unit, other.x)) continue;
+      if (!isInFront(unit, other.x, this.world?.isPlayerOnRight() ?? false)) continue;
       const d = distance(unit.x, unit.y, other.x, other.y);
       if (d < SENTINEL_ATTACK_RANGE && d < targetDist) {
         targetDist = d;
@@ -829,7 +840,7 @@ export class UnitSystem {
     if (targetX < 0) {
       for (const [, gear] of allGears) {
         if (gear.owner === unit.owner) continue;
-        if (!isInFront(unit, gear.x)) continue;
+        if (!isInFront(unit, gear.x, this.world?.isPlayerOnRight() ?? false)) continue;
         const d = distance(unit.x, unit.y, gear.x, gear.y);
         if (d < SENTINEL_ATTACK_RANGE && d < targetDist) {
           targetDist = d;
@@ -846,14 +857,31 @@ export class UnitSystem {
         unit.behaviorState = 'firing';
         unit.inCombat = true;
 
-        if (now - unit.lastAttackTime > 1500) {
-          projectileSystem.fireCrystalShard(unit, targetX, targetY, unit.baseDamage);
-          this.eventBus.emit('projectile:fired', {
-            id: 'shard',
-            type: 'crystal_shard',
+        // Fires a cold beam every 800ms — lower damage than artillery but leaves a lasting cold zone
+        if (now - unit.lastAttackTime > 800) {
+          // Direct area damage around target (lower than artillery)
+          const beamDmg = unit.baseDamage * 0.6;
+          for (const [, other] of allUnits) {
+            if (other.owner === unit.owner) continue;
+            if (other.reachedBase) continue;
+            const d = distance(other.x, other.y, targetX, targetY);
+            if (d < COLD_ZONE_RADIUS * 0.8) {
+              other.hp -= beamDmg;
+              this.eventBus.emit('unit:damaged', { unitId: other.id, damage: beamDmg, x: other.x, y: other.y });
+              if (other.hp <= 0) other.hp = 0;
+            }
+          }
+
+          // Create or refresh a cold zone at the target
+          this.createColdZone(targetX, targetY, COLD_ZONE_RADIUS, unit.owner, now);
+
+          // Emit cold beam visual event
+          this.eventBus.emit('cold_beam:fired', {
             owner: unit.owner,
-            x: unit.x,
-            y: unit.y,
+            srcX: unit.x,
+            srcY: unit.y,
+            dstX: targetX,
+            dstY: targetY,
           });
           unit.lastAttackTime = now;
         }
@@ -869,6 +897,95 @@ export class UnitSystem {
     } else {
       this.marchForward(unit, deltaSec);
       unit.inCombat = false;
+    }
+  }
+
+  // ─── Cold zone helpers ───────────────────────────────────────────────────
+
+  /** Create a cold zone at (x,y). If a zone already significantly overlaps, refresh it instead. */
+  private createColdZone(x: number, y: number, radius: number, owner: 'player' | 'ai', now: number): void {
+    const nowSec = now * 0.001;
+    const existing = this.coldZones.find(z => {
+      const d = distance(z.x, z.y, x, y);
+      return d < z.radius * 0.6; // significant overlap — don't stack
+    });
+
+    if (existing) {
+      // Refresh existing zone
+      existing.endTime = nowSec + COLD_ZONE_DURATION;
+      return;
+    }
+
+    const id = nextColdZoneId();
+    this.coldZones.push({ id, x, y, radius, endTime: nowSec + COLD_ZONE_DURATION, owner });
+    this.eventBus.emit('cold_zone:created', { id, x, y, radius });
+  }
+
+  /** Process cold zones: expire old ones, apply slow to units, apply friction to gears. */
+  private updateColdZones(
+    now: number,
+    allUnits: Map<string, UnitState>,
+    allGears: ReturnType<World['getAllGears']>,
+  ): void {
+    const nowSec = now * 0.001;
+
+    // Remove expired zones
+    const before = this.coldZones.length;
+    this.coldZones = this.coldZones.filter(z => {
+      if (z.endTime < nowSec) {
+        this.eventBus.emit('cold_zone:expired', { id: z.id });
+        return false;
+      }
+      return true;
+    });
+
+    // Apply slow to enemy units in cold zones
+    for (const [, unit] of allUnits) {
+      if (unit.reachedBase) continue;
+      for (const zone of this.coldZones) {
+        if (zone.owner === unit.owner) continue; // only affects enemies
+        const d = distance(unit.x, unit.y, zone.x, zone.y);
+        if (d < zone.radius) {
+          unit.slowTimer = 0.25; // keep refreshing as long as in zone
+          unit.slowFactor = COLD_ZONE_SLOW_FACTOR;
+          break;
+        }
+      }
+    }
+
+    // Apply/remove cold friction on enemy gears in cold zones
+    const gearsInZone = new Set<string>();
+    for (const [gearId, gear] of allGears) {
+      for (const zone of this.coldZones) {
+        if (zone.owner === gear.owner) continue;
+        const d = distance(gear.x, gear.y, zone.x, zone.y);
+        if (d < zone.radius + gearRadius(gear.teeth)) {
+          gearsInZone.add(gearId);
+          break;
+        }
+      }
+    }
+
+    for (const gearId of gearsInZone) {
+      if (!this.gearsWithColdFriction.has(gearId)) {
+        const gear = allGears.get(gearId);
+        if (gear) {
+          gear.frictionLoad = (gear.frictionLoad ?? 0) + COLD_GEAR_FRICTION;
+          if (this.world) this.world.updateGear(gear);
+          this.gearsWithColdFriction.add(gearId);
+        }
+      }
+    }
+
+    for (const gearId of this.gearsWithColdFriction) {
+      if (!gearsInZone.has(gearId)) {
+        const gear = allGears.get(gearId);
+        if (gear) {
+          gear.frictionLoad = Math.max(0, (gear.frictionLoad ?? 0) - COLD_GEAR_FRICTION);
+          if (this.world) this.world.updateGear(gear);
+        }
+        this.gearsWithColdFriction.delete(gearId);
+      }
     }
   }
 
@@ -1071,5 +1188,7 @@ export class UnitSystem {
     this.eventBus.off('unit:wave_triggered', this.onUnitWaveTriggered);
     this.eventBus.off('gear:full_rotation', this.onGearFullRotation);
     this.eventBus.off('unit:died', this.onUnitDied);
+    this.coldZones = [];
+    this.gearsWithColdFriction.clear();
   }
 }

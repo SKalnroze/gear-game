@@ -65,4 +65,5 @@ export interface UnitState {
   retreatTimer: number;               // cavalry: seconds remaining in retreat
   slowTimer: number;                  // crystal shard slow remaining seconds (0 = not slowed)
   slowFactor: number;                 // speed multiplier when slowed (0.5 when hit by crystal shard)
+  turretAngle?: number;               // artillery: current barrel angle in radians (0 = right)
 }

@@ -15,6 +15,7 @@ import { AI_DECISION_INTERVAL, GEAR_PLACEMENT_COST_BASE, GEAR_PLACEMENT_COST_MUL
 import { gearRadius } from '../constants/gear.constants';
 import { TECH_NODES } from '../constants/tech.constants';
 import { randomChoice } from '../utils/MathUtils';
+import { byPhase, assessThreatLevel as assessThreatLevelPure } from './ai.utils';
 import { RotationPhysicsSystem } from '../systems/RotationPhysicsSystem';
 import { TechSystem } from '../systems/TechSystem';
 import {
@@ -25,18 +26,7 @@ import {
 // ThreatLevel is defined in ai.types.ts and re-exported for backwards compatibility
 export type { ThreatLevel } from '../types/ai.types';
 
-// Phase priority: bootstrap first, full last
-const PHASE_ORDER: Record<string, number> = {
-  bootstrap: 0, spawn: 1, amplify: 2, support: 3, expand: 4, full: 5,
-};
-
-function byPhase(a: AIChainPlan, b: AIChainPlan): number {
-  // Economy and defense chains are slightly lower priority than combat chains at the same phase
-  const roleOffset = (role: string) => (role === 'economy' || role === 'defense') ? 0.5 : 0;
-  const phaseA = (PHASE_ORDER[a.phase] ?? 99) + roleOffset(a.role);
-  const phaseB = (PHASE_ORDER[b.phase] ?? 99) + roleOffset(b.role);
-  return phaseA - phaseB;
-}
+// byPhase imported from ai.utils
 
 // ─── AIController ─────────────────────────────────────────────────────────────
 
@@ -63,7 +53,7 @@ export class AIController {
 
   readonly owner: 'player' | 'ai';
   private strategyProfile: AIStrategyProfile;
-  private readonly personality: AIPersonality;
+  private personality: AIPersonality;
   private lastDecisionAt: number = 0;
   private tickNumber: number = 0;
 
@@ -135,6 +125,7 @@ export class AIController {
     world: World,
     meshGraph: GearMeshGraph,
     strategyProfile: AIStrategyProfile = 'medium',
+    personality: AIPersonality | 'random' = 'random',
     techSystem?: TechSystem,
     owner: 'player' | 'ai' = 'ai',
   ) {
@@ -147,9 +138,17 @@ export class AIController {
     this.meshGraph = meshGraph;
     this.strategyProfile = strategyProfile;
     const PERSONALITIES: AIPersonality[] = ['rusher', 'economist', 'turtle', 'balanced'];
-    this.personality = strategyProfile === 'easy'
-      ? 'balanced'
-      : PERSONALITIES[Math.floor(Math.random() * PERSONALITIES.length)];
+
+    // personality parameter overrides random selection; 'random' defers to the
+    // old behaviour.
+    if (personality !== 'random') {
+      this.personality = personality;
+    } else {
+      this.personality = strategyProfile === 'easy'
+        ? 'balanced'
+        : PERSONALITIES[Math.floor(Math.random() * PERSONALITIES.length)];
+    }
+
     console.log(`[AI:${owner}:${strategyProfile}] personality=${this.personality}`);
     this.techSystem = techSystem ?? null;
     this.owner = owner;
@@ -176,6 +175,21 @@ export class AIController {
   /** Toggle verbose console logging for this controller */
   setDebugEnabled(v: boolean): void {
     this.debugEnabled = v;
+  }
+
+  /**
+   * Change the AI personality mid‑game. Use 'random' to re-roll.
+   */
+  setPersonality(p: AIPersonality | 'random'): void {
+    if (p === 'random') {
+      // re-roll using the same logic as constructor
+      const PERSONALITIES: AIPersonality[] = ['rusher', 'economist', 'turtle', 'balanced'];
+      this.personality = this.strategyProfile === 'easy'
+        ? 'balanced'
+        : PERSONALITIES[Math.floor(Math.random() * PERSONALITIES.length)];
+    } else {
+      this.personality = p;
+    }
   }
 
   isDebugEnabled(): boolean {
@@ -328,16 +342,12 @@ export class AIController {
 
   /** Classify current game state by urgency. Uses percentage so base HP buffs from tech scale correctly. */
   private assessThreatLevel(): ThreatLevel {
-    const myHp    = this.winSystem.getHp(this.owner);
-    const myMaxHp = this.winSystem.getMaxHp(this.owner);
-    const oppHp    = this.winSystem.getHp(this.opponent);
-    const oppMaxHp = this.winSystem.getMaxHp(this.opponent);
-    const myPct  = myMaxHp  > 0 ? myHp  / myMaxHp  : 0;
-    const oppPct = oppMaxHp > 0 ? oppHp / oppMaxHp : 1;
-    if (myPct  < 0.30) return 'critical';
-    if (myPct  < 0.55) return 'danger';
-    if (oppPct < 0.50) return 'winning';
-    return 'normal';
+    return assessThreatLevelPure(
+      this.winSystem.getHp(this.owner),
+      this.winSystem.getMaxHp(this.owner),
+      this.winSystem.getHp(this.opponent),
+      this.winSystem.getMaxHp(this.opponent),
+    );
   }
 
   // ─── Debug helpers ────────────────────────────────────────────────────────

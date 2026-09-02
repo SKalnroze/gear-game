@@ -489,6 +489,7 @@ export class GameScene extends Phaser.Scene {
     this.techSystem.destroy();
     this.aiDebugOverlay.destroy();
     this.gameEventLogger.destroy();
+    this.gearUnitInteraction.destroy();
     // Clean up cold zone graphics
     for (const [, zg] of this.coldZoneGraphics) {
       const tw = (zg as any)._pulseTween;
@@ -1276,14 +1277,11 @@ export class GameScene extends Phaser.Scene {
       this.playerAIController?.update(now);
     }
 
-    // ─── Overclock burnout ────────────────────────────────────────────────
-    // Inside the pause guard: burnout used to keep running while stopped.
-    if (!this.isPaused) {
-      const burntOut = this.rotationPhysics.checkOverclockBurnouts(now);
-      for (const gearId of burntOut) {
-        this.gearSystem.markBurntOut(gearId, now);
-      }
-    }
+    // Overclock burnout is swept inside rotationPhysics.update() above, which
+    // already mutates the gear and emits gear:burnt_out. Sweeping again here
+    // scanned every gear a second time each frame, and gearSystem.markBurntOut
+    // would have re-emitted the same event -- it only stayed quiet because the
+    // first sweep left nothing for the second to find.
 
     // ─── Update gear visuals ──────────────────────────────────────────────
     for (const [id, entity] of this.gearEntities) {

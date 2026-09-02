@@ -108,6 +108,30 @@ describe('GearMeshGraph', () => {
       expect(graph.getAllEdges()).toHaveLength(2);
     });
 
+    it('getAllEdges is cached but reflects later mutations', () => {
+      const a = makeGear('a', 0, 0, 10);
+      const b = makeGear('b', 50, 0, 10);
+      const { graph, all } = graphOf([a, b]);
+
+      const first = graph.getAllEdges();
+      expect(first).toHaveLength(1);
+      // Cached: the same array instance comes back when nothing changed.
+      expect(graph.getAllEdges()).toBe(first);
+
+      b.x = 400;
+      graph.rebuildEdgesFor(b, all);
+      expect(graph.getAllEdges()).toHaveLength(0);
+
+      const c = makeGear('c', 50, 0, 10);
+      all.set('c', c);
+      graph.addGear(c);
+      graph.rebuildEdgesFor(c, all);
+      expect(graph.getAllEdges()).toHaveLength(1);
+
+      graph.removeGear('c');
+      expect(graph.getAllEdges()).toHaveLength(0);
+    });
+
     it('clear empties the graph', () => {
       const { graph } = graphOf([makeGear('a', 0, 0, 10), makeGear('b', 50, 0, 10)]);
       graph.clear();

@@ -24,13 +24,24 @@ export class GearUnitInteractionSystem {
   private gearGrid: SpatialGrid<GearState> = new SpatialGrid(GRID_CELL_SIZE);
   private gridDirty: boolean = true;
 
+  private readonly onGridDirty = () => { this.gridDirty = true; };
+
   constructor(world: World, eventBus: EventBus) {
     this.world = world;
     this.eventBus = eventBus;
 
-    // Rebuild grid whenever gears are added or removed
-    eventBus.on('gear:placed', () => { this.gridDirty = true; });
-    eventBus.on('gear:removed', () => { this.gridDirty = true; });
+    // Rebuild the grid whenever gear positions change. Repositioning was
+    // missing, so after a player moved a gear the grid kept its old
+    // coordinates and unit interactions used the stale position.
+    eventBus.on('gear:placed', this.onGridDirty);
+    eventBus.on('gear:removed', this.onGridDirty);
+    eventBus.on('gear:repositioned', this.onGridDirty);
+  }
+
+  destroy(): void {
+    this.eventBus.off('gear:placed', this.onGridDirty);
+    this.eventBus.off('gear:removed', this.onGridDirty);
+    this.eventBus.off('gear:repositioned', this.onGridDirty);
   }
 
   private rebuildGrid(allGears: Map<string, GearState>): void {
@@ -115,17 +126,21 @@ export class GearUnitInteractionSystem {
       }
     }
 
-    // Armored gear spinning push: push nearby units away
-    for (const [, gear] of allGears) {
-      if (gear.type !== 'armored') continue;
-      if (gear.isBurntOut) continue;
-      if (Math.abs(gear.angularVelocity) < 0.1) continue;
+    // Armored gear spinning push. This used to scan every armored gear
+    // against every unit, ignoring the spatial grid built for the loop above;
+    // now it queries the grid per unit like the contact pass does.
+    for (const [, unit] of allUnits) {
+      if (unit.reachedBase) continue;
 
-      const gr = gearRadius(gear.teeth);
-      for (const [, unit] of allUnits) {
-        if (unit.reachedBase) continue;
+      const unitRadius = unit.size > 0 ? unit.size : UNIT_COLLISION_RADIUS;
+      const pushQueryRadius = unitRadius + MAX_TEETH * GEAR_MODULE + 10;
+      for (const gear of this.gearGrid.query(unit.x, unit.y, pushQueryRadius)) {
+        if (gear.type !== 'armored') continue;
+        if (gear.isBurntOut) continue;
         if (unit.owner === gear.owner) continue;
-        const unitRadius = unit.size > 0 ? unit.size : UNIT_COLLISION_RADIUS;
+        if (Math.abs(gear.angularVelocity) < 0.1) continue;
+
+        const gr = gearRadius(gear.teeth);
         const d = distance(unit.x, unit.y, gear.x, gear.y);
         const pushDist = gr + unitRadius + 10;
         if (d >= pushDist || d < 0.01) continue;

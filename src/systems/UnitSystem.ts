@@ -7,7 +7,7 @@ import { randomInt } from '../utils/MathUtils';
 import { World } from '../world/World';
 import { EconomySystem } from './EconomySystem';
 import { ProjectileSystem } from './ProjectileSystem';
-import { distance } from '../utils/MathUtils';
+import { distance, sqrDist } from '../utils/MathUtils';
 import {
   computeScaledStats,
   isInFront,
@@ -358,20 +358,21 @@ export class UnitSystem {
     const effectiveSpeed = unit.speed * (unit.slowFactor ?? 1);
 
     // Find nearest enemy unit or enemy gear within 300px
-    let nearestDist = 300;
+    // Squared throughout: these are only ever compared, never used as a length.
+    let nearestDist2 = 300 * 300;
     let nearestUnitTarget: UnitState | null = null;
     let nearestGearX = 0;
     let nearestGearY = 0;
-    let nearestGearDist = Infinity;
+    let nearestGearDist2 = Infinity;
     let hasGearTarget = false;
 
     for (const [, other] of allUnits) {
       if (other.owner === unit.owner) continue;
       if (other.reachedBase) continue;
       if (!isInFront(unit, other.x, this.playerRight)) continue; // don't chase targets behind
-      const d = distance(unit.x, unit.y, other.x, other.y);
-      if (d < nearestDist) {
-        nearestDist = d;
+      const d2 = sqrDist(unit.x, unit.y, other.x, other.y);
+      if (d2 < nearestDist2) {
+        nearestDist2 = d2;
         nearestUnitTarget = other;
       }
     }
@@ -381,9 +382,9 @@ export class UnitSystem {
       if (gear.owner === unit.owner) continue;
       if (!isInFront(unit, gear.x, this.playerRight)) continue; // don't chase gears behind
       if (!gearInLane(gear.y)) continue; // melee can't reach gears outside lane
-      const d = distance(unit.x, unit.y, gear.x, gear.y);
-      if (d < nearestGearDist) {
-        nearestGearDist = d;
+      const d2 = sqrDist(unit.x, unit.y, gear.x, gear.y);
+      if (d2 < nearestGearDist2) {
+        nearestGearDist2 = d2;
         nearestGearX = gear.x;
         nearestGearY = gear.y;
         hasGearTarget = true;
@@ -427,7 +428,7 @@ export class UnitSystem {
         unit.vx = nx * effectiveSpeed;
         unit.vy = ny * effectiveSpeed;
       }
-    } else if (hasGearTarget && nearestGearDist < 400) {
+    } else if (hasGearTarget && nearestGearDist2 < 400 * 400) {
       // March toward nearest reachable enemy gear
       const dx = nearestGearX - unit.x;
       const dy = nearestGearY - unit.y;
@@ -652,10 +653,11 @@ export class UnitSystem {
     const ironAttackCooldown = (unit.size / 1.2) * 300;
 
     let nearestUnitTarget: UnitState | null = null;
-    let nearestDist = 300;
+    // Squared throughout: these are only ever compared, never used as a length.
+    let nearestDist2 = 300 * 300;
     let nearestGearX = 0;
     let nearestGearY = 0;
-    let nearestGearDist = Infinity;
+    let nearestGearDist2 = Infinity;
     let hasGearTarget = false;
 
     for (const [, other] of allUnits) {
@@ -663,9 +665,9 @@ export class UnitSystem {
       if (other.reachedBase) continue;
       // Frontal attack only: only engage enemies directly ahead
       if (!isInFront(unit, other.x, playerRight)) continue;
-      const d = distance(unit.x, unit.y, other.x, other.y);
-      if (d < nearestDist) {
-        nearestDist = d;
+      const d2 = sqrDist(unit.x, unit.y, other.x, other.y);
+      if (d2 < nearestDist2) {
+        nearestDist2 = d2;
         nearestUnitTarget = other;
       }
     }
@@ -674,9 +676,9 @@ export class UnitSystem {
       if (gear.owner === unit.owner) continue;
       if (!isInFront(unit, gear.x, playerRight)) continue;
       if (!gearInLane(gear.y)) continue;
-      const d = distance(unit.x, unit.y, gear.x, gear.y);
-      if (d < nearestGearDist) {
-        nearestGearDist = d;
+      const d2 = sqrDist(unit.x, unit.y, gear.x, gear.y);
+      if (d2 < nearestGearDist2) {
+        nearestGearDist2 = d2;
         nearestGearX = gear.x;
         nearestGearY = gear.y;
         hasGearTarget = true;
@@ -722,7 +724,7 @@ export class UnitSystem {
         unit.vx = nx * effectiveSpeed;
         unit.vy = ny * effectiveSpeed;
       }
-    } else if (hasGearTarget && nearestGearDist < 400) {
+    } else if (hasGearTarget && nearestGearDist2 < 400 * 400) {
       const dx = nearestGearX - unit.x;
       const dy = nearestGearY - unit.y;
       const d = Math.sqrt(dx * dx + dy * dy);

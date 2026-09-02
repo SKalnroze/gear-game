@@ -16,9 +16,17 @@ export class GearMeshGraph {
   // adjacency list: gearId → set of meshed gearIds
   private adjacency: Map<string, Set<string>> = new Map();
 
+  /** Memoised getAllEdges() result; cleared by every mutator below. */
+  private edgeCache: MeshEdge[] | null = null;
+
+  private invalidate(): void {
+    this.edgeCache = null;
+  }
+
   addGear(gear: GearState): void {
     if (!this.adjacency.has(gear.id)) {
       this.adjacency.set(gear.id, new Set());
+      this.invalidate();
     }
   }
 
@@ -30,6 +38,7 @@ export class GearMeshGraph {
       }
     }
     this.adjacency.delete(gearId);
+    this.invalidate();
   }
 
   /**
@@ -37,6 +46,7 @@ export class GearMeshGraph {
    * Uses gear.x / gear.y and teeth-based radii directly.
    */
   rebuildEdgesFor(gear: GearState, allGears: Map<string, GearState>): MeshEdge[] {
+    this.invalidate();
     const newEdges: MeshEdge[] = [];
     const myRadius = gearRadius(gear.teeth);
 
@@ -80,18 +90,30 @@ export class GearMeshGraph {
     return this.adjacency.get(gearIdA)?.has(gearIdB) ?? false;
   }
 
+  /**
+   * Every mesh pair, listed once.
+   *
+   * The renderer calls this every frame to stroke the mesh arcs, and the
+   * uncached version allocated an array, a Set and one sorted+joined string
+   * per edge each time — the largest single source of per-frame garbage in the
+   * game. The graph only changes on place/remove/reposition, so the result is
+   * cached and invalidated by the mutators.
+   */
   getAllEdges(): MeshEdge[] {
+    if (this.edgeCache) return this.edgeCache;
+
     const edges: MeshEdge[] = [];
-    const visited = new Set<string>();
     for (const [id, neighbors] of this.adjacency) {
       for (const neighborId of neighbors) {
-        const key = [id, neighborId].sort().join('-');
-        if (!visited.has(key)) {
-          visited.add(key);
+        // Emit each undirected pair once, from its lexicographically smaller
+        // end — no Set or key strings needed.
+        if (id < neighborId) {
           edges.push({ gearIdA: id, gearIdB: neighborId });
         }
       }
     }
+
+    this.edgeCache = edges;
     return edges;
   }
 
@@ -140,5 +162,6 @@ export class GearMeshGraph {
 
   clear(): void {
     this.adjacency.clear();
+    this.invalidate();
   }
 }

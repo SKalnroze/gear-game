@@ -74,6 +74,11 @@ export class NeonUI {
     g.strokePath();
   }
 
+  /** Convert a numeric color (e.g. 0x00ffcc) to a CSS hex string (e.g. '#00ffcc'). */
+  static colorToStr(color: number): string {
+    return '#' + color.toString(16).padStart(6, '0');
+  }
+
   /** Returns a Phaser text style config with neon glow shadow */
   static neonTextStyle(
     color: string,

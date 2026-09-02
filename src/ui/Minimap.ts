@@ -135,18 +135,35 @@ export class Minimap {
     g.fillStyle(0x050510, 1);
     g.fillRect(ox, oy, mw, mh);
 
-    // Zone shading
-    g.fillStyle(0x0d1b2a, 0.8);
-    g.fillRect(ox, oy, PLAYER_ZONE_MAX_X * sx, mh);
+    // Zone shading – flip if player is on the right
+    const playerRight = this.world.isPlayerOnRight();
+    if (!playerRight) {
+      g.fillStyle(0x0d1b2a, 0.8);
+      g.fillRect(ox, oy, PLAYER_ZONE_MAX_X * sx, mh);
 
-    g.fillStyle(0x2a0d0d, 0.8);
-    g.fillRect(ox + AI_ZONE_MIN_X * sx, oy, (WORLD_WIDTH - AI_ZONE_MIN_X) * sx, mh);
+      g.fillStyle(0x2a0d0d, 0.8);
+      g.fillRect(ox + AI_ZONE_MIN_X * sx, oy, (WORLD_WIDTH - AI_ZONE_MIN_X) * sx, mh);
+    } else {
+      // AI zone on left, player zone on right
+      g.fillStyle(0x2a0d0d, 0.8);
+      g.fillRect(ox, oy, PLAYER_ZONE_MAX_X * sx, mh);
 
-    // Base markers
-    g.fillStyle(0x0055ff, 1);
-    g.fillRect(ox, oy, 2, mh);
-    g.fillStyle(0xff2200, 1);
-    g.fillRect(ox + mw - 2, oy, 2, mh);
+      g.fillStyle(0x0d1b2a, 0.8);
+      g.fillRect(ox + AI_ZONE_MIN_X * sx, oy, (WORLD_WIDTH - AI_ZONE_MIN_X) * sx, mh);
+    }
+
+    // Base markers – colour flips as well
+    if (!playerRight) {
+      g.fillStyle(0x0055ff, 1);
+      g.fillRect(ox, oy, 2, mh);
+      g.fillStyle(0xff2200, 1);
+      g.fillRect(ox + mw - 2, oy, 2, mh);
+    } else {
+      g.fillStyle(0xff2200, 1);
+      g.fillRect(ox, oy, 2, mh);
+      g.fillStyle(0x0055ff, 1);
+      g.fillRect(ox + mw - 2, oy, 2, mh);
+    }
 
     // Gears as dots (larger radius)
     for (const [, gear] of this.world.getAllGears()) {

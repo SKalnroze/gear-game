@@ -1,66 +1,157 @@
-import Phaser from 'phaser';
 import { EventBus } from './EventBus';
+import { soundManager } from '../audio/SoundManager';
 import { GAME_SETTINGS } from '../constants/ui.constants';
+import type { UnitType } from '../types/unit.types';
 
 /**
- * SoundManager: subscribes to game events and plays corresponding audio cues.
+ * GameSoundManager — subscribes to game events and delegates to the
+ * procedural audio engine (src/audio/SoundManager).
  *
- * Currently a stub — no audio assets are loaded yet.
- * Wire real audio sprites (JSON + file) via the Boot scene when assets are ready.
- * Reads GAME_SETTINGS.soundEnabled for mute toggle.
+ * Maintains a unitId→type cache so type-specific sounds can be played
+ * on events that only carry an id (unit:died, unit:entered_combat, etc.).
  */
-export class SoundManager {
-  private scene: Phaser.Scene;
-  private eventBus: EventBus;
+export class GameSoundManager {
+  private _eventBus: EventBus;
+  private _unitTypes = new Map<string, UnitType>();
 
-  constructor(scene: Phaser.Scene, eventBus: EventBus) {
-    this.scene = scene;
-    this.eventBus = eventBus;
-    this.wireEvents();
+  // Throttle maps — prevent audio spam when many events fire at once
+  private _lastMelee   = 0;  // ms, max 1 clash sound per 280ms
+  private _lastDamage  = 0;  // ms, max 1 hit sound per 200ms
+  private _lastCrystal = 0;  // ms, max 1 crystal-fire per 120ms
+  private _lastArty    = 0;  // ms, max 1 arty-fire per 500ms
+
+  constructor(eventBus: EventBus) {
+    this._eventBus = eventBus;
+    this._wire();
   }
 
-  private play(_key: string, _config?: Phaser.Types.Sound.SoundConfig): void {
-    // Stub: replace body with this.scene.sound.play(key, config) once assets are loaded
-    if (!GAME_SETTINGS.soundEnabled) return;
-    // this.scene.sound.play(_key, _config);
-  }
+  private get _ok(): boolean { return GAME_SETTINGS.soundEnabled; }
 
-  private wireEvents(): void {
-    this.eventBus.on('gear:placed', () => {
-      this.play('sfx_gear_place', { volume: 0.6 });
+  private _wire(): void {
+    const bus = this._eventBus;
+
+    // ── Unit lifecycle ───────────────────────────────────────────────────
+    bus.on('unit:spawned', ({ unit }) => {
+      this._unitTypes.set(unit.id, unit.type);
+      if (!this._ok) return;
+      soundManager.playUnitSpawn(unit.type);
     });
 
-    this.eventBus.on('gear:full_rotation', ({ gearId: _gearId }) => {
-      // TODO: pitch-shift by teeth count when audio is wired
-      this.play('sfx_gear_chime', { volume: 0.3 });
+    bus.on('unit:died', ({ unitId }) => {
+      if (!this._ok) return;
+      const type = this._unitTypes.get(unitId) ?? 'infantry';
+      soundManager.playUnitDie(type);
+      this._unitTypes.delete(unitId);
     });
 
-    this.eventBus.on('gear:jammed', () => {
-      this.play('sfx_gear_jam', { volume: 0.8 });
+    // ── Unit combat ──────────────────────────────────────────────────────
+    bus.on('unit:entered_combat', ({ unitId }) => {
+      if (!this._ok) return;
+      const now = Date.now();
+      if (now - this._lastMelee < 280) return;
+      this._lastMelee = now;
+      const type = this._unitTypes.get(unitId) ?? 'infantry';
+      soundManager.playUnitAttack(type);
+      soundManager.playMeleeCombatStart();
     });
 
-    this.eventBus.on('gear:destroyed', () => {
-      this.play('sfx_gear_break', { volume: 0.9 });
+    bus.on('unit:damaged', ({ unitId: _unitId }) => {
+      // Intentionally sparse — only play occasionally to avoid spam
+      if (!this._ok) return;
+      const now = Date.now();
+      if (now - this._lastDamage < 200) return;
+      this._lastDamage = now;
+      // Light hit sound (reuse melee clash — short and unobtrusive)
+      soundManager.playMeleeCombatStart();
     });
 
-    this.eventBus.on('ability:activated', () => {
-      this.play('sfx_ability', { volume: 0.7 });
+    // ── Projectiles ──────────────────────────────────────────────────────
+    bus.on('projectile:fired', ({ type }) => {
+      if (!this._ok) return;
+      const now = Date.now();
+      if (type === 'artillery_shell') {
+        if (now - this._lastArty < 500) return;
+        this._lastArty = now;
+        soundManager.playArtilleryFire();
+      } else {
+        // crystal_shard (also used by crossbow turrets)
+        if (now - this._lastCrystal < 120) return;
+        this._lastCrystal = now;
+        soundManager.playCrystalShardFire();
+      }
     });
 
-    this.eventBus.on('unit:entered_combat', () => {
-      this.play('sfx_clash', { volume: 0.5 });
+    bus.on('projectile:hit', ({ aoeRadius }) => {
+      if (!this._ok) return;
+      if (aoeRadius > 0) {
+        soundManager.playArtilleryHit();
+      } else {
+        soundManager.playCrystalShardHit();
+      }
     });
 
-    this.eventBus.on('combat:base_damaged', () => {
-      this.play('sfx_base_hit', { volume: 1.0 });
+    // ── Gear sounds ──────────────────────────────────────────────────────
+    bus.on('gear:placed', () => {
+      if (!this._ok) return;
+      soundManager.playGearPlace();
     });
 
-    this.eventBus.on('power:capacitor_burst', () => {
-      this.play('sfx_capacitor_burst', { volume: 0.85 });
+    bus.on('gear:jammed', () => {
+      if (!this._ok) return;
+      soundManager.playGearJam();
+    });
+
+    bus.on('gear:destroyed', () => {
+      if (!this._ok) return;
+      soundManager.playGearDestroyed();
+    });
+
+    bus.on('gear:burnt_out', () => {
+      if (!this._ok) return;
+      soundManager.playGearBurntOut();
+    });
+
+    bus.on('gear:overclock_started', () => {
+      if (!this._ok) return;
+      soundManager.playGearOverclock();
+    });
+
+    bus.on('gear:unit_attached', () => {
+      // Wrench latching onto a gear
+      if (!this._ok) return;
+      soundManager.playWrenchLatch();
+    });
+
+    bus.on('gear:healer_pulse', () => {
+      if (!this._ok) return;
+      soundManager.playHealerPulse();
+    });
+
+    bus.on('gear:mesh_updated', () => {
+      if (!this._ok) return;
+      soundManager.playGearMesh();
+    });
+
+    // ── Power / special gear events ──────────────────────────────────────
+    bus.on('power:capacitor_burst', () => {
+      if (!this._ok) return;
+      soundManager.playCapacitorBurst();
+    });
+
+    // ── Combat ───────────────────────────────────────────────────────────
+    bus.on('combat:base_damaged', () => {
+      if (!this._ok) return;
+      soundManager.playBaseDamaged();
+    });
+
+    // ── Abilities ────────────────────────────────────────────────────────
+    bus.on('ability:activated', ({ id }) => {
+      if (!this._ok) return;
+      soundManager.playAbility(id);
     });
   }
 
   destroy(): void {
-    // Event bus listeners are removed globally on scene shutdown
+    this._unitTypes.clear();
   }
 }

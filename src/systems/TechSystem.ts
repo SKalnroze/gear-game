@@ -218,10 +218,6 @@ export class TechSystem {
         }
         break;
 
-      case 'wave_cost_reduction_pct':
-        // no-op — waves no longer exist
-        break;
-
       case 'capacitor_burst_multiplier':
         if (owner === 'player') {
           this.rotationPhysics.setCapacitorBurstMultiplier(2.5 + effect.value);

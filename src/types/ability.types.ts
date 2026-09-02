@@ -1,4 +1,4 @@
-export type AbilityId = 'power_surge' | 'wave_blitz' | 'counter_intel' | 'overclock_no_burnout';
+export type AbilityId = 'power_surge' | 'counter_intel' | 'overclock_no_burnout';
 
 export interface AbilityDefinition {
   id: AbilityId;

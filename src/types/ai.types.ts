@@ -37,7 +37,6 @@ export type AIPersonality = 'rusher' | 'economist' | 'turtle' | 'balanced';
 export interface AIStrategy {
   profile: AIStrategyProfile;
   gearPriority: number;   // 0-1, probability bucket for gear building
-  wavePriority: number;   // 0-1, probability bucket for wave sending
   researchPriority: number;
   preferredUnitType: UnitType;
 }

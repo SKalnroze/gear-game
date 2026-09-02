@@ -41,7 +41,6 @@ export interface GameEventMap {
   'unit:entered_combat': { unitId: string; targetId: string };
   'unit:died': { unitId: string; owner: 'player' | 'ai' };
   'unit:reached_base': { unit: UnitState };
-  'unit:wave_triggered': { owner: 'player' | 'ai'; unitType: UnitType; lane: number };
   'unit:damaged': { unitId: string; damage: number; x: number; y: number };
 
   // Projectile events
@@ -79,7 +78,6 @@ export interface GameEventMap {
   'ui:gear_pickup_start': {};
   'ui:gear_pickup_end': {};
   'ui:teeth_changed': { teeth: number };
-  'ui:wave_button_clicked': { lane: number };
   'ui:tech_node_clicked': { nodeId: TechNodeId };
   'ui:tooltip_show': { text: string; x: number; y: number };
   'ui:tooltip_hide': {};

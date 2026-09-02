@@ -24,7 +24,6 @@ const ABILITY_DEFS: {
   colorStr: string;
 }[] = [
   { id: 'power_surge',          icon: '⚡', name: 'POWER SURGE',    desc: '+50 power instantly',       color: NEON.yellow,  colorStr: NEON_STR.yellow  },
-  { id: 'wave_blitz',           icon: '🌊', name: 'WAVE BLITZ',     desc: 'Send 2 waves at once',      color: NEON.blue,    colorStr: NEON_STR.blue    },
   { id: 'counter_intel',        icon: '🔍', name: 'COUNTER INTEL',  desc: 'Reveal AI unit type',       color: NEON.cyan,    colorStr: NEON_STR.cyan    },
   { id: 'overclock_no_burnout', icon: '🔧', name: 'OVERCLOCK+',     desc: 'Overclock — no burnout',    color: NEON.orange,  colorStr: NEON_STR.orange  },
 ];

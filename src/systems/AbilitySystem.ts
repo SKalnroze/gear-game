@@ -13,15 +13,12 @@ export class AbilitySystem {
   private economySystem: EconomySystem;
   private abilities: Map<AbilityId, AbilityState> = new Map();
 
-  // Wave blitz: flag that makes the next wave trigger spawn 2 waves
-  private waveBlitzActive: boolean = false;
-
   constructor(eventBus: EventBus, economySystem: EconomySystem) {
     this.eventBus = eventBus;
     this.economySystem = economySystem;
 
     // Initialise all abilities as locked
-    const ids: AbilityId[] = ['power_surge', 'wave_blitz', 'counter_intel', 'overclock_no_burnout'];
+    const ids: AbilityId[] = ['power_surge', 'counter_intel', 'overclock_no_burnout'];
     for (const id of ids) {
       this.abilities.set(id, { id, unlocked: false, lastUsedAt: 0 });
     }
@@ -66,19 +63,9 @@ export class AbilitySystem {
       case 'power_surge':
         this.economySystem.earnGold('player', GOLD_SURGE_AMOUNT);
         break;
-      case 'wave_blitz':
-        this.waveBlitzActive = true;
-        break;
     }
 
     this.eventBus.emit('ability:activated', { id });
-    return true;
-  }
-
-  /** Returns true if the next wave should double-spawn (consumes the flag) */
-  consumeWaveBlitz(): boolean {
-    if (!this.waveBlitzActive) return false;
-    this.waveBlitzActive = false;
     return true;
   }
 

@@ -44,7 +44,7 @@ export const UNIT_DEFINITIONS: Record<UnitType, UnitDefinition> = {
     baseDamage: 8,
     costResource: 'gold',
     costAmount: 10,
-    description: 'Mixed wave. Balanced stats.',
+    description: 'Mixed squad. Balanced stats.',
   },
   elite_infantry: {
     type: 'elite_infantry',

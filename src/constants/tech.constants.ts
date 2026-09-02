@@ -371,14 +371,6 @@ export const TECH_NODES: Record<string, TechNode> = {
   // ─── COLUMN 3: ABILITIES ──────────────────────────────────────────────────
 
   // T1
-  wave_discount_1: {
-    id: 'wave_discount_1', name: 'Rapid Deployment',
-    description: 'Wave trigger cost reduced by 10%.',
-    tier: 1, goldCost: 20, researchTime: 15000,
-    prereqs: [],
-    effects: [{ kind: 'wave_cost_reduction_pct', value: 0.1 }],
-    column: 3,
-  },
   counter_intel: {
     id: 'counter_intel', name: 'Counter Intelligence',
     description: 'See which unit type the AI is currently producing.',
@@ -389,14 +381,6 @@ export const TECH_NODES: Record<string, TechNode> = {
   },
 
   // T2
-  wave_discount_2: {
-    id: 'wave_discount_2', name: 'Advanced Logistics',
-    description: 'Wave trigger cost reduced by an additional 15%.',
-    tier: 2, goldCost: 50, researchTime: 30000,
-    prereqs: ['wave_discount_1'],
-    effects: [{ kind: 'wave_cost_reduction_pct', value: 0.15 }],
-    column: 3,
-  },
   power_surge: {
     id: 'power_surge', name: 'Power Surge',
     description: 'Unlocks the Power Surge ability: instantly gain 50 power (60s cooldown).',
@@ -407,14 +391,6 @@ export const TECH_NODES: Record<string, TechNode> = {
   },
 
   // T3
-  wave_blitz: {
-    id: 'wave_blitz', name: 'Wave Blitz',
-    description: 'Unlocks Blitz ability: send 2 waves simultaneously (90s cooldown).',
-    tier: 3, goldCost: 160, researchTime: 96000,
-    prereqs: ['wave_discount_2'],
-    effects: [{ kind: 'enable_ability', abilityId: 'wave_blitz' }],
-    column: 3,
-  },
 
   // ─── COLUMN 4: DEFENSE ────────────────────────────────────────────────────
 

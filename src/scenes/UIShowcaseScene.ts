@@ -726,10 +726,10 @@ export class UIShowcaseScene extends Phaser.Scene {
     const tl = this.h(neonTimeline(this, px, y, panelW, 52,
       [
         { time: 0,  label: 'Start',       color: NEON.green },
-        { time: 10, label: 'Wave 1',      color: NEON.cyan },
+        { time: 10, label: 'Phase 1',     color: NEON.cyan },
         { time: 25, label: 'Boss Spawn',  color: NEON.red },
-        { time: 40, label: 'Wave 2' },
-        { time: 55, label: 'Final Wave',  color: NEON.orange },
+        { time: 40, label: 'Phase 2' },
+        { time: 55, label: 'Final Push',  color: NEON.orange },
         { time: 60, label: 'Victory',     color: NEON.yellow },
       ], 60, c));
     let tlTime = 0;
@@ -756,7 +756,7 @@ export class UIShowcaseScene extends Phaser.Scene {
       () => `Unit attacks for ${Phaser.Math.Between(10, 45)} damage`,
       () => `Shield absorbed ${Phaser.Math.Between(5, 20)} damage`,
       () => `Gear rotation: ${Phaser.Math.Between(0, 359)}°`,
-      () => `Wave ${Phaser.Math.Between(1, 5)} enemy incoming!`,
+      () => `Squad ${Phaser.Math.Between(1, 5)} enemy incoming!`,
     ];
     const logTimer = this.time.addEvent({
       delay: 1800, loop: true,

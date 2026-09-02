@@ -238,7 +238,6 @@ export class SoundManager {
     this._go(() => {
       switch (id) {
         case 'power_surge':          this._abilityPowerSurge();  break;
-        case 'wave_blitz':           this._abilityWaveBlitz();   break;
         default:                     this._abilityGeneric();     break;
       }
     });
@@ -578,14 +577,6 @@ export class SoundManager {
     [392, 494, 587, 784].forEach((freq, i) =>
       this._osc('triangle', freq, freq, 0.28, 0.35, i * 0.08));
     this._noise(0.32, 0.38, 1250, 2.6);
-  }
-
-  private _abilityWaveBlitz(): void {
-    // Double activation punch
-    this._noise(0.50, 0.12, 350, 1.5, 0.00);
-    this._osc('sawtooth', 225, 820, 0.20, 0.28, 0.05);
-    this._noise(0.62, 0.12, 350, 1.5, 0.28);
-    this._osc('sawtooth', 205, 1050, 0.25, 0.35, 0.30);
   }
 
   private _abilityGeneric(): void {

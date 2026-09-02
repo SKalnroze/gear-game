@@ -53,7 +53,6 @@ export const JAM_DAMAGE_RATE = 8;          // HP/sec base rate when jammed
 export const JAM_STRESS_MULTIPLIER = 0.1;  // torque → stress multiplier
 
 // Unit spawning
-export const UNITS_PER_WAVE = 3;           // units spawned per gear rotation (deprecated - now per unit type)
 
 // Gold cost per unit spawn (used by AI to reserve gold before placing spawners)
 export const UNIT_SPAWN_COST: Record<string, number> = {

@@ -1,8 +1,7 @@
 import { UnitState, UnitType, UnitDefinition } from '../types/unit.types';
 import { EventBus } from './EventBus';
 import { UNIT_DEFINITIONS } from '../constants/unit.constants';
-import { UNITS_PER_WAVE, ENGAGE_DISTANCE, ARMORED_DAMAGE_RATE } from '../constants/balance.constants';
-import { DEFAULT_TEETH, gearRadius } from '../constants/gear.constants';
+import { gearRadius } from '../constants/gear.constants';
 import {
   WORLD_WIDTH, LANE_Y_MIN, LANE_Y_MAX,
   PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X,
@@ -11,11 +10,9 @@ import {
 import { randomInt } from '../utils/MathUtils';
 import { World } from '../world/World';
 import { EconomySystem } from './EconomySystem';
-import { GearType } from '../types/gear.types';
 import { ProjectileSystem } from './ProjectileSystem';
 import { distance } from '../utils/MathUtils';
 import {
-  TYPE_MASS_MULT,
   computeScaledStats,
   isInFront,
   gearInLane,
@@ -47,7 +44,6 @@ const COLD_ZONE_DURATION = 5.0; // seconds
 const COLD_ZONE_SLOW_FACTOR = 0.45;
 const COLD_GEAR_FRICTION = 20;
 
-const UNIT_SPACING = 40; // px between units in same wave
 
 /** Charge acceleration for cavalry (px/s²) */
 const CAVALRY_CHARGE_ACCEL = 200;
@@ -58,7 +54,6 @@ const MELEE_CONTACT_DIST = 2; // extra beyond size+size
 /** Cavalry retreat duration (seconds) */
 const CAVALRY_RETREAT_DURATION = 3.5;
 
-// TYPE_MASS_MULT, computeScaledStats, isInFront, gearInLane imported from unit.utils
 
 /** Build initial UnitState fields for new fields. */
 function newPhysicsFields(unitType: UnitType): {
@@ -100,10 +95,6 @@ export class UnitSystem {
   private unitDamageBonuses: Map<UnitType, number> = new Map();
   private unlockedUnits: Set<UnitType> = new Set(['infantry']);
 
-  private readonly onUnitWaveTriggered = ({ owner, unitType, lane }: { owner: 'player' | 'ai'; unitType: UnitType; lane: number }) => {
-    this.spawnWave(owner, unitType, lane);
-  };
-
   private readonly onGearFullRotation = ({ gearId, owner }: { gearId: string; owner: 'player' | 'ai' }) => {
     if (this.world && this.economySystem) {
       this.trySpawnUnitFromGear(gearId, owner);
@@ -117,7 +108,6 @@ export class UnitSystem {
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
 
-    this.eventBus.on('unit:wave_triggered', this.onUnitWaveTriggered);
     this.eventBus.on('gear:full_rotation', this.onGearFullRotation);
     this.eventBus.on('unit:died', this.onUnitDied);
   }
@@ -198,58 +188,6 @@ export class UnitSystem {
 
     this.units.set(unit.id, unit);
     this.eventBus.emit('unit:spawned', { unit: { ...unit } });
-  }
-
-  /**
-   * Spawn a wave of units (manual wave button). Uses DEFAULT_TEETH for stat scaling.
-   * Player units spawn at the right edge of player zone; AI units at the left edge of AI zone.
-   */
-  spawnWave(owner: 'player' | 'ai', unitType: UnitType, _lane: number): void {
-    const def = UNIT_DEFINITIONS[unitType];
-    const scaled = computeScaledStats(def, DEFAULT_TEETH, unitType);
-    const playerRight = this.world?.isPlayerOnRight() ?? false;
-    const direction = owner === 'player' ? 1 : -1;
-    let startX: number;
-    if (!playerRight) {
-      startX = owner === 'player' ? PLAYER_ZONE_MAX_X : AI_ZONE_MIN_X;
-    } else {
-      startX = owner === 'player' ? AI_ZONE_MIN_X : PLAYER_ZONE_MAX_X;
-    }
-
-    const hpBonus = this.unitHpBonuses.get(unitType) ?? 0;
-    const speedBonus = this.unitSpeedBonuses.get(unitType) ?? 0;
-    const dmgBonus = this.unitDamageBonuses.get(unitType) ?? 0;
-    const frictionVal = def.frictionValue ?? 0;
-
-    for (let i = 0; i < UNITS_PER_WAVE; i++) {
-      const margin = 20;
-      const y = randomInt(LANE_Y_MIN + margin, LANE_Y_MAX - margin);
-      const offsetX = direction * i * UNIT_SPACING * -1;
-
-      const hp = Math.round(scaled.hp * (1 + hpBonus));
-      const unit: UnitState = {
-        id: nextUnitId(),
-        type: unitType,
-        hp,
-        maxHp: hp,
-        x: startX + offsetX,
-        y,
-        owner,
-        speed: scaled.speed * (1 + speedBonus),
-        baseDamage: Math.round(scaled.baseDamage * (1 + dmgBonus)),
-        inCombat: false,
-        reachedBase: false,
-        damage: Math.round(scaled.damage * (1 + dmgBonus)),
-        frictionValue: frictionVal,
-        size: scaled.size,
-        attackRange: scaled.attackRange,
-        mass: scaled.mass,
-        ...newPhysicsFields(unitType),
-      };
-
-      this.units.set(unit.id, unit);
-      this.eventBus.emit('unit:spawned', { unit: { ...unit } });
-    }
   }
 
   /**
@@ -1185,7 +1123,6 @@ export class UnitSystem {
   }
 
   destroy(): void {
-    this.eventBus.off('unit:wave_triggered', this.onUnitWaveTriggered);
     this.eventBus.off('gear:full_rotation', this.onGearFullRotation);
     this.eventBus.off('unit:died', this.onUnitDied);
     this.coldZones = [];

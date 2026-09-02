@@ -10,13 +10,6 @@ export const ABILITY_DEFINITIONS: Record<AbilityId, AbilityDefinition> = {
     description: `Instantly gain ${GOLD_SURGE_AMOUNT} gold.`,
     passive: false,
   },
-  wave_blitz: {
-    id: 'wave_blitz',
-    name: 'Wave Blitz',
-    cooldownMs: 90000,
-    description: 'Send 2 waves simultaneously for the cost of 1.',
-    passive: false,
-  },
   counter_intel: {
     id: 'counter_intel',
     name: 'Counter Intel',

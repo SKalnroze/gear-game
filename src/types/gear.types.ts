@@ -25,7 +25,7 @@ export interface GearSynergy {
 }
 
 export interface SynergyBonus {
-  type: 'chain_power_pct' | 'burst_multiplier' | 'wave_type' | 'speed_pct';
+  type: 'chain_power_pct' | 'burst_multiplier' | 'speed_pct';
   value: number;
 }
 

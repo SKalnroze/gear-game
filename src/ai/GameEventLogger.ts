@@ -20,7 +20,7 @@ const S = {
  *
  * Events covered (with rationale):
  *   CRITICAL  — game:started/over, combat:base_damaged, unit:reached_base
- *   UNIT      — spawned, died, wave_triggered
+ *   UNIT      — spawned, died
  *   GEAR      — placed, destroyed, burnt_out, jammed
  *   TECH      — research_started, research_complete
  *   ECONOMY   — insufficient_funds  (too noisy for gold_changed)
@@ -82,8 +82,6 @@ export class GameEventLogger {
       this.emit(S.critical, `BASE HIT  owner=${owner}  -${damage.toFixed(0)}dmg  hp=${remainingHp.toFixed(0)}`));
 
     // ── Units ──────────────────────────────────────────────────────────────────
-    eb.on('unit:wave_triggered', ({ owner, unitType, lane }) =>
-      this.emit(S.unit, `wave:triggered  owner=${owner}  type=${unitType}  lane=${lane}`));
 
     eb.on('unit:spawned', ({ unit }) =>
       this.emit(S.unit, `unit:spawned  owner=${unit.owner}  type=${unit.type}  at=(${unit.x.toFixed(0)},${unit.y.toFixed(0)})`));

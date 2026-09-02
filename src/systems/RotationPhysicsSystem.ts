@@ -46,7 +46,7 @@ export class RotationPhysicsSystem {
   private capacitorBurstMultiplier: number = CAPACITOR_BURST_MULTIPLIER;
 
   // Optional ability system ref (set after construction)
-  private abilitySystem: { isUnlocked: (id: 'power_surge' | 'wave_blitz' | 'counter_intel' | 'overclock_no_burnout') => boolean } | null = null;
+  private abilitySystem: { isUnlocked: (id: 'power_surge' | 'counter_intel' | 'overclock_no_burnout') => boolean } | null = null;
 
   private readonly onMeshUpdated = () => this.rebuildChains();
   private readonly onGearPlaced = () => this.rebuildChains();
@@ -457,7 +457,7 @@ export class RotationPhysicsSystem {
     return burntOut;
   }
 
-  setAbilitySystem(abilitySystem: { isUnlocked: (id: 'power_surge' | 'wave_blitz' | 'counter_intel' | 'overclock_no_burnout') => boolean }): void {
+  setAbilitySystem(abilitySystem: { isUnlocked: (id: 'power_surge' | 'counter_intel' | 'overclock_no_burnout') => boolean }): void {
     this.abilitySystem = abilitySystem;
   }
 

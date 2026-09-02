@@ -1011,7 +1011,6 @@ export class AIController {
       'basic_overclock':              340,  // overclock gears (+50% speed adj)
       'elite_cavalry_unlock':         330,
       'elite_artillery_unlock':       325,
-      'wave_discount_1':              320,
       // ── Defense (boosted under threat via adaptive scoring below) ──
       'base_fortification':           310,
       'spiked_gears':                 300,
@@ -1019,7 +1018,6 @@ export class AIController {
       'crossbow_turret_tech':         290,
       'healer_gear_tech':             285,
       'fortress_wall':                280,
-      'wave_discount_2':              270,
       'unlock_crystal_sentinel_spawner': 265,
       'unlock_aether_mining':         260,
       'aether_to_gold':               255,
@@ -1029,7 +1027,6 @@ export class AIController {
       'overclock_mastery':            235,
       'gear_precision_5':             230,
       'total_war':                    220,
-      'wave_blitz':                   210,
       'counter_intel':                200,
     };
 

@@ -12,7 +12,6 @@ export type TechUnlockEffect =
   | { kind: 'unit_damage_pct'; unitType: string; value: number }
   | { kind: 'overclock_duration_bonus'; value: number }
   | { kind: 'capacitor_burst_multiplier'; value: number }
-  | { kind: 'wave_cost_reduction_pct'; value: number }
   | { kind: 'enable_ability'; abilityId: string }
   | { kind: 'chain_combo_bonus'; value: number }
   | { kind: 'base_hp_bonus'; value: number }

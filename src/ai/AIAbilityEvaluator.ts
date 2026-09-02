@@ -104,6 +104,5 @@ export const AI_ABILITY_HANDLERS: AIAbilityHandler[] = [
   new PowerSurgeHandler(),
 
   // Future handlers (examples of what would go here):
-  // new WaveBlitzHandler(),          // rush double-spawn when winning
   // new EmergencyFortifyHandler(),   // research fortification under heavy attack
 ];

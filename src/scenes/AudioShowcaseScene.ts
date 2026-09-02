@@ -193,7 +193,7 @@ export class AudioShowcaseScene extends NeonSceneBase {
     ]);
     row([
       { label: 'PWR SURGE', color: NEON.yellow,  colorStr: NEON_STR.yellow,  play: () => soundManager.playAbility('power_surge') },
-      { label: 'WAVE BLTZ', color: NEON.magenta, colorStr: NEON_STR.magenta, play: () => soundManager.playAbility('wave_blitz') },
+      { label: 'OVERCLOCK', color: NEON.magenta, colorStr: NEON_STR.magenta, play: () => soundManager.playAbility('overclock_no_burnout') },
       { label: 'ABILITY',   color: NEON.green,   colorStr: NEON_STR.green,   play: () => soundManager.playAbility('counter_intel') },
     ]);
 

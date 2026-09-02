@@ -64,7 +64,7 @@ All gears have HP (armored gets 3×). When two meshed gears require opposite dir
 
 | Resource | Source | Spent on |
 |----------|--------|---------|
-| **Power** | Motor rotations | Gear placement, wave spawning |
+| **Power** | Motor rotations | Gear placement |
 | **Gold** | Baseline +2/s | Tech research |
 | **Iron** | Iron Miner rotations | Iron Guard units |
 | **Crystal** | Crystal Miner rotations | Crystal Sentinel units |
@@ -72,7 +72,7 @@ All gears have HP (armored gets 3×). When two meshed gears require opposite dir
 
 ### Units
 
-Units spawn from wave buttons (ACTIONS tab) or spawner gears and march through the lane band.
+Units spawn **only** from spawner gears — one unit per full rotation of the spawner. There is no wave button and no timed wave: unit production is entirely a function of how fast your gear chain turns.
 
 **Standard:** Infantry, Artillery, Cavalry, Mixed, Elite variants
 **Resource:** Iron Guard (iron), Crystal Sentinel (crystal), Aether Phantom (aether)
@@ -82,14 +82,13 @@ Counter system: Infantry → Artillery → Cavalry → Infantry (2× damage)
 
 ### Tech Tree (TECH tab)
 
-36 nodes across 3 tiers. Unlock new gear types, unit upgrades, income bonuses, and special abilities. Costs gold; research takes real time.
+48 nodes across 3 tiers. Unlock new gear types, unit upgrades, income bonuses, and special abilities. Costs gold; research takes real time.
 
 ### Abilities (ACTIONS tab)
 
 | Ability | Effect |
 |---------|--------|
 | Power Surge | Instant power injection |
-| Wave Blitz | Reduced wave costs temporarily |
 | Counter Intel | Reveals AI next action |
 | Overclock (No Burnout) | Overclock gears skip burnout for one cycle |
 

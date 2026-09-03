@@ -4,6 +4,8 @@ import { World } from '../../src/world/World';
 import type { EventBus } from '../../src/systems/EventBus';
 import type { UnitState } from '../../src/types/unit.types';
 import { PLAYER_BASE_X, AI_BASE_X } from '../../src/constants/world.constants';
+import { computeChargeDamage } from '../../src/systems/unit.utils';
+import { IRON_GUARD_DAMAGE_REDUCTION } from '../../src/constants/unit.constants';
 
 interface Emitted { event: string; payload: any }
 
@@ -216,6 +218,75 @@ describe('UnitSystem', () => {
 
       expect(r.events('unit:died')).toHaveLength(1);
       expect(r.system.getAllUnits().size).toBe(0);
+    });
+  });
+
+  describe('counter matrix applies outside CombatSystem too', () => {
+    /** Place two units of the given types at contact distance, facing each other. */
+    function faceOff(attackerOwner: 'player' | 'ai', attackerType: string, defenderType: string) {
+      const r = makeRig();
+      const defenderOwner = attackerOwner === 'player' ? 'ai' : 'player';
+      r.system.spawnSingleFromGear(attackerOwner, attackerType as any, 10);
+      r.system.spawnSingleFromGear(defenderOwner, defenderType as any, 10);
+
+      const units = [...r.system.getAllUnits().values()];
+      const attacker = units.find(u => u.type === attackerType)!;
+      const defender = units.find(u => u.type === defenderType)!;
+      // Same spot so contact/detection triggers on the first tick regardless of side facing.
+      defender.x = attacker.x;
+      defender.y = attacker.y;
+      return { ...r, attacker, defender };
+    }
+
+    it('cavalry deals the favored 2x to infantry via its own charge-hit code path', () => {
+      const r = faceOff('player', 'cavalry', 'infantry');
+      const hpBefore = r.defender.hp;
+
+      // Cavalry needs to be mid-charge to hit; give it a tick to accelerate into contact range.
+      r.system.update(0.05, 0, noProjectiles);
+
+      const dealt = r.events('unit:damaged').find(e => e.payload.unitId === r.defender.id);
+      expect(dealt).toBeDefined();
+      // Base cavalry charge damage at chargeAccum~0 is baseDamage itself; counter mult is 2x.
+      expect(hpBefore - r.defender.hp).toBeCloseTo(dealt!.payload.damage, 6);
+      expect(dealt!.payload.damage).toBeGreaterThan(r.attacker.baseDamage); // counter mult inflated it
+    });
+
+    it('Iron Guard takes reduced damage from a cavalry charge', () => {
+      const r = faceOff('player', 'cavalry', 'iron_guard');
+      const hpBefore = r.defender.hp;
+
+      r.system.update(0.05, 0, noProjectiles);
+
+      const dealt = r.events('unit:damaged').find(e => e.payload.unitId === r.defender.id);
+      expect(dealt).toBeDefined();
+      // cavalry->iron_guard counter is 0.5x; armor knocks IRON_GUARD_DAMAGE_REDUCTION off that.
+      // chargeAccum has advanced by one tick (0.05s * accel) before the contact check fires.
+      const rawChargeDmg = computeChargeDamage(r.attacker.baseDamage, 0.05 * 200);
+      expect(dealt!.payload.damage).toBeCloseTo(rawChargeDmg * 0.5 * IRON_GUARD_DAMAGE_REDUCTION, 6);
+    });
+  });
+
+  describe('crystal sentinel shield aura', () => {
+    it('shields a nearby ally, reducing damage that ally takes afterward', () => {
+      const r = makeRig();
+      r.system.spawnSingleFromGear('player', 'crystal_sentinel', 10);
+      r.system.spawnSingleFromGear('player', 'infantry', 10);
+      r.system.spawnSingleFromGear('ai', 'infantry', 10); // gives the sentinel a target to fire at
+
+      const sentinel = [...r.system.getAllUnits().values()].find(u => u.type === 'crystal_sentinel')!;
+      const ally = [...r.system.getAllUnits().values()].find(u => u.type === 'infantry' && u.owner === 'player')!;
+      const enemy = [...r.system.getAllUnits().values()].find(u => u.owner === 'ai')!;
+      ally.x = sentinel.x;
+      ally.y = sentinel.y; // well within the aura radius
+      enemy.x = sentinel.x + 50; // in range so the sentinel actually fires this tick
+      enemy.y = sentinel.y;
+
+      expect(ally.shieldFactor).toBe(1);
+      r.system.update(0.05, 900, noProjectiles); // > 800ms cooldown gate uses now, not elapsed -- 900 clears lastAttackTime=0
+
+      expect(ally.shieldFactor).toBeLessThan(1);
+      expect(ally.shieldTimer).toBeGreaterThan(0);
     });
   });
 

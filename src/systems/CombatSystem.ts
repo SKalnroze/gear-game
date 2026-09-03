@@ -1,7 +1,7 @@
 import { UnitState } from '../types/unit.types';
 import { EventBus } from './EventBus';
 import { UnitSystem } from './UnitSystem';
-import { COUNTER_TABLE, getCounterMultiplier } from '../constants/unit.constants';
+import { computeDamage, getCounterMultiplier } from '../constants/unit.constants';
 import { COMBAT_TICK_INTERVAL } from '../constants/balance.constants';
 
 /**
@@ -99,8 +99,8 @@ export class CombatSystem {
       const multAtoB = getCounterMultiplier(unit.type, target.type);
       const multBtoA = getCounterMultiplier(target.type, unit.type);
 
-      const dmgAtoB = unit.baseDamage * multAtoB;
-      const dmgBtoA = target.baseDamage * multBtoA;
+      const dmgAtoB = computeDamage(unit.type, target, unit.baseDamage);
+      const dmgBtoA = computeDamage(target.type, unit, target.baseDamage);
 
       target.hp -= dmgAtoB;
       unit.hp -= dmgBtoA;

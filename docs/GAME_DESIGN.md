@@ -143,8 +143,6 @@ Places where the implementation does not match the design intent stated in this 
 | # | Divergence | Where | Chapter |
 |---|---|---|---|
 | 3 | **Five unit types are unreachable.** `mixed`, all three elites and `wrench` have no spawner gear, so no match can produce them. They are fully implemented and tested but unplayable. | `UnitSystem.ts:1091` | [Units](design/units.md) |
-| 4 | **The counter triangle applies to under half the roster.** `CombatSystem` excludes cavalry, artillery, sentinel and phantom (and their elites) from combat resolution, so the RPS multipliers never apply to them. | `CombatSystem.ts:36` | [Units](design/units.md#the-counter-matrix) |
-| 5 | **Two unit abilities are text only.** Iron Guard's "reduces incoming damage by 30%" and Crystal Sentinel's "shields nearby allies" have no implementation. | `unit.constants.ts:81`, `:93` | [Units](design/units.md) |
 | 8 | **Combo Chain Bonus does nothing.** `chain_combo_bonus` is an empty case in the effect switch, so a 110-gold node has no effect. | `TechSystem.ts:240` | [Tech tree](design/tech-tree.md#gears-column) |
 | 18 | **`getChainUnitType()` is never called.** A chain-composition-determines-unit-type rule is fully written and unused — a remnant of an earlier design. | `unit.constants.ts:210` | [Units](design/units.md) |
 | 21 | **Only units can damage a base.** Turrets, projectiles and gears cannot reach base HP at all, so there is no ranged pressure on the win condition. | `WinConditionSystem.ts:40` | [Balance](design/balance.md#the-win-condition) |
@@ -156,8 +154,7 @@ Places where the implementation does not match the design intent stated in this 
 Unresolved intent, recorded so the decisions are made deliberately rather than by default.
 
 1. **How do elite and support units become reachable?** Divergence 3 leaves five units built and unplayable. Do they get spawner gears, or does something like the retired `getChainUnitType` rule return, where chain *composition* decides what a spawner emits?
-2. **Should the counter triangle govern all combat?** Divergence 4 means the RPS relationship advertised in unit descriptions is honoured by melee only. Either every damage path consults it, or the descriptions and the tech that leans on counter-picking need rewriting.
-3. **Is there a second way to win?** Divergence 21 makes the only route "walk a unit into a wall". A defensive machine with no spawners cannot win, only fail to lose.
+2. **Is there a second way to win?** Divergence 21 makes the only route "walk a unit into a wall". A defensive machine with no spawners cannot win, only fail to lose.
 
 ---
 

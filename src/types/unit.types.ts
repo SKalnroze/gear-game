@@ -66,4 +66,6 @@ export interface UnitState {
   slowTimer: number;                  // crystal shard slow remaining seconds (0 = not slowed)
   slowFactor: number;                 // speed multiplier when slowed (0.5 when hit by crystal shard)
   turretAngle?: number;               // artillery: current barrel angle in radians (0 = right)
+  shieldTimer: number;                // crystal sentinel aura remaining seconds (0 = not shielded)
+  shieldFactor: number;               // incoming damage multiplier while shielded (0.8 in the aura)
 }

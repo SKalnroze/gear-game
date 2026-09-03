@@ -33,6 +33,8 @@ function makeUnit(owner: 'player' | 'ai', x: number): UnitState {
     retreatTimer: 0,
     slowTimer: 0,
     slowFactor: 1,
+    shieldTimer: 0,
+    shieldFactor: 1,
   } as UnitState;
 }
 

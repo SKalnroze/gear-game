@@ -206,6 +206,28 @@ export function getCounterMultiplier(attacker: UnitType, defender: UnitType): nu
   return COUNTER_TABLE[attacker]?.[defender] ?? 1;
 }
 
+/** Iron Guard's armor: multiplies all incoming damage, regardless of source. */
+export const IRON_GUARD_DAMAGE_REDUCTION = 0.7;
+
+/**
+ * Resolves a raw hit into the damage actually dealt: applies the counter
+ * multiplier (skipped if the attacker has no unit type, e.g. a turret),
+ * Iron Guard's flat armor, and the defender's active shield buff (Crystal
+ * Sentinel aura). One function so every damage-application site --
+ * CombatSystem, the UnitSystem behavior methods, and ProjectileSystem --
+ * applies defense the same way.
+ */
+export function computeDamage(
+  attackerType: UnitType | undefined,
+  defender: { type: UnitType; shieldFactor?: number },
+  rawDamage: number,
+): number {
+  let dmg = rawDamage * (attackerType ? getCounterMultiplier(attackerType, defender.type) : 1);
+  if (defender.type === 'iron_guard') dmg *= IRON_GUARD_DAMAGE_REDUCTION;
+  dmg *= defender.shieldFactor ?? 1;
+  return dmg;
+}
+
 // Determines unit type produced by a chain composition
 export function getChainUnitType(
   hasMotor: boolean,

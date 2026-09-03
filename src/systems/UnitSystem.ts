@@ -18,6 +18,7 @@ import {
   computeAttackCooldown,
   computeChargeDamage,
 } from './unit.utils';
+import { computeDamage } from '../constants/unit.constants';
 
 let _nextUnitId = 1;
 function nextUnitId(): string {
@@ -59,13 +60,18 @@ const SENTINEL_ATTACK_RANGE = 500;
 const MELEE_CONTACT_DIST = 2; // extra beyond size+size
 /** Cavalry retreat duration (seconds) */
 const CAVALRY_RETREAT_DURATION = 3.5;
+/** Crystal sentinel shield aura: radius around the sentinel and the incoming-damage multiplier it grants allies */
+const SHIELD_AURA_RADIUS = 90;
+const SHIELD_AURA_FACTOR = 0.8;
+/** Refreshed every beam tick (800ms) while the sentinel is active; a bit longer so a brief gap doesn't drop it */
+const SHIELD_AURA_TIMER = 1.2;
 
 
 /** Build initial UnitState fields for new fields. */
 function newPhysicsFields(unitType: UnitType): {
   vx: number; vy: number; behaviorState: UnitState['behaviorState'];
   lastAttackTime: number; chargeAccum: number; retreatTimer: number;
-  slowTimer: number; slowFactor: number;
+  slowTimer: number; slowFactor: number; shieldTimer: number; shieldFactor: number;
 } {
   return {
     vx: 0,
@@ -76,6 +82,8 @@ function newPhysicsFields(unitType: UnitType): {
     retreatTimer: 0,
     slowTimer: 0,
     slowFactor: 1,
+    shieldTimer: 0,
+    shieldFactor: 1,
   };
 }
 
@@ -215,6 +223,14 @@ export class UnitSystem {
     for (const [, unit] of allUnits) {
       if (unit.reachedBase) continue;
       if (unit.attachedGearId) continue; // attached wrench units don't march
+
+      // Apply shield timer (crystal sentinel aura)
+      if (unit.shieldTimer > 0) {
+        unit.shieldTimer = Math.max(0, unit.shieldTimer - deltaSec);
+        if (unit.shieldTimer <= 0) {
+          unit.shieldFactor = 1;
+        }
+      }
 
       // Apply slow timer
       if (unit.slowTimer > 0) {
@@ -407,11 +423,12 @@ export class UnitSystem {
         // Cooldown scales with size: 1000ms for 10-tooth (size=12), scales up for larger
         const infantryAttackCooldown = computeAttackCooldown(unit.size); // 1000ms at 10 teeth
         if (now - unit.lastAttackTime > infantryAttackCooldown) {
-          nearestUnitTarget.hp -= unit.baseDamage;
+          const dmg = computeDamage(unit.type, nearestUnitTarget, unit.baseDamage);
+          nearestUnitTarget.hp -= dmg;
           unit.lastAttackTime = now;
           this.eventBus.emit('unit:damaged', {
             unitId: nearestUnitTarget.id,
-            damage: unit.baseDamage,
+            damage: dmg,
             x: nearestUnitTarget.x,
             y: nearestUnitTarget.y,
           });
@@ -498,7 +515,7 @@ export class UnitSystem {
       if (d <= contactDist) {
         // Charge hit! Apply momentum impulse to target
         const chargeSpeed = Math.abs(unit.vx);
-        const chargeDmg = computeChargeDamage(unit.baseDamage, unit.chargeAccum);
+        const chargeDmg = computeDamage(unit.type, other, computeChargeDamage(unit.baseDamage, unit.chargeAccum));
         other.hp -= chargeDmg;
         this.eventBus.emit('unit:damaged', {
           unitId: other.id,
@@ -698,11 +715,12 @@ export class UnitSystem {
         unit.vy = 0;
 
         if (now - unit.lastAttackTime > ironAttackCooldown) {
-          nearestUnitTarget.hp -= unit.baseDamage;
+          const dmg = computeDamage(unit.type, nearestUnitTarget, unit.baseDamage);
+          nearestUnitTarget.hp -= dmg;
           unit.lastAttackTime = now;
           this.eventBus.emit('unit:damaged', {
             unitId: nearestUnitTarget.id,
-            damage: unit.baseDamage,
+            damage: dmg,
             x: nearestUnitTarget.x,
             y: nearestUnitTarget.y,
           });
@@ -767,8 +785,8 @@ export class UnitSystem {
       if (d < contactDist) {
         // Phantom deals damage proportional to overlap intensity
         const overlapFraction = 1 - d / contactDist;
-        const enemyDmg = unit.baseDamage * 1.8 * deltaSec * overlapFraction;
-        const selfDmg   = unit.baseDamage * 0.8 * deltaSec * overlapFraction;
+        const enemyDmg = computeDamage(unit.type, other, unit.baseDamage * 1.8 * deltaSec * overlapFraction);
+        const selfDmg   = computeDamage(other.type, unit, unit.baseDamage * 0.8 * deltaSec * overlapFraction);
         other.hp -= enemyDmg;
         unit.hp  -= selfDmg;
 
@@ -831,15 +849,27 @@ export class UnitSystem {
         // Fires a cold beam every 800ms — lower damage than artillery but leaves a lasting cold zone
         if (now - unit.lastAttackTime > 800) {
           // Direct area damage around target (lower than artillery)
-          const beamDmg = unit.baseDamage * 0.6;
+          const rawBeamDmg = unit.baseDamage * 0.6;
           for (const [, other] of allUnits) {
             if (other.owner === unit.owner) continue;
             if (other.reachedBase) continue;
             const d = distance(other.x, other.y, targetX, targetY);
             if (d < COLD_ZONE_RADIUS * 0.8) {
+              const beamDmg = computeDamage(unit.type, other, rawBeamDmg);
               other.hp -= beamDmg;
               this.eventBus.emit('unit:damaged', { unitId: other.id, damage: beamDmg, x: other.x, y: other.y });
               if (other.hp <= 0) other.hp = 0;
+            }
+          }
+
+          // Shield nearby allies against incoming damage while the sentinel is active
+          for (const [, ally] of allUnits) {
+            if (ally.owner !== unit.owner) continue;
+            if (ally.reachedBase) continue;
+            const d = distance(ally.x, ally.y, unit.x, unit.y);
+            if (d < SHIELD_AURA_RADIUS) {
+              ally.shieldTimer = SHIELD_AURA_TIMER;
+              ally.shieldFactor = SHIELD_AURA_FACTOR;
             }
           }
 
@@ -1018,10 +1048,11 @@ export class UnitSystem {
       if (other.reachedBase) continue;
       const d = distance(unit.x, unit.y, other.x, other.y);
       if (d <= radius) {
-        other.hp -= damage;
+        const dealt = computeDamage(unit.type, other, damage);
+        other.hp -= dealt;
         this.eventBus.emit('unit:damaged', {
           unitId: other.id,
-          damage,
+          damage: dealt,
           x: other.x,
           y: other.y,
         });

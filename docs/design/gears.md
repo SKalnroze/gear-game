@@ -155,7 +155,7 @@ Costs and unlocks for all 22 gear types.
 
 **Status.** Implemented. See [Units](units.md) for what each produces.
 
-> **⚠ DIVERGENCE** — There are six spawner gears but eleven unit types. `mixed`, the three elites and `wrench` have no spawner and cannot appear in a match (`UnitSystem.ts:1091`). See open question 2 in the [hub](../GAME_DESIGN.md#open-design-questions).
+> **⚠ DIVERGENCE** — There are six spawner gears but eleven unit types. `mixed`, the three elites and `wrench` have no spawner and cannot appear in a match (`UnitSystem.ts:1091`). See open question 1 in the [hub](../GAME_DESIGN.md#open-design-questions).
 
 ---
 

@@ -86,9 +86,7 @@ The intent of these exponents: bigger spawners make **fewer, tougher, slower, mo
 
 **Behaviour.** Moves at 70% speed, hits hard on a long cooldown, and shoves what it hits. On death it explodes for heavy area damage — **hitting both sides' units and gears indiscriminately**.
 
-**Status.** Implemented, with one gap.
-
-> **⚠ DIVERGENCE** — Its description promises "reduces incoming damage by 30%" (`unit.constants.ts:81`). No damage reduction exists. The only 0.7 factor on this unit is its movement speed.
+**Status.** Implemented. Every hit it takes — melee, charge, beam, shell, or its own death blast — is cut by 30% (`IRON_GUARD_DAMAGE_REDUCTION` in `unit.constants.ts`), applied through the same `computeDamage` helper every damage site in the game now goes through.
 
 ### Crystal Sentinel
 
@@ -96,9 +94,7 @@ The intent of these exponents: bigger spawners make **fewer, tougher, slower, mo
 
 **Behaviour.** Fires a hitscan beam at range that damages a small area and leaves a **cold zone** — a lingering field that slows enemy units and adds friction to enemy gears caught inside it, which is the only mechanic in the game that attacks the *machine's speed* rather than its health.
 
-**Status.** Implemented, with one gap.
-
-> **⚠ DIVERGENCE** — Its description promises it "shields nearby allies" (`unit.constants.ts:93`). There is no shielding code.
+**Status.** Implemented. Every beam tick (800ms), it grants a shield to allies within its aura radius — 20% off their next incoming hits for 1.2s, refreshed as long as the sentinel keeps firing.
 
 ### Aether Phantom
 
@@ -122,7 +118,7 @@ The intent of these exponents: bigger spawners make **fewer, tougher, slower, mo
 
 **Status.** Implemented, tested, and **unreachable** — no spawner gear produces any of them.
 
-> **⚠ DIVERGENCE** — Five of eleven unit types cannot occur in a match (`UnitSystem.ts:1091`). Their tech nodes are researchable and their stats are tuned. A retired function, `getChainUnitType()` (`unit.constants.ts:210`), still encodes an older rule where a chain's *composition* — motor + amplifier + converter — decided which unit its spawner emitted. That rule is a live candidate for making these units reachable again. See open question 2 in the [hub](../GAME_DESIGN.md#open-design-questions).
+> **⚠ DIVERGENCE** — Five of eleven unit types cannot occur in a match (`UnitSystem.ts:1091`). Their tech nodes are researchable and their stats are tuned. A retired function, `getChainUnitType()` (`unit.constants.ts:210`), still encodes an older rule where a chain's *composition* — motor + amplifier + converter — decided which unit its spawner emitted. That rule is a live candidate for making these units reachable again. See open question 1 in the [hub](../GAME_DESIGN.md#open-design-questions).
 
 ---
 
@@ -148,7 +144,7 @@ The intent of these exponents: bigger spawners make **fewer, tougher, slower, mo
 
 `·` means no modifier. Elites hit their favoured matchup harder than the base units do.
 
-> **⚠ DIVERGENCE** — The matrix is applied by `CombatSystem`, which excludes cavalry, artillery, crystal sentinel, aether phantom and both their elites from combat resolution entirely (`CombatSystem.ts:36`). Those types manage their own attacks in `UnitSystem` and never consult a multiplier. In practice the triangle applies only between infantry, mixed, elite infantry, iron guard and wrench — so the counter relationship the unit descriptions advertise, and that the AI's counter-picking logic assumes, is largely inactive. See open question 3 in the [hub](../GAME_DESIGN.md#open-design-questions).
+The matrix is applied everywhere damage is dealt, not just inside `CombatSystem`. A single `computeDamage(attackerType, defender, rawDamage)` helper (`unit.constants.ts`) is the one place the multiplier, Iron Guard's armor, and Crystal Sentinel's shield buff are resolved, and every damage-application site — `CombatSystem`'s melee pairs, `UnitSystem`'s cavalry charge, Iron Guard melee, Aether Phantom passthrough, Crystal Sentinel's beam and Iron Guard's death explosion, and `ProjectileSystem`'s artillery shells and crystal shards — calls it. A turret-fired shot has no unit type and so skips the counter lookup (turrets aren't part of the matrix), but still respects Iron Guard's armor and shields.
 
 ---
 
@@ -177,7 +173,7 @@ The AI plays the same game by the same rules: it places gears, researches, and l
 
 **Threat assessment** is percentage-based on base HP and shifts research priority — under pressure the AI reprices fortification above everything else.
 
-**Counter-picking.** It keeps a rolling 45-second window of the units it has seen you spawn and, if one type dominates, researches and builds the spawner that counters it. This is the feature most affected by divergence 4: the counter it picks may not actually counter anything.
+**Counter-picking.** It keeps a rolling 45-second window of the units it has seen you spawn and, if one type dominates, researches and builds the spawner that counters it. Now that the counter matrix applies to every unit's attacks, not just melee, the counter it picks actually counters what it saw.
 
 `AIEvaluator.ts`, `AIPlanner.ts` and the `AI_STRATEGIES` table described an earlier decision model, superseded by `AIChainPlanner`; confirmed zero references anywhere in `src/` or `tests/` and deleted.
 

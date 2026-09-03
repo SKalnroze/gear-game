@@ -1,8 +1,9 @@
-import { UnitState } from '../types/unit.types';
+import { UnitState, UnitType } from '../types/unit.types';
 import { EventBus } from './EventBus';
 import { World } from '../world/World';
 import { distance } from '../utils/MathUtils';
 import { gearRadius, crackLevelFor } from '../constants/gear.constants';
+import { computeDamage } from '../constants/unit.constants';
 
 let _nextProjId = 1;
 function nextProjId(): string {
@@ -13,6 +14,8 @@ export interface ProjectileState {
   id: string;
   owner: 'player' | 'ai';
   ownerUnitId: string;
+  /** The firing unit's type, for the counter matrix. Undefined for turret-fired shots -- turrets aren't in the matrix. */
+  attackerType?: UnitType;
   type: 'artillery_shell' | 'crystal_shard';
   x: number;
   y: number;
@@ -57,6 +60,7 @@ export class ProjectileSystem {
     const id = this.addProjectile({
       owner: unit.owner,
       ownerUnitId: unit.id,
+      attackerType: unit.type,
       type: 'artillery_shell',
       x: unit.x,
       y: unit.y,
@@ -97,6 +101,7 @@ export class ProjectileSystem {
     const id = this.addProjectile({
       owner: unit.owner,
       ownerUnitId: unit.id,
+      attackerType: unit.type,
       type: 'crystal_shard',
       x: unit.x,
       y: unit.y,
@@ -187,7 +192,7 @@ export class ProjectileSystem {
       const d = distance(unit.x, unit.y, cx, cy);
       if (d <= r) {
         const dmg = proj.damage * (1 - d / (r * 1.5)); // falloff
-        const actualDmg = Math.max(1, dmg);
+        const actualDmg = computeDamage(proj.attackerType, unit, Math.max(1, dmg));
         unit.hp -= actualDmg;
         eventBus.emit('unit:damaged', { unitId: unit.id, damage: actualDmg, x: unit.x, y: unit.y });
         if (unit.hp <= 0) {
@@ -261,11 +266,12 @@ export class ProjectileSystem {
       const d = distance(proj.x, proj.y, unit.x, unit.y);
       if (d < unit.size + 4) {
         // Hit this unit
-        unit.hp -= proj.damage;
+        const dealt = computeDamage(proj.attackerType, unit, proj.damage);
+        unit.hp -= dealt;
         unit.slowTimer = proj.slowDuration;
         unit.slowFactor = proj.slowFactor;
 
-        eventBus.emit('unit:damaged', { unitId: unit.id, damage: proj.damage, x: unit.x, y: unit.y });
+        eventBus.emit('unit:damaged', { unitId: unit.id, damage: dealt, x: unit.x, y: unit.y });
         if (unit.hp <= 0) {
           unit.hp = 0;
           eventBus.emit('unit:died', { unitId: unit.id, owner: unit.owner });

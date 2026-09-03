@@ -140,17 +140,7 @@ These words are used precisely throughout the design and the code. Where the cod
 
 Places where the implementation does not match the design intent stated in this document. Each is verified against the code, and each is a decision waiting to be made: **fix the code, or change the intent.**
 
-| # | Divergence | Where | Chapter |
-|---|---|---|---|
-| 21 | **Only units can damage a base.** Turrets, projectiles and gears cannot reach base HP at all, so there is no ranged pressure on the win condition. | `WinConditionSystem.ts:40` | [Balance](design/balance.md#the-win-condition) |
-
----
-
-## Open design questions
-
-Unresolved intent, recorded so the decisions are made deliberately rather than by default.
-
-1. **Is there a second way to win?** Divergence 21 makes the only route "walk a unit into a wall". A defensive machine with no spawners cannot win, only fail to lose.
+None currently open. The last entry (only units can damage a base) was reconsidered and kept as intentional design — see [Balance](design/balance.md#the-win-condition).
 
 ---
 

@@ -110,7 +110,7 @@ Rather than build a fifth resource to justify that language, the language was re
 | Damage amount | The unit's base damage stat, 3–16 |
 | End | First base to 0 |
 
-> **⚠ DIVERGENCE** — Nothing else can damage a base (`WinConditionSystem.ts:40`). Turrets, projectiles, spiked gears and explosions cannot. A machine with no spawners literally cannot win, only avoid losing, which makes pure-defence builds strategically void rather than merely weak.
+**Confirmed design, not a gap.** Nothing but a unit walking into the base can damage it (`WinConditionSystem.ts:40`) — turrets, projectiles, spiked gears and explosions all stop at 0 HP on the gear or unit they hit and never touch base HP. This was flagged and reconsidered: the alternative is any of those sources chipping the base directly, giving a pure-defence machine with no spawners a route to win. The kept design is deliberate — [pillar 1](../GAME_DESIGN.md#1-the-machine-is-the-strategy) is "the machine is the strategy," and production is the one thing every machine must eventually point at. A defensive build can refuse to lose; it cannot win without also building something that spawns.
 
 ---
 

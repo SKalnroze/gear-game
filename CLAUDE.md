@@ -1,5 +1,13 @@
 # CLAUDE.md
 
+## Source of truth
+
+**[docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) is the source of truth for what this game is and why.** Consult it before changing any mechanic, balance value, or piece of content, and update it in the same change.
+
+- Design **intent** is defined there. Numeric **values** are defined in `src/constants/` and mirrored into the docs by `npm run docs:gen` — after touching any constant, run it, or CI (`npm run docs:check`) will fail.
+- Tables between `<!-- BEGIN GENERATED -->` markers are machine-written. Never hand-edit them.
+- The document records **divergences**: known gaps between stated intent and actual behaviour. If you fix one, delete its marker and its row in the register in the same commit. If you find a new one, add it.
+
 ## Working Style
 
 When I ask for implementation, start coding immediately. Do not spend more than 1-2 messages planning unless I explicitly ask for a plan. If you need clarification, ask briefly then proceed with your best interpretation.

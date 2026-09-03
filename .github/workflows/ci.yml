@@ -19,6 +19,8 @@ jobs:
       # Covers src/ via tsconfig.json and tests/ + tools/ via tsconfig.test.json.
       - run: npm run typecheck
       - run: npm test
+      # Fails if a generated table in docs/ no longer matches src/constants/.
+      - run: npm run docs:check
 
   e2e:
     name: End-to-end

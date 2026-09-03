@@ -1,6 +1,6 @@
 # UI Guidelines — Gear Game
 
-Source of truth for building scenes and UI components.
+How to *build* scenes and UI components. For what the UI is *for* — the screens, the HUD, and the intent behind each — see **[GAME_DESIGN.md](GAME_DESIGN.md)** and its [views chapter](design/views.md), which are the source of truth for design decisions. This file is the implementation guide.
 
 ---
 

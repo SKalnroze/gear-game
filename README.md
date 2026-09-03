@@ -2,6 +2,8 @@
 
 A browser strategy game built with TypeScript + Phaser 3 + Vite. Place interconnected gears to generate power and resources, spawn combat units, and destroy the enemy base before they destroy yours.
 
+> **Designing or changing the game?** Start at **[docs/GAME_DESIGN.md](docs/GAME_DESIGN.md)** — the design document is the source of truth for intent, balance reasoning, and the gear/unit/tech reference. This README is the quick start.
+
 ## Quick Start
 
 ```bash

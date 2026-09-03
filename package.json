@@ -14,7 +14,9 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:update-snapshots": "playwright test --update-snapshots",
-    "shot": "node tools/shot.mjs"
+    "shot": "node tools/shot.mjs",
+    "docs:gen": "node tools/gen-design-docs.mjs",
+    "docs:check": "node tools/gen-design-docs.mjs --check"
   },
   "dependencies": {
     "phaser": "^3.90.0",

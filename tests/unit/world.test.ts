@@ -224,6 +224,30 @@ describe('World', () => {
     });
   });
 
+  // ── updateGear ────────────────────────────────────────────────────────────
+
+  describe('updateGear', () => {
+    it('updates a live gear normally', () => {
+      const g = makeGear('u1', 200, 700, 10, 'player');
+      world.placeGear(g);
+      const patched = { ...g, hp: 5 };
+      world.updateGear(patched);
+      expect(world.getGear('u1')?.hp).toBe(5);
+    });
+
+    it('is a no-op for a gear already removed -- a stale reference cannot resurrect it', () => {
+      const g = makeGear('u2', 200, 700, 10, 'player');
+      world.placeGear(g);
+      world.removeGear('u2');
+
+      // Simulate a caller still holding the old GearState object (e.g. a
+      // stale spatial-grid snapshot from earlier in the same frame).
+      world.updateGear(g);
+
+      expect(world.getGear('u2')).toBeUndefined();
+    });
+  });
+
   // ── clear ─────────────────────────────────────────────────────────────────
 
   describe('clear', () => {

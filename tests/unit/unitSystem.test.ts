@@ -6,6 +6,7 @@ import type { UnitState } from '../../src/types/unit.types';
 import { PLAYER_BASE_X, AI_BASE_X } from '../../src/constants/world.constants';
 import { computeChargeDamage } from '../../src/systems/unit.utils';
 import { IRON_GUARD_DAMAGE_REDUCTION } from '../../src/constants/unit.constants';
+import type { GearState } from '../../src/types/gear.types';
 
 interface Emitted { event: string; payload: any }
 
@@ -363,6 +364,45 @@ describe('UnitSystem', () => {
       r.bus.emit('gear:full_rotation', { gearId: 'spawner1', owner: 'player', rotationCount: 1 });
 
       expect(r.spawned()[0].type).toBe('infantry');
+    });
+  });
+
+  describe('melee gear-targeting ignores dead/burnt-out gears', () => {
+    function makeGear(id: string, x: number, y: number, opts: Partial<GearState>): GearState {
+      return {
+        id, definitionKey: 'motor', type: 'motor', teeth: 10, x, y, owner: 'ai',
+        angularVelocity: 0, currentAngle: 0, accumulatedAngle: 0,
+        frictionLoad: 0, torqueOutput: 0, isSpinning: false, isBurntOut: false,
+        hp: 100, maxHp: 100, isJammed: false, crackLevel: 0, jamStress: 0,
+        ...opts,
+      } as GearState;
+    }
+
+    // Infantry only redirects toward a gear when the gear isn't directly
+    // ahead on the same y -- so a dead/burnt gear correctly ignored leaves
+    // vy at 0 (default forward march), while chasing it would set vy != 0.
+    function chasesGear(gearOpts: Partial<GearState>): boolean {
+      const r = makeRig();
+      r.system.spawnSingleFromGear('player', 'infantry', 10);
+      const unit = [...r.system.getAllUnits().values()][0];
+      unit.x = 500;
+      unit.y = 700;
+      r.world.placeGear(makeGear('g1', 600, 900, gearOpts));
+
+      r.system.update(0.1, 0, noProjectiles);
+      return unit.vy !== 0;
+    }
+
+    it('does chase a live, non-burnt gear (sanity check the test setup)', () => {
+      expect(chasesGear({})).toBe(true);
+    });
+
+    it('never chases a gear at 0 hp', () => {
+      expect(chasesGear({ hp: 0 })).toBe(false);
+    });
+
+    it('never chases a burnt-out gear', () => {
+      expect(chasesGear({ isBurntOut: true })).toBe(false);
     });
   });
 

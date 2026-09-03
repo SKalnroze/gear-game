@@ -410,6 +410,7 @@ export class UnitSystem {
     // Also find nearest reachable enemy gear (must be in lane for melee)
     for (const [, gear] of allGears) {
       if (gear.owner === unit.owner) continue;
+      if (gear.hp <= 0 || gear.isBurntOut) continue; // never chase a dead or burnt-out gear
       if (!isInFront(unit, gear.x, this.playerRight)) continue; // don't chase gears behind
       if (!gearInLane(gear.y)) continue; // melee can't reach gears outside lane
       const d2 = sqrDist(unit.x, unit.y, gear.x, gear.y);
@@ -705,6 +706,7 @@ export class UnitSystem {
 
     for (const [, gear] of allGears) {
       if (gear.owner === unit.owner) continue;
+      if (gear.hp <= 0 || gear.isBurntOut) continue; // never chase a dead or burnt-out gear
       if (!isInFront(unit, gear.x, playerRight)) continue;
       if (!gearInLane(gear.y)) continue;
       const d2 = sqrDist(unit.x, unit.y, gear.x, gear.y);

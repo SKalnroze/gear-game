@@ -95,6 +95,13 @@ export class World {
   }
 
   updateGear(gear: GearState): void {
+    // A no-op for a gear that's already been removed -- without this guard, a
+    // stale GearState reference held by a caller (e.g. a spatial-grid snapshot
+    // from earlier in the same frame, after another unit already destroyed
+    // this gear) would resurrect it into `gears` with no meshGraph entry, no
+    // owner-index entry, and no visual sprite: a permanent, untargetable-but-
+    // still-targeted zombie.
+    if (!this.gears.has(gear.id)) return;
     this.gears.set(gear.id, gear);
   }
 

@@ -72,6 +72,12 @@ export class GearUnitInteractionSystem {
       const candidates = this.gearGrid.query(unit.x, unit.y, queryRadius);
 
       for (const gear of candidates) {
+        // The grid only rebuilds once per update() call (gated by gridDirty),
+        // so within this same call a candidate can be a gear another unit
+        // already destroyed a moment ago in this same loop. Skip it rather
+        // than run contact handling against a dead reference.
+        if (gear.hp <= 0) continue;
+
         const gr = gearRadius(gear.teeth);
         const d = distance(unit.x, unit.y, gear.x, gear.y);
         const contactDist = unitRadius + gr;

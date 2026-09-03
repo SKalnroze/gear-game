@@ -40,6 +40,7 @@ export interface ChainStats {
   armoredCount: number;
   overclockCount: number;
   turretCount: number;     // crossbow_turret + artillery_turret combined
+  minelayerCount: number;
   spawnerTypes: GearType[];
   estimatedOutput: number;
 }
@@ -233,7 +234,7 @@ export class AIChainPlanner {
 
     for (const t of teethCandidates) {
       if (!economySystem.canAffordGold(owner, placementCost(t))) continue;
-      const pos = AIChainPlanner.findBestSlot(plan, t, gearType, owner, world, meshGraph);
+      const pos = AIChainPlanner.findBestSlot(plan, t, gearType, owner, world, meshGraph, profile);
       if (pos) return { gearType, teeth: t, x: pos.x, y: pos.y };
     }
     return null;
@@ -272,6 +273,7 @@ export class AIChainPlanner {
       if (plan.stats.armoredCount === 0 && aiResearched.has('armored_gears')) return 'armored';
       if (plan.stats.spikedCount === 0 && aiResearched.has('spiked_gears')) return 'spiked';
       if (plan.stats.turretCount === 0 && aiResearched.has('crossbow_turret_tech')) return 'crossbow_turret';
+      if (plan.stats.minelayerCount === 0 && aiResearched.has('unlock_minelayer')) return 'minelayer';
       if (plan.stats.healerCount === 0 && aiResearched.has('healer_gear_tech')) return 'healer';
       if (plan.stats.turretCount < 2 && aiResearched.has('artillery_turret_tech')) return 'artillery_turret';
       // Add more motors only when defensive gears are present and motor cap not reached
@@ -297,6 +299,9 @@ export class AIChainPlanner {
       // Crystal chain if researched
       if (aiResearched.has('unlock_crystal_mining') && plan.stats.minerCount < 5) return 'crystal_miner';
       if (aiResearched.has('crystal_to_gold') && plan.stats.converterCount < 3) return 'crystal_converter';
+      // Aether chain if researched -- best rate of the three, so worth the depth
+      if (aiResearched.has('unlock_aether_mining') && plan.stats.minerCount < 7) return 'aether_miner';
+      if (aiResearched.has('aether_to_gold') && plan.stats.converterCount < 4) return 'aether_converter';
       // Extra motors drive higher throughput once miners are running
       if (plan.stats.minerCount > 0 && plan.stats.motorCount < 3) return 'motor';
       if (plan.stats.minerCount > 0) return 'motor';
@@ -426,9 +431,22 @@ export class AIChainPlanner {
   }
 
   /**
-   * Find the best adjacent slot.
-   * Scans 16 positions (22.5° apart) around each chain gear; falls back with a
-   * slight inward offset to handle floating-point edge cases.
+   * Find a slot adjacent to the chain.
+   *
+   * Scans positions around each chain gear at a jittered angle offset (not a
+   * fixed grid of angles), so two AI games don't converge on the same-looking
+   * rosette every time. Difficulty controls both how thorough the search is
+   * and how good the AI is at applying its own jam-avoidance check:
+   *   - hard:   24 candidates/gear, tight jitter, always the best-scoring
+   *             valid slot, never a rotation conflict.
+   *   - medium: 16 candidates/gear, moderate jitter, always best-scoring,
+   *             never a rotation conflict.
+   *   - easy:   8 candidates/gear, wide jitter, occasionally settles for a
+   *             worse-than-best valid slot (a plausible but suboptimal human
+   *             choice), and has a small chance of skipping the rotation-
+   *             conflict check entirely -- a real mis-mesh, seeded and
+   *             consequential (it can jam), not just an uglier gear.
+   * Falls back with a slight inward offset to handle floating-point edge cases.
    */
   private static findBestSlot(
     plan: AIChainPlan,
@@ -437,43 +455,50 @@ export class AIChainPlanner {
     owner: 'player' | 'ai',
     world: World,
     meshGraph: GearMeshGraph,
+    profile: AIStrategyProfile,
   ): { x: number; y: number } | null {
     const ownerGears = world.getGearsOwnedBy(owner);
     const parities = AIChainPlanner.computeRotationParities(ownerGears, meshGraph);
     const newRadius = gearRadius(teeth);
-    let bestScore = -Infinity;
-    let bestPos: { x: number; y: number } | null = null;
 
+    const sampleCount = profile === 'hard' ? 24 : profile === 'medium' ? 16 : 8;
+    const jitterRad = profile === 'hard' ? 0.03 : profile === 'medium' ? 0.10 : 0.28;
+    // Easy: rarely skip the jam check -- a genuine mis-mesh mistake, not just a worse score.
+    const skipsJamCheck = profile === 'easy' && Math.random() < 0.06;
+
+    const candidates: Array<{ x: number; y: number; score: number }> = [];
     const tryPos = (cx: number, cy: number) => {
       if (!world.canPlace(cx, cy, teeth, owner)) return;
-      if (AIChainPlanner.wouldCauseRotationConflict(cx, cy, teeth, ownerGears, parities)) return;
+      if (!skipsJamCheck && AIChainPlanner.wouldCauseRotationConflict(cx, cy, teeth, ownerGears, parities)) return;
       const s = AIChainPlanner.scorePlacement(cx, cy, teeth, gearType, plan, world, meshGraph, owner);
-      if (s > bestScore) { bestScore = s; bestPos = { x: cx, y: cy }; }
+      candidates.push({ x: cx, y: cy, score: s });
     };
 
-    for (const gearId of plan.gearIds) {
-      const gear = world.getGear(gearId);
-      if (!gear) continue;
-      const dist = gearRadius(gear.teeth) + newRadius;
-      for (let a = 0; a < 16; a++) {
-        const angle = (a / 16) * Math.PI * 2;
-        tryPos(gear.x + Math.cos(angle) * dist, gear.y + Math.sin(angle) * dist);
-      }
-    }
-
-    if (!bestPos) {
+    const scan = (distMult: number) => {
       for (const gearId of plan.gearIds) {
         const gear = world.getGear(gearId);
         if (!gear) continue;
-        const dist = (gearRadius(gear.teeth) + newRadius) * 0.97;
-        for (let a = 0; a < 16; a++) {
-          const angle = (a / 16) * Math.PI * 2;
+        const dist = (gearRadius(gear.teeth) + newRadius) * distMult;
+        for (let a = 0; a < sampleCount; a++) {
+          const angle = (a / sampleCount) * Math.PI * 2 + (Math.random() * 2 - 1) * jitterRad;
           tryPos(gear.x + Math.cos(angle) * dist, gear.y + Math.sin(angle) * dist);
         }
       }
-    }
+    };
 
-    return bestPos;
+    scan(1);
+    if (candidates.length === 0) scan(0.97);
+    if (candidates.length === 0) return null;
+
+    candidates.sort((a, b) => b.score - a.score);
+    // Easy settles for a worse-than-best valid slot about a third of the
+    // time, choosing among the next few candidates instead of always the
+    // single best -- a plausible, not-quite-optimal human choice.
+    if (profile === 'easy' && candidates.length > 1 && Math.random() < 0.35) {
+      const pick = candidates[1 + Math.floor(Math.random() * Math.min(3, candidates.length - 1))];
+      return { x: pick.x, y: pick.y };
+    }
+    return { x: candidates[0].x, y: candidates[0].y };
   }
 
   /**
@@ -554,7 +579,7 @@ export class AIChainPlanner {
   static computeStats(gearIds: string[], world: World): ChainStats {
     let motorCount = 0, amplifierCount = 0, capacitorCount = 0, researcherCount = 0;
     let minerCount = 0, converterCount = 0;
-    let healerCount = 0, spikedCount = 0, armoredCount = 0, overclockCount = 0, turretCount = 0;
+    let healerCount = 0, spikedCount = 0, armoredCount = 0, overclockCount = 0, turretCount = 0, minelayerCount = 0;
     const spawnerTypes: GearType[] = [];
     let motorOutputSum = 0;
 
@@ -570,6 +595,7 @@ export class AIChainPlanner {
       else if (g.type === 'armored')                                        { armoredCount++; }
       else if (g.type === 'overclock')                                      { overclockCount++; }
       else if (g.type === 'crossbow_turret' || g.type === 'artillery_turret') { turretCount++; }
+      else if (g.type === 'minelayer')                                      { minelayerCount++; }
       else if (isMiner(g.type))                                             { minerCount++; }
       else if (isConverter(g.type))                                         { converterCount++; }
       else if (isSpawner(g.type))                                           { spawnerTypes.push(g.type); }
@@ -577,7 +603,7 @@ export class AIChainPlanner {
 
     return {
       motorCount, amplifierCount, capacitorCount, researcherCount,
-      minerCount, converterCount, healerCount, spikedCount, armoredCount, overclockCount, turretCount,
+      minerCount, converterCount, healerCount, spikedCount, armoredCount, overclockCount, turretCount, minelayerCount,
       spawnerTypes,
       estimatedOutput: motorOutputSum * Math.pow(AMPLIFIER_CHAIN_MULTIPLIER, amplifierCount),
     };

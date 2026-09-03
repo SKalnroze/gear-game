@@ -1,6 +1,5 @@
 // Tick intervals (ms)
 export const GOLD_TICK_INTERVAL = 1000;
-export const AI_DECISION_INTERVAL = 2000;
 export const COMBAT_TICK_INTERVAL = 250;
 export const OVERCLOCK_DURATION = 10000;  // 10 seconds
 export const OVERCLOCK_BURNOUT_DURATION = 5000;  // 5 seconds disabled after burnout
@@ -58,6 +57,22 @@ export const WRENCH_FRICTION_VALUE = 30;   // matches unit.constants wrench fric
 
 // AI timing
 export const AI_INITIAL_DECISION_DELAY = 2000;  // ms before first AI action
+/** How often the AI re-evaluates the board. Actual action rate is throttled by AI_APM below, not this. */
+export const AI_POLL_INTERVAL = 500;
+/**
+ * Actions-per-minute budget per difficulty -- the AI's actual difficulty axis.
+ * Every executed action (place/sell/reposition/research/ability) spends 1 point;
+ * the pool refills continuously at apm/60000 points/ms, capped at AI_ACTION_BUDGET_CAPACITY.
+ * Replaces the old fixed 2s tick + easy's 55%-random-skip, which "faked" incompetence
+ * via a coin-flip instead of a real constraint.
+ */
+export const AI_APM: Record<'easy' | 'medium' | 'hard', number> = {
+  easy: 14,
+  medium: 26,
+  hard: 42,
+};
+/** Burst allowance -- how many banked actions the AI can spend in a row once accumulated. */
+export const AI_ACTION_BUDGET_CAPACITY = 4;
 
 // Gear repositioning
 export const REPOSITION_COOLDOWN_MS = 3000;  // 3s cooldown after moving a gear

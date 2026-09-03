@@ -30,6 +30,7 @@ export class TechSystem {
   private capacitorBurstBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
 
   private abilitySystem: AbilitySystem | null = null;
+  private aiAbilitySystem: AbilitySystem | null = null;
   private clock: GameClock;
 
   private readonly onGearResearchBoost = ({ owner, amount }: { owner: 'player' | 'ai'; amount: number }) => {
@@ -49,6 +50,7 @@ export class TechSystem {
     aiTech: TechState,
     clock: GameClock,
     abilitySystem?: AbilitySystem,
+    aiAbilitySystem?: AbilitySystem,
   ) {
     this.eventBus = eventBus;
     this.economySystem = economySystem;
@@ -59,12 +61,17 @@ export class TechSystem {
     this.aiTech = aiTech;
     this.clock = clock;
     this.abilitySystem = abilitySystem ?? null;
+    this.aiAbilitySystem = aiAbilitySystem ?? null;
 
     this.eventBus.on('gear:research_boost', this.onGearResearchBoost);
   }
 
   destroy(): void {
     this.eventBus.off('gear:research_boost', this.onGearResearchBoost);
+  }
+
+  setAiAbilitySystem(abilitySystem: AbilitySystem): void {
+    this.aiAbilitySystem = abilitySystem;
   }
 
   canResearch(nodeId: TechNodeId, owner: 'player' | 'ai'): boolean {
@@ -233,11 +240,11 @@ export class TechSystem {
         this.winSystem.addMaxHp(owner, effect.value);
         break;
 
-      case 'enable_ability':
-        if (owner === 'player' && this.abilitySystem) {
-          this.abilitySystem.unlock(effect.abilityId as AbilityId);
-        }
+      case 'enable_ability': {
+        const target = owner === 'player' ? this.abilitySystem : this.aiAbilitySystem;
+        target?.unlock(effect.abilityId as AbilityId);
         break;
+      }
 
       case 'overclock_duration_bonus': {
         const bonus = (this.overclockDurationBonus[owner] += effect.value);

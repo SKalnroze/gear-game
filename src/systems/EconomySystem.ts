@@ -284,6 +284,11 @@ export class EconomySystem {
     else this.aiGoldBonusPerSec += bonusPerSec;
   }
 
+  /** Passive gold/sec this side currently earns (base rate + researched/gear bonuses). */
+  getGoldPerSec(owner: 'player' | 'ai'): number {
+    return BASE_GOLD_PER_SEC + (owner === 'player' ? this.playerGoldBonusPerSec : this.aiGoldBonusPerSec);
+  }
+
   destroy(): void {
     this.eventBus.off('gear:full_rotation', this.onGearFullRotation);
     this.eventBus.off('economy:spend_gold', this.onEconomySpendGold);

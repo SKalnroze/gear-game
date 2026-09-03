@@ -33,11 +33,11 @@ function makeEconomyStub() {
   return { stub: stub as unknown as EconomySystem, earned };
 }
 
-function makeRig() {
+function makeRig(owner: 'player' | 'ai' = 'player') {
   const { bus, emitted } = makeBus();
   const { stub, earned } = makeEconomyStub();
   const clock = new GameClock();
-  const system = new AbilitySystem(bus, stub, clock);
+  const system = new AbilitySystem(bus, stub, clock, owner);
   return { system, clock, emitted, earned, events: (name: string) => emitted.filter(e => e.event === name) };
 }
 
@@ -70,6 +70,17 @@ describe('AbilitySystem', () => {
       expect(r.earned.ai).toBe(0);
       expect(r.events('ability:activated')).toHaveLength(1);
       expect(r.events('ability:activated')[0].payload.id).toBe('power_surge');
+    });
+
+    it('an "ai"-owned instance credits gold to "ai", not "player" -- each side has its own real instance', () => {
+      const r = makeRig('ai');
+      r.system.unlock('power_surge');
+
+      r.system.activate('power_surge');
+
+      expect(r.earned.ai).toBe(30);
+      expect(r.earned.player).toBe(0);
+      expect(r.events('ability:activated')[0].payload.owner).toBe('ai');
     });
 
     it('a passive ability cannot be activated at all', () => {

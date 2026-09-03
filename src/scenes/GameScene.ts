@@ -81,6 +81,7 @@ export class GameScene extends Phaser.Scene {
   private isSpectate: boolean = false;
 
   private abilitySystem!: AbilitySystem;
+  private aiAbilitySystem!: AbilitySystem;
   private soundManager!: GameSoundManager;
   private particleManager!: ParticleManager;
   private floatingTextManager!: FloatingTextManager;
@@ -232,13 +233,19 @@ export class GameScene extends Phaser.Scene {
     this.combatSystem = new CombatSystem(eventBus, this.unitSystem);
     this.winSystem = new WinConditionSystem(eventBus, isPractice);
     this.gearUnitInteraction = new GearUnitInteractionSystem(this.world, eventBus);
-    this.abilitySystem = new AbilitySystem(eventBus, this.economySystem, this.gameClock);
+    this.abilitySystem = new AbilitySystem(eventBus, this.economySystem, this.gameClock, 'player');
     this.rotationPhysics.setAbilitySystem(this.abilitySystem);
+    // The 'ai' owner needs its own real AbilitySystem too -- in spectate mode
+    // the 'player' owner is also AI-controlled, so this is genuinely
+    // per-owner, not per-human. Either AIController may end up using either
+    // instance depending on which owner it's assigned below.
+    this.aiAbilitySystem = new AbilitySystem(eventBus, this.economySystem, this.gameClock, 'ai');
+    this.rotationPhysics.setAiAbilitySystem(this.aiAbilitySystem);
 
     this.techSystem = new TechSystem(
       eventBus, this.economySystem, this.unitSystem,
       this.rotationPhysics, this.winSystem, this.playerTech, this.aiTech,
-      this.gameClock, this.abilitySystem,
+      this.gameClock, this.abilitySystem, this.aiAbilitySystem,
     );
     this.unitSystem.setTechSystem(this.techSystem);
 
@@ -250,6 +257,7 @@ export class GameScene extends Phaser.Scene {
         this.rightAIDifficulty, this.rightAIPersonality, this.techSystem, 'ai',
         this.gameClock,
       );
+      this.aiController.setAbilitySystem(this.aiAbilitySystem);
     } else {
       this.aiController = null;
     }
@@ -261,6 +269,7 @@ export class GameScene extends Phaser.Scene {
         this.leftAIDifficulty, this.leftAIPersonality, this.techSystem, 'player',
         this.gameClock,
       );
+      this.playerAIController.setAbilitySystem(this.abilitySystem);
     } else {
       this.playerAIController = null;
     }
@@ -606,8 +615,8 @@ export class GameScene extends Phaser.Scene {
 
     eventBus.on('tech:research_complete', () => { /* tracked by GameStatsTracker */ });
 
-    eventBus.on('ability:activated', ({ id }) => {
-      if (id === 'power_surge') {
+    eventBus.on('ability:activated', ({ id, owner }) => {
+      if (id === 'power_surge' && owner === this._playerOwner()) {
         this.cameras.main.shake(100, 0.01);
       }
     });

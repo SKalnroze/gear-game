@@ -145,8 +145,8 @@ export class GameSoundManager {
     });
 
     // ── Abilities ────────────────────────────────────────────────────────
-    bus.on('ability:activated', ({ id }) => {
-      if (!this._ok) return;
+    bus.on('ability:activated', ({ id, owner }) => {
+      if (!this._ok || owner !== 'player') return;
       soundManager.playAbility(id);
     });
   }

@@ -38,7 +38,8 @@ export class ToastManager {
       this.push(`✓ ${nodeId} researched`, '#44ffaa', 0x44ffaa);
     });
 
-    this.eventBus.on('ability:activated', ({ id }) => {
+    this.eventBus.on('ability:activated', ({ id, owner }) => {
+      if (owner !== 'player') return;
       this.push(`⚡ ${id} activated`, '#ffdd44', 0xffdd44);
     });
 

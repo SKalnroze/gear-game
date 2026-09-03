@@ -61,8 +61,11 @@ export class RotationPhysicsSystem {
   /** Extra torque multiplier on chains of 4+ gears, from Combo Chain Bonus, per side. */
   private chainComboBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
 
-  // Optional ability system ref (set after construction)
+  // Optional ability system refs (set after construction), one per side --
+  // each side's overclock gears check that side's own AbilitySystem, not a
+  // single player-only instance.
   private abilitySystem: { isUnlocked: (id: 'power_surge' | 'counter_intel' | 'overclock_no_burnout') => boolean } | null = null;
+  private aiAbilitySystem: { isUnlocked: (id: 'power_surge' | 'counter_intel' | 'overclock_no_burnout') => boolean } | null = null;
 
   // Optional economy ref (set after construction) -- capacitor bursts credit
   // gold directly through it, once it is wired up.
@@ -559,7 +562,8 @@ export class RotationPhysicsSystem {
       // Overclock Mastery: refresh the window instead of burning out. Skipping
       // the burnout alone would leave the gear alive but past its window, so
       // it would stop boosting — the opposite of what the ability promises.
-      if (this.abilitySystem?.isUnlocked('overclock_no_burnout') && gear.owner === 'player') {
+      const ownerAbilitySystem = gear.owner === 'player' ? this.abilitySystem : this.aiAbilitySystem;
+      if (ownerAbilitySystem?.isUnlocked('overclock_no_burnout')) {
         this.startOverclock(gear, now);
         continue;
       }
@@ -585,6 +589,10 @@ export class RotationPhysicsSystem {
 
   setAbilitySystem(abilitySystem: { isUnlocked: (id: 'power_surge' | 'counter_intel' | 'overclock_no_burnout') => boolean }): void {
     this.abilitySystem = abilitySystem;
+  }
+
+  setAiAbilitySystem(abilitySystem: { isUnlocked: (id: 'power_surge' | 'counter_intel' | 'overclock_no_burnout') => boolean }): void {
+    this.aiAbilitySystem = abilitySystem;
   }
 
   setEconomySystem(economySystem: EconomySystem): void {

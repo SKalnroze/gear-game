@@ -7,18 +7,23 @@ import { GameClock, NEVER } from './GameClock';
 const GOLD_SURGE_AMOUNT = 30;
 
 /**
- * Manages player abilities: unlocking, cooldowns, and activation effects.
+ * Manages one side's abilities: unlocking, cooldowns, and activation effects.
+ * Each side (player and AI) owns its own instance -- the AI activates
+ * abilities through the exact same class and gold/cooldown rules a human's
+ * UI click does, not a parallel tracker.
  */
 export class AbilitySystem {
   private eventBus: EventBus;
   private economySystem: EconomySystem;
   private abilities: Map<AbilityId, AbilityState> = new Map();
   private clock: GameClock;
+  private readonly owner: 'player' | 'ai';
 
-  constructor(eventBus: EventBus, economySystem: EconomySystem, clock: GameClock) {
+  constructor(eventBus: EventBus, economySystem: EconomySystem, clock: GameClock, owner: 'player' | 'ai' = 'player') {
     this.eventBus = eventBus;
     this.economySystem = economySystem;
     this.clock = clock;
+    this.owner = owner;
 
     // Initialise all abilities as locked
     const ids: AbilityId[] = ['power_surge', 'counter_intel', 'overclock_no_burnout'];
@@ -64,11 +69,11 @@ export class AbilitySystem {
 
     switch (id) {
       case 'power_surge':
-        this.economySystem.earnGold('player', GOLD_SURGE_AMOUNT);
+        this.economySystem.earnGold(this.owner, GOLD_SURGE_AMOUNT);
         break;
     }
 
-    this.eventBus.emit('ability:activated', { id });
+    this.eventBus.emit('ability:activated', { id, owner: this.owner });
     return true;
   }
 

@@ -13,7 +13,10 @@ import { AIChainPlanner, AIPlacementContext } from './AIChainPlanner';
 import type { AIChainPlan, ChainRole } from './AIChainPlanner';
 import { AIResearchPlan } from './AIResearchPlan';
 import { AIAbilityContext, AIAbilityHandler, AI_ABILITY_HANDLERS } from './AIAbilityEvaluator';
-import { AI_DECISION_INTERVAL, gearPlacementCost } from '../constants/balance.constants';
+import { AIActionBudget } from './AIActionBudget';
+import { computePosture, roleCapFromPosture, StrategicPosture } from './AIStrategicPlanner';
+import { AbilitySystem } from '../systems/AbilitySystem';
+import { AI_POLL_INTERVAL, AI_APM, AI_ACTION_BUDGET_CAPACITY, gearPlacementCost } from '../constants/balance.constants';
 import { gearRadius } from '../constants/gear.constants';
 import { TECH_NODES } from '../constants/tech.constants';
 import { randomChoice } from '../utils/MathUtils';
@@ -56,7 +59,6 @@ export class AIController {
   readonly owner: 'player' | 'ai';
   private strategyProfile: AIStrategyProfile;
   private personality: AIPersonality;
-  private lastDecisionAt: number = 0;
   private tickNumber: number = 0;
 
   private aiResearched: Set<string> = new Set();
@@ -65,9 +67,25 @@ export class AIController {
   // Chain planning
   private chainPlans: AIChainPlan[] = [];
   private researchPlan: AIResearchPlan = { prioritizedQueue: [], currentGoal: '', lastRebuildAt: 0 };
-  private maxChains: number;
   // Role to assign to the next newly discovered chain plan (set before bootstrapping)
   private pendingNextRole: ChainRole = 'combat';
+
+  // ─── Strategic layer ────────────────────────────────────────────────────────
+  // The AI's actions-per-minute pool -- its actual difficulty axis (see
+  // docs/design/units.md#the-ai-opponent). Every executed action spends
+  // from it; it refills continuously at a difficulty-set rate.
+  private actionBudget: AIActionBudget;
+  private lastBudgetUpdateAt: number = 0;
+  private lastPollAt: number = 0;
+  // The strategic posture -- economy/defense/offense weights + chain
+  // capacity, recomputed periodically from the match state. Tactical
+  // decisions below (chain role, chain count) read this instead of a fixed
+  // number baked in at match start.
+  private posture: StrategicPosture = { economy: 1 / 3, defense: 1 / 3, offense: 1 / 3, capacity: 2 };
+  private lastPostureAt: number = 0;
+  private static readonly POSTURE_REBUILD_INTERVAL = 6000;
+  /** This side's own AbilitySystem instance -- same class the player's UI activates, not a parallel tracker. */
+  private abilitySystem: AbilitySystem | null = null;
 
   // Opponent observation: rolling 45-second window of enemy unit spawns
   private readonly opponentUnitWindow: Array<{ type: UnitType; at: number }> = [];
@@ -90,8 +108,6 @@ export class AIController {
 
   /** Expandable ability handler registry */
   private readonly abilityHandlers: AIAbilityHandler[] = [...AI_ABILITY_HANDLERS];
-  /** Per-handler last-used timestamp (ms) */
-  private readonly abilityCooldowns: Map<string, number> = new Map();
 
   // ─── Event handlers ────────────────────────────────────────────────────────
 
@@ -158,7 +174,10 @@ export class AIController {
     this.techSystem = techSystem ?? null;
     this.owner = owner;
 
-    this.maxChains = strategyProfile === 'easy' ? 2 : strategyProfile === 'medium' ? 3 : 5;
+    this.actionBudget = new AIActionBudget(
+      AI_APM[strategyProfile === 'practice' ? 'hard' : strategyProfile],
+      AI_ACTION_BUDGET_CAPACITY,
+    );
 
     // Auto-enable debug logging in practice mode (no real decisions — safe to be verbose)
     if (strategyProfile === 'practice') this.debugEnabled = true;
@@ -170,9 +189,14 @@ export class AIController {
 
   // ─── Public API ───────────────────────────────────────────────────────────
 
+  /** Give this controller its own AbilitySystem instance -- same class the player's UI activates. */
+  setAbilitySystem(abilitySystem: AbilitySystem): void {
+    this.abilitySystem = abilitySystem;
+  }
+
   setStrategy(profile: AIStrategyProfile): void {
     this.strategyProfile = profile;
-    this.maxChains = profile === 'easy' ? 2 : profile === 'medium' ? 3 : 5;
+    this.actionBudget.setApm(AI_APM[profile === 'practice' ? 'hard' : profile]);
     this.researchPlan.lastRebuildAt = 0;
     this.eventBus.emit('ai:strategy_changed', { strategy: profile });
   }
@@ -217,9 +241,7 @@ export class AIController {
       .filter(h => h.requiredTech.every(t => this.aiResearched.has(t)))
       .map(h => ({
         id: h.abilityId,
-        cooldownRemaining: Math.max(
-          0, h.cooldownMs - (this.clock.now - (this.abilityCooldowns.get(h.abilityId) ?? NEVER)),
-        ),
+        cooldownRemaining: this.abilitySystem?.getCooldownRemaining(h.abilityId as Parameters<AbilitySystem['getCooldownRemaining']>[0]) ?? 0,
       }));
 
     // Determine focus chain: earliest non-full phase in priority order
@@ -268,9 +290,14 @@ export class AIController {
   }
 
   update(now: number): void {
-    if (now - this.lastDecisionAt < AI_DECISION_INTERVAL) return;
-    this.lastDecisionAt = now;
+    if (now - this.lastPollAt < AI_POLL_INTERVAL) return;
+    const deltaMs = this.lastBudgetUpdateAt > 0 ? now - this.lastBudgetUpdateAt : 0;
+    this.lastBudgetUpdateAt = now;
+    this.lastPollAt = now;
+    this.actionBudget.regen(deltaMs);
     this.tickNumber++;
+
+    this.maybeRebuildPosture(now);
 
     if (this.strategyProfile === 'practice') {
       // Practice mode: analyse world state for the debug overlay but don't execute.
@@ -284,13 +311,38 @@ export class AIController {
       return;
     }
 
-    const decision = this.makeDecision();
-    this.eventBus.emit('ai:decision_made', { decision });
-    this.executeDecision(decision);
+    // Every executed action spends from the action budget -- how much the AI
+    // can actually get done this poll is bounded by APM, not by whether it
+    // "noticed" a good move exists. Idle decisions are free (there was
+    // nothing to spend on).
+    if (this.actionBudget.canAfford(1)) {
+      const decision = this.makeDecision();
+      this.eventBus.emit('ai:decision_made', { decision });
+      this.executeDecision(decision);
+      if (decision.type !== 'idle') this.actionBudget.spend(1);
+    }
 
     this.maybeRebuildResearchPlan();
-    this.tryAutoResearch();
-    this.tryUseAbilities(now);
+    if (this.actionBudget.canAfford(1) && this.tryAutoResearch()) this.actionBudget.spend(1);
+    if (this.actionBudget.canAfford(1) && this.tryUseAbilities(now)) this.actionBudget.spend(1);
+  }
+
+  /** Recompute the strategic posture every POSTURE_REBUILD_INTERVAL from a read of the current match. */
+  private maybeRebuildPosture(now: number): void {
+    if (this.strategyProfile === 'practice') return;
+    if (now - this.lastPostureAt < AIController.POSTURE_REBUILD_INTERVAL) return;
+    this.lastPostureAt = now;
+    const prevCapacity = this.posture.capacity;
+    this.posture = computePosture({
+      personality: this.personality,
+      threat: this.assessThreatLevel(),
+      goldPerSec: this.economySystem.getGoldPerSec(this.owner),
+      matchElapsedMs: this.clock.now - this.startTime,
+      profile: this.strategyProfile,
+    });
+    if (this.posture.capacity !== prevCapacity) {
+      this.log(`POSTURE: capacity ${prevCapacity} → ${this.posture.capacity}  eco=${(this.posture.economy * 100).toFixed(0)}% def=${(this.posture.defense * 100).toFixed(0)}% off=${(this.posture.offense * 100).toFixed(0)}%`);
+    }
   }
 
   destroy(): void {
@@ -428,7 +480,14 @@ export class AIController {
    *   1. Implement AIAbilityHandler in AIAbilityEvaluator.ts
    *   2. Push it into AI_ABILITY_HANDLERS (or call registerAbilityHandler())
    */
-  private tryUseAbilities(now: number): void {
+  /**
+   * Evaluate ability handlers and fire the first one ready to go. Gated on
+   * this side's own AbilitySystem -- the same unlock/cooldown state a
+   * human's ACTIONS-tab click reads, not a parallel tracker. Returns true
+   * if an ability actually fired (spends an action-budget point).
+   */
+  private tryUseAbilities(_now: number): boolean {
+    if (!this.abilitySystem) return false;
     const myMaxHp  = this.winSystem.getMaxHp(this.owner);
     const oppMaxHp = this.winSystem.getMaxHp(this.opponent);
     const ctx: AIAbilityContext = {
@@ -442,21 +501,20 @@ export class AIController {
     };
 
     for (const handler of this.abilityHandlers) {
-      // Tech gate
-      if (!handler.requiredTech.every(t => this.aiResearched.has(t))) continue;
-      // Cooldown gate
-      const lastUsed = this.abilityCooldowns.get(handler.abilityId) ?? NEVER;
-      if (now - lastUsed < handler.cooldownMs) continue;
+      const abilityId = handler.abilityId as import('../types/ability.types').AbilityId;
+      if (!this.abilitySystem.canActivate(abilityId)) continue; // unlocked + off cooldown, per the real system
 
       if (!handler.shouldUse(ctx)) {
         if (this.debugEnabled) this.logThrottled(`ability skip: ${handler.reason(ctx)}`);
         continue;
       }
 
-      this.abilityCooldowns.set(handler.abilityId, now);
-      handler.execute(this.economySystem, this.eventBus, this.owner);
-      this.log(`ABILITY FIRED: ${handler.reason(ctx)}`);
+      if (this.abilitySystem.activate(abilityId)) {
+        this.log(`ABILITY FIRED: ${handler.reason(ctx)}`);
+        return true;
+      }
     }
+    return false;
   }
 
   // ─── Decision making ──────────────────────────────────────────────────────
@@ -477,11 +535,6 @@ export class AIController {
     }
 
     const gold = this.economySystem.getResources(this.owner).gold;
-
-    // Easy AI: random idle gate keeps it manageable
-    if (this.strategyProfile === 'easy' && Math.random() > 0.55) {
-      return this.withReason({ type: 'idle' }, 'easy: random idle gate');
-    }
 
     // Budget gate: reserve gold for the next queued research node before placing gears.
     // If what's left after the reserve can't afford even the cheapest gear, idle this tick
@@ -554,7 +607,7 @@ export class AIController {
     const allChainsMature = combatChains.length > 0
       && combatChains.every(p => p.phase === 'expand' || p.phase === 'full');
 
-    if ((allChainsMature || !hasImmatureChain) && this.chainPlans.length < this.maxChains) {
+    if ((allChainsMature || !hasImmatureChain) && this.chainPlans.length < this.posture.capacity) {
       const nextRole = this.determineNextChainRole();
       const origin = nextRole === 'economy'
         ? this.pickEconomyChainOrigin()
@@ -577,8 +630,8 @@ export class AIController {
       }
     } else if (hasImmatureChain && !allChainsMature) {
       this.logThrottled(`holding new chain bootstrap — immature chain in progress`);
-    } else if (this.chainPlans.length >= this.maxChains) {
-      this.logThrottled(`at chain cap (${this.chainPlans.length}/${this.maxChains})`);
+    } else if (this.chainPlans.length >= this.posture.capacity) {
+      this.logThrottled(`at chain cap (${this.chainPlans.length}/${this.posture.capacity})`);
     }
 
     // Develop existing chains (bootstrap/spawn/amplify/support take priority via byPhase sort;
@@ -603,14 +656,16 @@ export class AIController {
       }
     }
 
-    // Hard AI: sell excess motors in defense chains when better defensive gear is available
-    if (this.strategyProfile === 'hard' && Math.random() < 0.30) {
+    // Sell excess motors in defense chains when better defensive gear is available.
+    // Medium+hard only -- recognising a gear as obsolete and acting on it is a
+    // skill-gated judgment call, same spirit as the placement-quality gating below.
+    if (this.strategyProfile !== 'easy' && Math.random() < (this.strategyProfile === 'hard' ? 0.30 : 0.15)) {
       const recycle = this.decideChainRecycle();
       if (recycle.type !== 'idle') return recycle;
     }
 
-    // Hard AI: reposition isolated gears
-    if (this.strategyProfile === 'hard' && Math.random() < 0.15) {
+    // Reposition isolated gears to connect them to the cluster.
+    if (this.strategyProfile !== 'easy' && Math.random() < (this.strategyProfile === 'hard' ? 0.15 : 0.08)) {
       const reposition = this.decideReposition();
       if (reposition.type !== 'idle') {
         return this.withReason(reposition, `reposition isolated gear → connect to cluster`);
@@ -644,7 +699,7 @@ export class AIController {
     const threat = this.assessThreatLevel();
     if (threat === 'critical') {
       const combatCount = this.chainPlans.filter(p => p.role === 'combat').length;
-      if (combatCount < this.maxChains) return 'combat';
+      if (combatCount < this.posture.capacity) return 'combat';
     }
 
     // Rusher: build 2 combat chains before diversifying
@@ -659,14 +714,14 @@ export class AIController {
     const hasEconomyTech = this.aiResearched.has('unlock_iron_mining')
       || this.aiResearched.has('unlock_crystal_mining');
     const economyChainCount = this.chainPlans.filter(p => p.role === 'economy').length;
-    const maxEconomyChains = this.strategyProfile === 'hard' ? 2 : 1;
+    const maxEconomyChains = roleCapFromPosture(this.posture, this.posture.economy, 1);
     if (this.personality !== 'turtle' && hasEconomyTech && economyChainCount < maxEconomyChains) return 'economy';
 
     // Defense chains: only build when we actually have defensive gear tech.
     // A chain with nothing but motors in the lane is not a defense — it's a gold sink;
     // enemy units destroy lone motors in seconds, then the AI re-bootstraps in an endless loop.
     const defenseChainCount = this.chainPlans.filter(p => p.role === 'defense').length;
-    const maxDefenseChains = this.strategyProfile === 'hard' ? 2 : 1;
+    const maxDefenseChains = roleCapFromPosture(this.posture, this.posture.defense, 1);
     if (defenseChainCount < maxDefenseChains) {
       const hasDefenseTech = this.aiResearched.has('crossbow_turret_tech')
         || this.aiResearched.has('spiked_gears')
@@ -799,7 +854,7 @@ export class AIController {
     } else {
       // Hard: evenly spaced within front 65% of zone, strongly prefer off-lane
       const activeBandW = zoneW * 0.65;
-      const sliceW = activeBandW / this.maxChains;
+      const sliceW = activeBandW / this.posture.capacity;
       const chainIndex = this.chainPlans.length;
       const sliceStart = zoneMinX + chainIndex * sliceW;
 
@@ -1137,9 +1192,10 @@ export class AIController {
     this.researchPlan = { prioritizedQueue: queue, currentGoal: goal, lastRebuildAt: this.clock.now };
   }
 
-  private tryAutoResearch(): void {
-    if (!this.techSystem) return;
-    if (this.aiResearchInProgress) return;
+  /** Returns true if it actually started a research node this call (spends an action). */
+  private tryAutoResearch(): boolean {
+    if (!this.techSystem) return false;
+    if (this.aiResearchInProgress) return false;
 
     // Walk the prioritized queue. Rules:
     //   already researched   → continue (stale queue entry, skip)
@@ -1154,11 +1210,12 @@ export class AIController {
       if (!node) continue;
       if (this.aiResearched.has(nodeId)) continue;
       if (!node.prereqs.every(p => this.aiResearched.has(p))) continue;
-      if (!this.economySystem.canAffordGold(this.owner, node.goldCost)) return; // wait, don't skip
+      if (!this.economySystem.canAffordGold(this.owner, node.goldCost)) return false; // wait, don't skip
       this.techSystem.startResearch(nodeId as import('../types/tech.types').TechNodeId, this.owner);
       this.log(`RESEARCH: "${node.name ?? nodeId}"  score=${this.getResearchScore(nodeId).toFixed(0)}  cost=${node.goldCost}g`);
-      return;
+      return true;
     }
+    return false;
   }
 
   private executeDecision(decision: AIDecision): void {

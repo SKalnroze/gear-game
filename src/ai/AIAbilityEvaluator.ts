@@ -1,5 +1,3 @@
-import { EconomySystem } from '../systems/EconomySystem';
-import { EventBus } from '../systems/EventBus';
 import { ThreatLevel } from '../types/ai.types';
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -30,28 +28,28 @@ export interface AIAbilityContext {
  * Registration: push a new instance into AI_ABILITY_HANDLERS below,
  * or call aiController.registerAbilityHandler(handler) at runtime.
  *
- * The AIController calls shouldUse() every decision tick (2 s).
- * If true AND the handler's cooldown has elapsed AND all requiredTech
- * entries are in aiResearched, execute() fires and the cooldown resets.
+ * The AIController calls shouldUse() every poll. If true AND this side's own
+ * AbilitySystem says the ability is unlocked and off cooldown, activate()
+ * fires through that same AbilitySystem -- the real one a human's UI click
+ * uses, not a parallel cooldown tracker.
  */
 export interface AIAbilityHandler {
   /** Human-readable name for logging */
   readonly name: string;
-  /** Unique ID matching the ability (used for cooldown tracking and logging) */
+  /** The ability's id (also used for cooldown/unlock lookups against AbilitySystem) */
   readonly abilityId: string;
   /**
    * Tech nodes that must all be researched before this handler is active.
-   * Use an empty array [] for abilities with no tech gate.
+   * Informational only now that AbilitySystem.canActivate() is the real
+   * gate -- kept so a handler can still document its own prerequisite.
    */
   readonly requiredTech: string[];
-  /** Milliseconds between uses */
+  /** Milliseconds between uses (informational -- AbilitySystem owns the real cooldown) */
   readonly cooldownMs: number;
   /** Return true when the ability should fire right now */
   shouldUse(ctx: AIAbilityContext): boolean;
   /** Human-readable explanation of the current decision (used/skipped) */
   reason(ctx: AIAbilityContext): string;
-  /** Apply the ability effect */
-  execute(economySystem: EconomySystem, eventBus: EventBus, owner: 'player' | 'ai'): void;
 }
 
 // ─── Built-in handlers ────────────────────────────────────────────────────────
@@ -82,10 +80,6 @@ export class PowerSurgeHandler implements AIAbilityHandler {
       return `power_surge: gold=${ctx.gold.toFixed(0)}g < 35 with ${ctx.chainsWaiting} chain(s) waiting → +${GOLD_SURGE_AMOUNT}g`;
     }
     return `power_surge: skipped (gold=${ctx.gold.toFixed(0)}g, waiting=${ctx.chainsWaiting})`;
-  }
-
-  execute(economySystem: EconomySystem, _eventBus: EventBus, owner: 'player' | 'ai'): void {
-    economySystem.earnGold(owner, GOLD_SURGE_AMOUNT);
   }
 }
 

@@ -103,7 +103,7 @@ export interface GameEventMap {
 
   // Ability events
   'ability:unlocked': { id: AbilityId };
-  'ability:activated': { id: AbilityId };
+  'ability:activated': { id: AbilityId; owner: 'player' | 'ai' };
   'ability:cooldown_ready': { id: AbilityId };
 
   // Gear research/healer events

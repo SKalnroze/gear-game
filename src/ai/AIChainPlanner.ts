@@ -5,7 +5,7 @@ import { GearMeshGraph } from '../world/GearMeshGraph';
 import { EconomySystem } from '../systems/EconomySystem';
 import { RotationPhysicsSystem } from '../systems/RotationPhysicsSystem';
 import { gearRadius, motorOutput, GEAR_MESH_TOLERANCE } from '../constants/gear.constants';
-import { AMPLIFIER_CHAIN_MULTIPLIER, GEAR_PLACEMENT_COST_BASE, GEAR_PLACEMENT_COST_MULTIPLIER, UNIT_SPAWN_COST } from '../constants/balance.constants';
+import { AMPLIFIER_CHAIN_MULTIPLIER, gearPlacementCost as placementCost, UNIT_SPAWN_COST } from '../constants/balance.constants';
 import { LANE_Y_MIN, LANE_Y_MAX } from '../constants/world.constants';
 
 const LANE_CENTER_Y = (LANE_Y_MIN + LANE_Y_MAX) / 2;
@@ -97,9 +97,6 @@ function resolveSpawner(preferred: GearType, aiResearched: Set<string>): GearTyp
   return (!tech || aiResearched.has(tech)) ? preferred : 'infantry_spawner';
 }
 
-function placementCost(teeth: number): number {
-  return GEAR_PLACEMENT_COST_BASE + teeth * GEAR_PLACEMENT_COST_MULTIPLIER;
-}
 
 let _idCounter = 0;
 function nextId(): string { return `chain-${Date.now()}-${_idCounter++}`; }

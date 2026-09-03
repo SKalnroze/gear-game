@@ -4,11 +4,9 @@ export const AI_DECISION_INTERVAL = 2000;
 export const COMBAT_TICK_INTERVAL = 250;
 export const OVERCLOCK_DURATION = 10000;  // 10 seconds
 export const OVERCLOCK_BURNOUT_DURATION = 5000;  // 5 seconds disabled after burnout
-export const CAPACITOR_BURST_INTERVAL = 8000;  // burst every ~8 seconds when charged
 
 // Economy
 export const BASE_GOLD_PER_SEC = 2;
-export const LARGE_GEAR_GOLD_BONUS = 1;  // +1 gold/sec per large gear
 export const OVERCLOCK_SPEED_BONUS = 0.5;   // +50% speed
 export const AMPLIFIER_CHAIN_MULTIPLIER = 1.4;
 export const CAPACITOR_BURST_MULTIPLIER = 2.5;
@@ -17,6 +15,20 @@ export const CAPACITOR_BURST_ROTATIONS = 8;
 // Gear placement costs (gold)
 export const GEAR_PLACEMENT_COST_BASE = 10;  // base gold cost to place any gear
 export const GEAR_PLACEMENT_COST_MULTIPLIER = 0.5;  // cost scales with teeth: base + (teeth * multiplier)
+
+/**
+ * Gold cost to place a gear of the given teeth count.
+ * The single source of truth for this formula -- it used to be reimplemented
+ * inline (and inconsistently: one unrounded, one rounded) in GameScene,
+ * GearGridSection, GearSystem, AIController and AIChainPlanner.
+ */
+export function gearPlacementCost(teeth: number): number {
+  // Rounded here, once, so every consumer -- the gold actually charged and
+  // every UI display of the price -- agrees exactly. The three separate
+  // reimplementations this replaced disagreed by 0.5 gold on odd teeth
+  // because only one of them rounded.
+  return Math.round(GEAR_PLACEMENT_COST_BASE + teeth * GEAR_PLACEMENT_COST_MULTIPLIER);
+}
 
 // Base HP
 export const BASE_MAX_HP = 100;

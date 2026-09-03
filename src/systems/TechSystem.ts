@@ -179,6 +179,10 @@ export class TechSystem {
   private applyEffect(effect: TechUnlockEffect, owner: 'player' | 'ai'): void {
     switch (effect.kind) {
       case 'unlock_gear':
+        // Intentional no-op: gear gating is not driven by this effect at all.
+        // GearSystem.isUnlocked() checks the researched set directly against
+        // GEAR_DEFINITIONS[type].unlockNode, so a node's unlock_gear effect
+        // here is documentation of intent, not a mechanism.
         break;
 
       case 'unlock_teeth': {

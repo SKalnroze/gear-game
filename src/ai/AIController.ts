@@ -13,7 +13,7 @@ import { AIChainPlanner, AIPlacementContext } from './AIChainPlanner';
 import type { AIChainPlan, ChainRole } from './AIChainPlanner';
 import { AIResearchPlan } from './AIResearchPlan';
 import { AIAbilityContext, AIAbilityHandler, AI_ABILITY_HANDLERS } from './AIAbilityEvaluator';
-import { AI_DECISION_INTERVAL, GEAR_PLACEMENT_COST_BASE, GEAR_PLACEMENT_COST_MULTIPLIER } from '../constants/balance.constants';
+import { AI_DECISION_INTERVAL, gearPlacementCost } from '../constants/balance.constants';
 import { gearRadius } from '../constants/gear.constants';
 import { TECH_NODES } from '../constants/tech.constants';
 import { randomChoice } from '../utils/MathUtils';
@@ -235,7 +235,7 @@ export class AIController {
       chainSummaries: this.chainPlans.map(p => {
         const totalCost = p.gearIds.reduce((sum, id) => {
           const gear = this.world.getGear(id);
-          return sum + (gear ? GEAR_PLACEMENT_COST_BASE + gear.teeth * GEAR_PLACEMENT_COST_MULTIPLIER : 0);
+          return sum + (gear ? gearPlacementCost(gear.teeth) : 0);
         }, 0);
         return {
           id: p.id,
@@ -833,7 +833,7 @@ export class AIController {
   }
 
   private getGearPlacementCost(teeth: number): number {
-    return GEAR_PLACEMENT_COST_BASE + teeth * GEAR_PLACEMENT_COST_MULTIPLIER;
+    return gearPlacementCost(teeth);
   }
 
   private decideReposition(): AIDecision {

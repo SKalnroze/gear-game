@@ -4,7 +4,7 @@ import { GearMeshGraph } from '../world/GearMeshGraph';
 import { EventBus } from './EventBus';
 import { GEAR_DEFINITIONS, GEAR_MESH_TOLERANCE, gearRadius, gearPowerCost, gearMaxHp, turretMaxAmmo } from '../constants/gear.constants';
 import { SNAP_THRESHOLD, PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X } from '../constants/world.constants';
-import { REPOSITION_COOLDOWN_MS, GEAR_PLACEMENT_COST_BASE, GEAR_PLACEMENT_COST_MULTIPLIER } from '../constants/balance.constants';
+import { REPOSITION_COOLDOWN_MS, gearPlacementCost } from '../constants/balance.constants';
 import { TechState } from '../types/tech.types';
 import { GameClock } from './GameClock';
 import { distance } from '../utils/MathUtils';
@@ -202,8 +202,7 @@ export class GearSystem {
   sellGear(gearId: string): number | null {
     const gear = this.world.getGear(gearId);
     if (!gear) return null;
-    const placementCost = GEAR_PLACEMENT_COST_BASE + gear.teeth * GEAR_PLACEMENT_COST_MULTIPLIER;
-    const refund = Math.ceil(placementCost * 0.5);
+    const refund = Math.ceil(gearPlacementCost(gear.teeth) * 0.5);
     this.removeGear(gearId);
     return refund;
   }

@@ -34,13 +34,6 @@ export type ThreatLevel = 'critical' | 'danger' | 'normal' | 'winning';
 /** Randomly assigned play-style bias — stable per game instance */
 export type AIPersonality = 'rusher' | 'economist' | 'turtle' | 'balanced';
 
-export interface AIStrategy {
-  profile: AIStrategyProfile;
-  gearPriority: number;   // 0-1, probability bucket for gear building
-  researchPriority: number;
-  preferredUnitType: UnitType;
-}
-
 export type AIDecisionType = 'place_gear' | 'reposition_gear' | 'idle';
 
 export interface AIDecision {

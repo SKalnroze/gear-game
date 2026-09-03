@@ -152,13 +152,9 @@ Places where the implementation does not match the design intent stated in this 
 | 8 | **Combo Chain Bonus does nothing.** `chain_combo_bonus` is an empty case in the effect switch, so a 110-gold node has no effect. | `TechSystem.ts:240` | [Tech tree](design/tech-tree.md#gears-column) |
 | 9 | **Declared gear synergies are not read.** `GearDefinition.synergies` has no consumer. The motor↔amplifier adjacency bonus never applies; the capacitor↔overclock one works only because it is hard-coded elsewhere. | `gear.constants.ts:103` | [Gears](design/gears.md#synergies) |
 | 10 | **Power cost is inert.** Every gear carries a `basePowerCost` and there is a `gearPowerCost()` formula, but placement is charged in gold only. | `GearSystem.ts:178` | [Balance](design/balance.md#gear-placement) |
-| 11 | **Placement cost is computed in three places.** The UI rounds it and the charge does not, so displayed and charged prices differ by 0.5 gold on odd tooth counts. | `GameScene.ts:858`, `GearGridSection.ts:10`, `balance.constants.ts:18` | [Balance](design/balance.md#gear-placement) |
-| 13 | **Dead AI modules.** `AIEvaluator.ts`, `AIPlanner.ts` and `AI_STRATEGIES` are referenced nowhere. | `src/ai/` | [Units](design/units.md#the-ai-opponent) |
-| 14 | **`unlock_gear` is a no-op.** The effect case is empty; gating actually works by reading `def.unlockNode` at placement time. Harmless, but the effect list lies about the mechanism. | `TechSystem.ts:181` | [Tech tree](design/tech-tree.md#what-the-effects-do) |
 | 15 | **Capacitor tech overwrites rather than composes.** `capacitor_burst_multiplier` sets an absolute value from a hard-coded `2.5` instead of building on the current multiplier. | `TechSystem.ts:220` | [Tech tree](design/tech-tree.md#what-the-effects-do) |
 | 17 | **Node text contradicts node effect.** Super Amplifier says "2× multiplier" but grants +33% power; Overclock Mastery says "duration doubled" but adds a flat 15 s. | `tech.constants.ts:93`, `:113` | [Tech tree](design/tech-tree.md) |
 | 18 | **`getChainUnitType()` is never called.** A chain-composition-determines-unit-type rule is fully written and unused — a remnant of an earlier design. | `unit.constants.ts:210` | [Units](design/units.md) |
-| 19 | **Unreferenced constants.** `CAPACITOR_BURST_INTERVAL`, `LARGE_GEAR_GOLD_BONUS` and `AI_INITIAL_DECISION_DELAY` are declared and never read. | `balance.constants.ts` | [Balance](design/balance.md) |
 | 21 | **Only units can damage a base.** Turrets, projectiles and gears cannot reach base HP at all, so there is no ranged pressure on the win condition. | `WinConditionSystem.ts:40` | [Balance](design/balance.md#the-win-condition) |
 
 ---

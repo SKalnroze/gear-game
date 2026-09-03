@@ -32,7 +32,7 @@ import {
   EDGE_SCROLL_MARGIN, EDGE_SCROLL_SPEED,
   CANVAS_HEIGHT, PANEL_COLLAPSED_H, PANEL_EXPANDED_H,
 } from '../constants/world.constants';
-import { AI_INITIAL_DECISION_DELAY, REPOSITION_COOLDOWN_MS, CAPACITOR_BURST_ROTATIONS } from '../constants/balance.constants';
+import { AI_INITIAL_DECISION_DELAY, REPOSITION_COOLDOWN_MS, CAPACITOR_BURST_ROTATIONS, gearPlacementCost } from '../constants/balance.constants';
 import { GameSoundManager } from '../systems/SoundManager';
 import { musicEngine } from '../audio/MusicEngine';
 import { soundManager } from '../audio/SoundManager';
@@ -855,7 +855,7 @@ export class GameScene extends Phaser.Scene {
           this.gearSystem.tryPlace(this.dragGearType, this.dragGearTeeth, snap.x, snap.y, 'ai', true);
         } else {
           // Normal placement: pay gold, respect tech
-          const cost = 10 + (this.dragGearTeeth * 0.5);
+          const cost = gearPlacementCost(this.dragGearTeeth);
           if (def && this.economySystem.canAffordGold('player', cost)) {
             const placed = this.gearSystem.tryPlace(
               this.dragGearType, this.dragGearTeeth, snap.x, snap.y, 'player',

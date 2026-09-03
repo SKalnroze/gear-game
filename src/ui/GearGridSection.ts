@@ -3,14 +3,10 @@ import { eventBus } from '../systems/EventBus';
 import { GearType } from '../types/gear.types';
 import { TechState } from '../types/tech.types';
 import { GEAR_DEFINITIONS, DEFAULT_TEETH } from '../constants/gear.constants';
+import { gearPlacementCost } from '../constants/balance.constants';
 import { NEON, NEON_STR } from '../constants/ui.constants';
 import { TECH_NODES } from '../constants/tech.constants';
 import { panelState } from './SlidingPanel';
-
-/** Gold cost to place a gear (matches GameScene placement formula) */
-function gearPlacementGoldCost(teeth: number): number {
-  return Math.round(10 + teeth * 0.5);
-}
 
 const TILE_W = 148;
 const TILE_H = 96;
@@ -213,7 +209,7 @@ export class GearGridSection {
     tile.add(nameText);
 
     // ── Gold placement cost ──
-    const cost = gearPlacementGoldCost(this.selectedTeeth);
+    const cost = gearPlacementCost(this.selectedTeeth);
     const costText = this.scene.add.text(TILE_W - 8, TILE_H - 17, `G ${cost}`, {
       fontSize: '13px',
       color: isUnlocked ? NEON_STR.yellow : '#334455',
@@ -276,7 +272,7 @@ export class GearGridSection {
           ease: 'Quad.Out',
         });
         const pointer = this.scene.input.activePointer;
-        const costVal = gearPlacementGoldCost(this.selectedTeeth);
+        const costVal = gearPlacementCost(this.selectedTeeth);
         const desc = def?.description ?? '';
         const tooltipLines = [gearDisplayName(gearType)];
         if (desc) tooltipLines.push(desc);
@@ -346,7 +342,7 @@ export class GearGridSection {
     eventBus.emit('ui:teeth_changed', { teeth: this.selectedTeeth });
 
     // Update all cost texts to reflect new teeth size
-    const goldCost = gearPlacementGoldCost(this.selectedTeeth);
+    const goldCost = gearPlacementCost(this.selectedTeeth);
     for (const [, costText] of this.costTexts) {
       costText.setText(`G ${goldCost}`);
     }

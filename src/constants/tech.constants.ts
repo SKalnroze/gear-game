@@ -382,8 +382,8 @@ export const TECH_NODES: Record<string, TechNode> = {
 
   // T2
   power_surge: {
-    id: 'power_surge', name: 'Power Surge',
-    description: 'Unlocks the Power Surge ability: instantly gain 50 power (60s cooldown).',
+    id: 'power_surge', name: 'Gold Surge',
+    description: 'Unlocks the Gold Surge ability: instantly gain 30 gold (60s cooldown).',
     tier: 2, goldCost: 60, researchTime: 36000,
     prereqs: ['power_efficiency_1'],
     effects: [{ kind: 'enable_ability', abilityId: 'power_surge' }],

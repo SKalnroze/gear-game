@@ -192,7 +192,7 @@ export class AudioShowcaseScene extends NeonSceneBase {
       { label: 'EXPLOSION', color: NEON.orange,  colorStr: NEON_STR.orange,  play: () => soundManager.playExplosion() },
     ]);
     row([
-      { label: 'PWR SURGE', color: NEON.yellow,  colorStr: NEON_STR.yellow,  play: () => soundManager.playAbility('power_surge') },
+      { label: 'GOLD SURGE', color: NEON.yellow,  colorStr: NEON_STR.yellow,  play: () => soundManager.playAbility('power_surge') },
       { label: 'OVERCLOCK', color: NEON.magenta, colorStr: NEON_STR.magenta, play: () => soundManager.playAbility('overclock_no_burnout') },
       { label: 'ABILITY',   color: NEON.green,   colorStr: NEON_STR.green,   play: () => soundManager.playAbility('counter_intel') },
     ]);

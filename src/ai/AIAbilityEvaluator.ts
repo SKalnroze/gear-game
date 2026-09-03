@@ -59,12 +59,12 @@ export interface AIAbilityHandler {
 const GOLD_SURGE_AMOUNT = 30;
 
 /**
- * Power Surge — instantly earns 30 gold.
+ * Gold Surge — instantly earns 30 gold.
  * Fires when chains are waiting to be built but gold is scarce.
  * Also fires defensively at critical HP.
  */
 export class PowerSurgeHandler implements AIAbilityHandler {
-  readonly name = 'Power Surge';
+  readonly name = 'Gold Surge';
   readonly abilityId = 'power_surge';
   readonly requiredTech = ['power_surge'];
   readonly cooldownMs = 60_000;

@@ -85,9 +85,7 @@ A **queue sidebar** on the left lists the node in progress and everything waitin
 
 **Intent.** The one place a player acts directly. Deliberately sparse — see [pillar 1](../GAME_DESIGN.md#1-the-machine-is-the-strategy).
 
-Three ability cards with cooldown bars, and below them a read-only list of which unit types are currently unlocked.
-
-> **⚠ DIVERGENCE** — The ability buttons emit an event straight onto the bus rather than going through `AbilitySystem` (`ActionsSection.ts:201`), so Gold Surge grants nothing and its cooldown bar is decorative. Its label reads "+50 power instantly" while the ability grants 30 gold. See the [tech tree chapter](tech-tree.md#abilities).
+Three ability cards with cooldown bars, and below them a read-only list of which unit types are currently unlocked. Clicking a card calls `AbilitySystem.activate()` directly, so the cooldown bar reflects a real cooldown.
 
 ### Toolbar
 
@@ -131,6 +129,6 @@ Persisted to `localStorage` and applied immediately.
 | Edge scroll speed | 300 px/s | 150 / 300 / 600 |
 | Edge scroll zone | 5% | 3% / 5% / 10% of viewport |
 
-> **⚠ DIVERGENCE** — Ability cooldowns still read the wall clock rather than the game clock (`AbilitySystem.ts:45`), so they neither pause nor scale with game speed. The settings screen carries a note admitting this, which is a documented bug rather than a design decision.
+Ability cooldowns run on the same game clock as everything else, so they pause and scale with game speed like the rest of the simulation.
 
 Neither music nor SFX volume is exposed here — both are reachable only from the audio showcase, and that slider is not persisted.

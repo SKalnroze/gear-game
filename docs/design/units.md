@@ -179,6 +179,6 @@ The AI plays the same game by the same rules: it places gears, researches, and l
 
 **Counter-picking.** It keeps a rolling 45-second window of the units it has seen you spawn and, if one type dominates, researches and builds the spawner that counters it. This is the feature most affected by divergence 4: the counter it picks may not actually counter anything.
 
-> **⚠ DIVERGENCE** — `AIEvaluator.ts`, `AIPlanner.ts` and the `AI_STRATEGIES` table are referenced nowhere in the codebase. They describe an earlier decision model that has been replaced by `AIChainPlanner`. Either delete them or note them as retained for reference.
+`AIEvaluator.ts`, `AIPlanner.ts` and the `AI_STRATEGIES` table described an earlier decision model, superseded by `AIChainPlanner`; confirmed zero references anywhere in `src/` or `tests/` and deleted.
 
-> **⚠ DIVERGENCE** — The AI is never charged gold for gear placement (`GameScene.ts:864` is the only `spendGold` for a placement, and it is player-only), so its difficulty is not tuned against the constraint the player plays under. See [Balance](balance.md#gear-placement).
+The AI pays for its gear placements the same way the player does — `AIController.executeDecision` charges gold up front and refunds it if `tryPlace` refuses the location, so its difficulty is tuned against the same constraint the player plays under.

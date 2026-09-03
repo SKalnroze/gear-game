@@ -142,7 +142,6 @@ Places where the implementation does not match the design intent stated in this 
 
 | # | Divergence | Where | Chapter |
 |---|---|---|---|
-| 2 | **Gold Surge does nothing.** The ACTIONS button emits `ability:activated` directly on the event bus, bypassing `AbilitySystem`, whose `activate()` has no callers. No gold is granted, no cooldown recorded, and the unlock is not checked. Its three labels disagree: "+50 power" (button), "30 gold" (definition), "50 power" (tech node). | `ActionsSection.ts:201`, `AbilitySystem.ts:59` | [Tech tree](design/tech-tree.md#abilities) |
 | 3 | **Five unit types are unreachable.** `mixed`, all three elites and `wrench` have no spawner gear, so no match can produce them. They are fully implemented and tested but unplayable. | `UnitSystem.ts:1091` | [Units](design/units.md) |
 | 4 | **The counter triangle applies to under half the roster.** `CombatSystem` excludes cavalry, artillery, sentinel and phantom (and their elites) from combat resolution, so the RPS multipliers never apply to them. | `CombatSystem.ts:36` | [Units](design/units.md#the-counter-matrix) |
 | 5 | **Two unit abilities are text only.** Iron Guard's "reduces incoming damage by 30%" and Crystal Sentinel's "shields nearby allies" have no implementation. | `unit.constants.ts:81`, `:93` | [Units](design/units.md) |

@@ -23,7 +23,7 @@ const ABILITY_DEFS: {
   color: number;
   colorStr: string;
 }[] = [
-  { id: 'power_surge',          icon: '⚡', name: 'POWER SURGE',    desc: '+50 power instantly',       color: NEON.yellow,  colorStr: NEON_STR.yellow  },
+  { id: 'power_surge',          icon: '⚡', name: 'GOLD SURGE',     desc: '+30 gold instantly',        color: NEON.yellow,  colorStr: NEON_STR.yellow  },
   { id: 'counter_intel',        icon: '🔍', name: 'COUNTER INTEL',  desc: 'Reveal AI unit type',       color: NEON.cyan,    colorStr: NEON_STR.cyan    },
   { id: 'overclock_no_burnout', icon: '🔧', name: 'OVERCLOCK+',     desc: 'Overclock — no burnout',    color: NEON.orange,  colorStr: NEON_STR.orange  },
 ];
@@ -201,7 +201,10 @@ export class ActionsSection {
     if (!this.readonly) {
       hit.on('pointerdown', () => {
         if (panelState.isAnimating) return;
-        eventBus.emit('ability:activated', { id: def.id });
+        // Route through AbilitySystem rather than faking the event directly --
+        // this used to bypass it entirely, so Gold Surge granted no gold, set
+        // no cooldown, and fired even while locked or already on cooldown.
+        this.abilitySystem.activate(def.id);
       });
     }
 

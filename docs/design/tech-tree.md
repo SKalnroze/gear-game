@@ -63,7 +63,7 @@ The **Gear Precision** line is the backbone: each node unlocks larger tooth coun
 
 > **⚠ DIVERGENCE** — `Combo Chain Bonus` (110 gold, 66 s) grants `chain_combo_bonus`, which is an empty case in the effect switch (`TechSystem.ts:240`). It does nothing.
 
-> **⚠ DIVERGENCE** — `Super Amplifier` is described as "2× multiplier" but grants a +33% power bonus (`tech.constants.ts:93`). `Overclock Mastery` is described as "duration doubled" but adds a flat 15 s (`tech.constants.ts:113`).
+`Overclock Mastery`'s "duration doubled" text is accurate, not a mismatch: its hard prereq `Extended Overclock` always puts a player at 15s of boost time before this node can be researched, and its own flat +15s takes that to 30s — exactly double. `Super Amplifier`'s description was corrected instead of the code: it grants +33% capacitor burst yield, and despite the name does not touch the Amplifier gear's own torque multiplier, which is fixed at 1.4×. See [Gears](gears.md#amplifier).
 
 ## Units column
 
@@ -120,7 +120,7 @@ The two lines are a genuine choice: gold nodes pay immediately and passively, mi
 | Node | Tier | Gold | Time | Requires | Effects |
 |---|---|---|---|---|---|
 | **Counter Intelligence**<br>`counter_intel` | T1 | 40 | 24s | — | `enable_ability` (abilityId=counter_intel) |
-| **Power Surge**<br>`power_surge` | T2 | 60 | 36s | `power_efficiency_1` | `enable_ability` (abilityId=power_surge) |
+| **Gold Surge**<br>`power_surge` | T2 | 60 | 36s | `power_efficiency_1` | `enable_ability` (abilityId=power_surge) |
 <!-- END GENERATED: tech.abilities -->
 
 ### Abilities
@@ -133,9 +133,7 @@ The two lines are a genuine choice: gold nodes pay immediately and passively, mi
 | Overclock Mastery | passive | — | Player Overclock gears never burn out. |
 <!-- END GENERATED: abilities -->
 
-> **⚠ DIVERGENCE** — Gold Surge is not wired up. The ACTIONS button emits `ability:activated` straight onto the event bus (`ActionsSection.ts:201`), bypassing `AbilitySystem` entirely; `AbilitySystem.activate()` has no callers anywhere (`AbilitySystem.ts:59`). Clicking it grants no gold, records no cooldown, and does not check whether it is unlocked. Its label also disagrees three ways: the button says "+50 power instantly", the definition says 30 gold, the tech node says 50 power.
-
-> **⚠ DIVERGENCE** — `enable_ability` only applies when the owner is the player (`TechSystem.ts:228`), so an AI researching an ability node receives nothing for its gold.
+`enable_ability` only applies when the owner is the player (`TechSystem.ts:228`). This looks asymmetric but is not a gap: the AI never touches the player-only `AbilitySystem` object at all. It gates its own ability use directly against researched tech in `AIController.tryUseAbilities`, independent of this effect — see [Units](units.md#the-ai-opponent).
 
 ## Defense column
 
@@ -169,16 +167,16 @@ The declared effect kinds, and their real semantics.
 | `unit_hp_pct` / `unit_speed_pct` / `unit_damage_pct` | Buffs one unit type for that side | Implemented, per owner |
 | `base_hp_bonus` | Raises that side's base max HP and current HP | Implemented |
 | `overclock_duration_bonus` | Extends that side's overclock boost window | Implemented |
-| `capacitor_burst_multiplier` | Sets that side's burst multiplier | Implemented, but see below |
-| `enable_ability` | Unlocks an ability | Implemented, **player only** |
-| `unlock_gear` | Intended to unlock a gear type | **No-op** |
+| `capacitor_burst_multiplier` | Adds to that side's burst multiplier, composing with prior nodes | Implemented |
+| `enable_ability` | Unlocks an ability | Implemented, **player only by design** — see below |
+| `unlock_gear` | No-op by design; gating reads `def.unlockNode` directly | Intentional no-op |
 | `chain_combo_bonus` | Intended to reward long chains | **No-op** |
 
-> **⚠ DIVERGENCE** — `unlock_gear` is an empty case (`TechSystem.ts:181`). Gear gating actually works by reading `def.unlockNode` at placement time, so the feature functions, but the effect list describes a mechanism that does not exist.
+`unlock_gear` is deliberately an empty case (`TechSystem.ts:181`): gear gating works by reading `def.unlockNode` directly at placement time, so the effect list documents intent without being the mechanism.
 
-> **⚠ DIVERGENCE** — `capacitor_burst_multiplier` sets an absolute value computed from a hard-coded `2.5` (`TechSystem.ts:220`) rather than composing with the current multiplier or the `CAPACITOR_BURST_MULTIPLIER` constant. A second such node would overwrite the first rather than stack.
+`enable_ability` only applies for the player because `AbilitySystem` is a player-only object — the AI never touches it. It gates its own ability use directly against researched tech instead, independent of this effect. See [Units](units.md#the-ai-opponent).
 
-> **⚠ DIVERGENCE** — `unlock_unit` unlocks for both sides at once, by design comment but likely not by intent — one side's research widens the other side's roster.
+`unlock_unit` unlocks for both sides at once, by design comment but likely not by intent — one side's research widens the other side's roster.
 
 ---
 

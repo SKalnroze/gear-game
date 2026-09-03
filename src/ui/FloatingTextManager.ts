@@ -40,9 +40,9 @@ export class FloatingTextManager {
       this.spawn(gearId, text, color);
     });
 
-    eventBus.on('power:capacitor_burst', ({ gearId, owner }) => {
+    eventBus.on('power:capacitor_burst', ({ gearId, owner, goldEarned }) => {
       if (owner !== 'player') return;
-      this.spawn(gearId, '⚡ Burst!', NEON.cyan);
+      this.spawn(gearId, `⚡ +${goldEarned.toFixed(1)}g`, NEON.cyan);
     });
 
     eventBus.on('unit:damaged', ({ damage, x, y }) => {

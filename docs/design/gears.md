@@ -57,30 +57,30 @@ This is a real design constraint on layout, not an error state — an even ring 
 Costs and unlocks for all 22 gear types.
 
 <!-- BEGIN GENERATED: gears.catalogue -->
-| Gear | Power cost | Gold cost | Unlocked by | In-game description |
-|---|---|---|---|---|
-| Motor | 0 | 0 | _from start_ | Drives rotation and generates power per full rotation. Output scales with teeth. |
-| Amplifier | 20 | 0 | `basic_amplifier` | ×1.4 power multiplier on all downstream chain power. |
-| Capacitor | 30 | 0 | `basic_capacitor` | Stores rotations and releases a 2.5× burst every 8 full rotations. |
-| Overclock | 40 | 10 | `basic_overclock` | +50% torque/omega to adjacent gears. Runs 10s, burns out for 5s, then restarts. |
-| Spiked | 15 | 0 | `spiked_gears` | Damages units on contact. Damage = \|omega\| × spikeDamage(teeth). |
-| Armored | 20 | 0 | `armored_gears` | Blocks unit movement. HP scales with teeth². Must be destroyed to pass. |
-| Iron Miner | 25 | 0 | `unlock_iron_mining` | Generates iron per full rotation. Output scales with teeth. |
-| Crystal Miner | 25 | 0 | `unlock_crystal_mining` | Generates crystal per full rotation. Output scales with teeth. |
-| Aether Miner | 25 | 0 | `unlock_aether_mining` | Generates aether per full rotation. Output scales with teeth. |
-| Infantry Spawner | 10 | 5 | _from start_ | Spawns an Infantry unit per full rotation (5 gold cost). |
-| Artillery Spawner | 15 | 8 | `unlock_artillery_spawner` | Spawns an Artillery unit per full rotation (8 gold cost). |
-| Cavalry Spawner | 20 | 12 | `unlock_cavalry_spawner` | Spawns a Cavalry unit per full rotation (12 gold cost). |
-| Iron Guard Spawner | 15 | 8 | `unlock_iron_guard_spawner` | Spawns an Iron Guard unit per full rotation (8 iron cost). |
-| Crystal Sentinel Spawner | 12 | 6 | `unlock_crystal_sentinel_spawner` | Spawns a Crystal Sentinel unit per full rotation (6 crystal cost). |
-| Aether Phantom Spawner | 10 | 5 | `unlock_aether_phantom_spawner` | Spawns an Aether Phantom unit per full rotation (5 aether cost). |
-| Researcher | 10 | 0 | _from start_ | Advances current research on each full rotation. Larger gears research faster. |
-| Iron Converter | 20 | 0 | `iron_to_gold` | Converts iron into gold on each full rotation. Larger gears convert more. |
-| Crystal Converter | 20 | 0 | `crystal_to_gold` | Converts crystal into gold on each full rotation at a favorable rate. |
-| Aether Converter | 20 | 0 | `aether_to_gold` | Converts aether into gold on each full rotation at the best rate. |
-| Crossbow Turret | 30 | 5 | `crossbow_turret_tech` | Defensive turret. Each rotation buys 1 ammo bolt (2 gold). Fires quickly at nearby enemies; low damage, medium range. |
-| Artillery Turret | 50 | 8 | `artillery_turret_tech` | Heavy turret. Each rotation buys 1 ammo shell (6 gold). Fires slowly with AoE; high damage, long range. |
-| Healer | 25 | 0 | `healer_gear_tech` | Emits a healing aura on each full rotation. Heals nearby friendly gears and units. Aura size and healing scale with gear size. |
+| Gear | Gold cost | Unlocked by | In-game description |
+|---|---|---|---|
+| Motor | 0 | _from start_ | Drives rotation. Larger motors deliver more torque, but every gear meshed on the chain slows it down. |
+| Amplifier | 0 | `basic_amplifier` | Multiplies the whole chain torque by 1.4x -- the chain spins faster, so everything on it happens more often. |
+| Capacitor | 0 | `basic_capacitor` | Stores rotations and pays out a gold burst every 8th -- 2.5x the chain output. |
+| Overclock | 10 | `basic_overclock` | +50% torque/omega to adjacent gears. Runs 10s, burns out for 5s, then restarts. |
+| Spiked | 0 | `spiked_gears` | Damages units on contact. Damage = \|omega\| × spikeDamage(teeth). |
+| Armored | 0 | `armored_gears` | Blocks unit movement. HP scales with teeth². Must be destroyed to pass. |
+| Iron Miner | 0 | `unlock_iron_mining` | Generates iron per full rotation. Output scales with teeth. |
+| Crystal Miner | 0 | `unlock_crystal_mining` | Generates crystal per full rotation. Output scales with teeth. |
+| Aether Miner | 0 | `unlock_aether_mining` | Generates aether per full rotation. Output scales with teeth. |
+| Infantry Spawner | 5 | _from start_ | Spawns an Infantry unit per full rotation (5 gold cost). |
+| Artillery Spawner | 8 | `unlock_artillery_spawner` | Spawns an Artillery unit per full rotation (8 gold cost). |
+| Cavalry Spawner | 12 | `unlock_cavalry_spawner` | Spawns a Cavalry unit per full rotation (12 gold cost). |
+| Iron Guard Spawner | 8 | `unlock_iron_guard_spawner` | Spawns an Iron Guard unit per full rotation (8 iron cost). |
+| Crystal Sentinel Spawner | 6 | `unlock_crystal_sentinel_spawner` | Spawns a Crystal Sentinel unit per full rotation (6 crystal cost). |
+| Aether Phantom Spawner | 5 | `unlock_aether_phantom_spawner` | Spawns an Aether Phantom unit per full rotation (5 aether cost). |
+| Researcher | 0 | _from start_ | Advances current research on each full rotation. Larger gears research faster. |
+| Iron Converter | 0 | `iron_to_gold` | Converts iron into gold on each full rotation. Larger gears convert more. |
+| Crystal Converter | 0 | `crystal_to_gold` | Converts crystal into gold on each full rotation at a favorable rate. |
+| Aether Converter | 0 | `aether_to_gold` | Converts aether into gold on each full rotation at the best rate. |
+| Crossbow Turret | 5 | `crossbow_turret_tech` | Defensive turret. Each rotation buys 1 ammo bolt (2 gold). Fires quickly at nearby enemies; low damage, medium range. |
+| Artillery Turret | 8 | `artillery_turret_tech` | Heavy turret. Each rotation buys 1 ammo shell (6 gold). Fires slowly with AoE; high damage, long range. |
+| Healer | 0 | `healer_gear_tech` | Emits a healing aura on each full rotation. Heals nearby friendly gears and units. Aura size and healing scale with gear size. |
 <!-- END GENERATED: gears.catalogue -->
 
 <!-- BEGIN GENERATED: gears.formulas -->
@@ -163,25 +163,21 @@ Costs and unlocks for all 22 gear types.
 
 ### Amplifier
 
-**Intent.** The reward for building a *deep* chain rather than a wide one — a gear that produces nothing itself and makes everything around it worth more.
+**Intent.** The reward for building a *deep* chain rather than a wide one — a gear that produces nothing itself and makes every gear already on the chain do its job more often.
 
-**Behaviour.** Multiplies chain output by 1.4, compounding per amplifier in the chain.
+**Behaviour.** Multiplies the chain's total motor torque by 1.4×, stacking per amplifier present. Since ω = torque / inertia, this directly speeds up the whole chain: every gear on it — spawner, miner, researcher, turret — rotates faster, so `gear:full_rotation` fires more often everywhere. A burnt-out amplifier is excluded from the chain traversal entirely and contributes nothing.
 
-**Status.** Implemented, but see below.
-
-> **⚠ DIVERGENCE** — Chain output is consumed by exactly one thing: the capacitor burst payload (`RotationPhysicsSystem.ts:444`). An amplifier in a chain with no capacitor changes no number the player can observe. Combined with divergence 7, the whole amplifier→capacitor value path is currently cosmetic.
+**Status.** Implemented. This is a change from an earlier version: the multiplier used to feed an unbanked "chain power" figure consumed only by the capacitor burst, so an amplifier in a chain with no capacitor changed nothing a player could observe. It now speeds up the chain directly, whether or not a capacitor is present.
 
 ### Capacitor
 
-**Intent.** Rewards patience and uptime. It converts sustained rotation into a periodic spike, and it is the gear that makes amplifiers and extra motors *visible* — they are inputs whose only readout is the burst.
+**Intent.** Rewards patience and uptime. It converts sustained rotation into a periodic gold payout, and it is the gear that gives raw chain throughput — motor output, boosted by burst-yield research — a purpose beyond spinning.
 
 **Player decision.** Spend space and speed on a gear that produces nothing for seven rotations out of eight.
 
-**Behaviour.** Counts rotations; every 8th releases a burst worth chain output × 2.5. A capacitor meshed to a live overclock gear bursts at 3.5 instead.
+**Behaviour.** Counts rotations; every 8th pays out gold worth the chain's motor output × 2.5, credited directly to the owner. A capacitor meshed to a live overclock gear pays 3.5× instead. Amplifiers do not affect the payout amount — their job is chain speed, so a chain benefits from an amplifier once (faster bursts), not twice (bigger bursts too).
 
-**Status.** Implemented mechanically.
-
-> **⚠ DIVERGENCE** — The burst is emitted as an event carrying a `powerReleased` figure, and nothing banks it. Its subscribers are camera shake, particles, sound and floating text (`RotationPhysicsSystem.ts:433`). The player sees a satisfying flash worth exactly zero.
+**Status.** Implemented, including the gold credit. Previously the burst emitted only an event nothing but camera shake, particles, sound and floating text subscribed to — a satisfying flash worth exactly zero.
 
 ### Overclock
 
@@ -233,18 +229,14 @@ Costs and unlocks for all 22 gear types.
 
 ---
 
-## Synergies
+## Adjacency
 
-The design intends gears to be worth more beside particular neighbours. Two such relationships are declared in the gear definitions:
+Gears do not have a general adjacency-bonus system — a gear's neighbours matter only where a specific mechanic reads them directly:
 
-| Gear | Beside | Intended effect |
-|---|---|---|
-| Motor | Amplifier | +10% chain power |
-| Capacitor | Overclock | Burst at 3.5× instead of 2.5× |
+- **Amplifier** boosts the whole chain's torque structurally (see above), not as a bonus tied to being next to a motor.
+- **Capacitor beside a live Overclock** bursts at 3.5× instead of 2.5× — the one genuine adjacency effect in the game, checked directly in the burst calculation.
 
-> **⚠ DIVERGENCE** — Nothing reads `GearDefinition.synergies` (`gear.constants.ts:103`). The motor↔amplifier bonus never applies. The capacitor↔overclock one *does* work, but only because it is separately hard-coded in the burst calculation — so the declared data and the working behaviour are unrelated.
-
-If adjacency bonuses are to be a real design lever, the synergy list needs a consumer in the physics pass. As it stands the field is documentation, not mechanics.
+An earlier version of the game declared a broader `GearDefinition.synergies` list (a motor↔amplifier adjacency bonus, plus this same capacitor↔overclock one) that nothing ever read. It has been removed rather than wired up: the amplifier's new whole-chain mechanism already does that job better than a neighbour-only bonus would.
 
 ---
 

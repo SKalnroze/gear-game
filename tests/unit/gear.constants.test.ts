@@ -3,7 +3,6 @@ import {
   gearRadius,
   gearMaxHp,
   turretRange,
-  gearPowerCost,
   motorOutput,
   motorTorque,
   spikeDamage,
@@ -88,13 +87,6 @@ describe('constants sanity', () => {
 });
 
 describe('derived gear functions', () => {
-  it('gearPowerCost scales quadratically', () => {
-    // baseCost=10, teeth=20: round(10 * 400 / 100) = 40
-    expect(gearPowerCost(10, 20)).toBe(40);
-    // baseCost=10, teeth=10: round(10 * 100 / 100) = 10
-    expect(gearPowerCost(10, 10)).toBe(10);
-  });
-
   it('motorOutput scales linearly with teeth', () => {
     expect(motorOutput(10)).toBe(4);
     expect(motorOutput(20)).toBe(8);

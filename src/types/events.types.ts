@@ -26,7 +26,7 @@ export interface GameEventMap {
   'gear:destroyed': { gearId: string; owner: 'player' | 'ai'; cause: 'jam' | 'combat' };
 
   // Power/capacitor events
-  'power:capacitor_burst': { gearId: string; owner: 'player' | 'ai'; powerReleased: number };
+  'power:capacitor_burst': { gearId: string; owner: 'player' | 'ai'; goldEarned: number };
 
   // Economy events
   'economy:gold_changed': { owner: 'player' | 'ai'; resources: ResourceState };

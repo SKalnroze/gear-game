@@ -94,11 +94,13 @@ function buildBlocks(m) {
   const blocks = {};
 
   // Gear catalogue -------------------------------------------------------
+  // basePowerCost/synergies were removed from GearDefinition entirely
+  // (divergences #9, #10) -- power was never a stored resource and nothing
+  // read the declared synergies, so both fields were pure fiction.
   blocks['gears.catalogue'] = table(
-    ['Gear', 'Power cost', 'Gold cost', 'Unlocked by', 'In-game description'],
+    ['Gear', 'Gold cost', 'Unlocked by', 'In-game description'],
     Object.values(gear.GEAR_DEFINITIONS).map((d) => [
       title(d.type),
-      num(d.basePowerCost),
       num(d.goldCost),
       d.unlockNode ? `\`${d.unlockNode}\`` : '_from start_',
       d.description,

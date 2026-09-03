@@ -26,6 +26,7 @@ export class TechSystem {
 
   private powerBonusPct: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
   private overclockDurationBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
+  private capacitorBurstBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
 
   private abilitySystem: AbilitySystem | null = null;
   private clock: GameClock;
@@ -221,9 +222,11 @@ export class TechSystem {
         this.unitSystem.applyDamageBonus(owner, effect.unitType as UnitType, effect.value);
         break;
 
-      case 'capacitor_burst_multiplier':
-        this.rotationPhysics.setCapacitorBurstMultiplier(owner, 2.5 + effect.value);
+      case 'capacitor_burst_multiplier': {
+        const bonus = (this.capacitorBurstBonus[owner] += effect.value);
+        this.rotationPhysics.setCapacitorBurstBonus(owner, bonus);
         break;
+      }
 
       case 'base_hp_bonus':
         this.winSystem.addMaxHp(owner, effect.value);

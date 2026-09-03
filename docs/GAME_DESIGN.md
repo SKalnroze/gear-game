@@ -142,18 +142,11 @@ Places where the implementation does not match the design intent stated in this 
 
 | # | Divergence | Where | Chapter |
 |---|---|---|---|
-| 1 | **Power is not a resource.** The HUD and the gear descriptions treat power as a currency, but nothing stores it — the tracked resources are gold, iron, crystal, aether. Chain output exists only as a number attached to a capacitor burst effect. | `types/economy.types.ts:1`, `EconomySystem.ts:32` | [Balance](design/balance.md#power-is-not-a-currency) |
 | 2 | **Gold Surge does nothing.** The ACTIONS button emits `ability:activated` directly on the event bus, bypassing `AbilitySystem`, whose `activate()` has no callers. No gold is granted, no cooldown recorded, and the unlock is not checked. Its three labels disagree: "+50 power" (button), "30 gold" (definition), "50 power" (tech node). | `ActionsSection.ts:201`, `AbilitySystem.ts:59` | [Tech tree](design/tech-tree.md#abilities) |
 | 3 | **Five unit types are unreachable.** `mixed`, all three elites and `wrench` have no spawner gear, so no match can produce them. They are fully implemented and tested but unplayable. | `UnitSystem.ts:1091` | [Units](design/units.md) |
 | 4 | **The counter triangle applies to under half the roster.** `CombatSystem` excludes cavalry, artillery, sentinel and phantom (and their elites) from combat resolution, so the RPS multipliers never apply to them. | `CombatSystem.ts:36` | [Units](design/units.md#the-counter-matrix) |
 | 5 | **Two unit abilities are text only.** Iron Guard's "reduces incoming damage by 30%" and Crystal Sentinel's "shields nearby allies" have no implementation. | `unit.constants.ts:81`, `:93` | [Units](design/units.md) |
-| 6 | **Amplifiers only matter beside a capacitor.** The chain multiplier is applied in `computeChainOutput`, which is consumed solely by the capacitor burst. A chain with amplifiers and no capacitor gains nothing. | `RotationPhysicsSystem.ts:444` | [Gears](design/gears.md#amplifier) |
-| 7 | **Capacitor bursts are cosmetic.** `power:capacitor_burst` carries a `powerReleased` figure that nothing banks; its only subscribers are camera shake, particles, sound and floating text. | `RotationPhysicsSystem.ts:433` | [Gears](design/gears.md#capacitor) |
 | 8 | **Combo Chain Bonus does nothing.** `chain_combo_bonus` is an empty case in the effect switch, so a 110-gold node has no effect. | `TechSystem.ts:240` | [Tech tree](design/tech-tree.md#gears-column) |
-| 9 | **Declared gear synergies are not read.** `GearDefinition.synergies` has no consumer. The motor↔amplifier adjacency bonus never applies; the capacitor↔overclock one works only because it is hard-coded elsewhere. | `gear.constants.ts:103` | [Gears](design/gears.md#synergies) |
-| 10 | **Power cost is inert.** Every gear carries a `basePowerCost` and there is a `gearPowerCost()` formula, but placement is charged in gold only. | `GearSystem.ts:178` | [Balance](design/balance.md#gear-placement) |
-| 15 | **Capacitor tech overwrites rather than composes.** `capacitor_burst_multiplier` sets an absolute value from a hard-coded `2.5` instead of building on the current multiplier. | `TechSystem.ts:220` | [Tech tree](design/tech-tree.md#what-the-effects-do) |
-| 17 | **Node text contradicts node effect.** Super Amplifier says "2× multiplier" but grants +33% power; Overclock Mastery says "duration doubled" but adds a flat 15 s. | `tech.constants.ts:93`, `:113` | [Tech tree](design/tech-tree.md) |
 | 18 | **`getChainUnitType()` is never called.** A chain-composition-determines-unit-type rule is fully written and unused — a remnant of an earlier design. | `unit.constants.ts:210` | [Units](design/units.md) |
 | 21 | **Only units can damage a base.** Turrets, projectiles and gears cannot reach base HP at all, so there is no ranged pressure on the win condition. | `WinConditionSystem.ts:40` | [Balance](design/balance.md#the-win-condition) |
 
@@ -163,10 +156,9 @@ Places where the implementation does not match the design intent stated in this 
 
 Unresolved intent, recorded so the decisions are made deliberately rather than by default.
 
-1. **Should power become a real currency?** Divergences 1, 6, 7 and 10 are one question wearing four hats. Either power is a second resource that gears cost and capacitors bank — which gives amplifiers and capacitors a reason to exist — or it is removed from the fiction entirely and chain output is renamed. The current half-state is the worst of both.
-2. **How do elite and support units become reachable?** Divergence 3 leaves five units built and unplayable. Do they get spawner gears, or does something like the retired `getChainUnitType` rule return, where chain *composition* decides what a spawner emits?
-3. **Should the counter triangle govern all combat?** Divergence 4 means the RPS relationship advertised in unit descriptions is honoured by melee only. Either every damage path consults it, or the descriptions and the tech that leans on counter-picking need rewriting.
-4. **Is there a second way to win?** Divergence 21 makes the only route "walk a unit into a wall". A defensive machine with no spawners cannot win, only fail to lose.
+1. **How do elite and support units become reachable?** Divergence 3 leaves five units built and unplayable. Do they get spawner gears, or does something like the retired `getChainUnitType` rule return, where chain *composition* decides what a spawner emits?
+2. **Should the counter triangle govern all combat?** Divergence 4 means the RPS relationship advertised in unit descriptions is honoured by melee only. Either every damage path consults it, or the descriptions and the tech that leans on counter-picking need rewriting.
+3. **Is there a second way to win?** Divergence 21 makes the only route "walk a unit into a wall". A defensive machine with no spawners cannot win, only fail to lose.
 
 ---
 

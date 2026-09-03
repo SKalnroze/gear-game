@@ -62,19 +62,9 @@ The clearest way to read the economy is to follow the first minute.
 
 ---
 
-## Where the economy is unbalanced today
+## Where the economy still has rough edges
 
-Reading the numbers against the intent turns up three problems worth recording.
-
-### Amplifiers are a pure loss
-
-An amplifier multiplies **chain output**, and chain output is consumed by exactly one thing: the capacitor burst payload, which nothing banks (divergences 6 and 7). So placing an amplifier:
-
-- adds a gear, cutting production by `1/n`
-- costs 15+ gold
-- changes no number the player can observe
-
-A player who follows the tech tree into Basic Amplifier is buying a downgrade. Any fix to divergence 7 — making burst power a real resource — fixes this at the same time.
+Reading the numbers against the intent turns up two problems worth recording.
 
 ### Ore beats gold decisively once converters arrive
 
@@ -82,9 +72,9 @@ A miner produces `teeth × 0.3` ore per rotation; a converter turns `teeth × 0.
 
 The intended shape — deeper resources pay better — holds. The risk is the **absence of an upper bound**: since bigger gears cost speed nothing, a large aether chain scales without limit.
 
-### The AI plays a different economy
+### Gear Precision has no trade-off
 
-The AI computes placement costs and checks affordability, but no code path charges it (divergence 12). Its difficulty is therefore tuned against a constraint it does not experience, and any balance conclusion drawn from watching AI-vs-AI matches is suspect.
+Already noted [above](#the-physics-result-that-governs-everything): reflected inertia cancels teeth entirely, so Gear Precision buys output, HP and range with zero cost in chain speed. Restated here because it is the clearest single balance lever in the game — see [tuning levers](#tuning-levers) below.
 
 ---
 
@@ -92,22 +82,22 @@ The AI computes placement costs and checks affordability, but no code path charg
 
 | | |
 |---|---|
-| Formula | `10 + teeth × 0.5` gold |
+| Formula | `10 + teeth × 0.5` gold, rounded once |
 | At 10 teeth | 15 gold |
 | At 60 teeth | 40 gold |
 | Sell refund | half, rounded up |
 
-Placement cost is **linear** in teeth while almost everything a gear does scales linearly or better — output linearly, HP and torque quadratically. Large gears are therefore cheap for what they deliver, reinforcing the "bigger is strictly better" problem above.
+A single function (`gearPlacementCost` in `balance.constants.ts`) is the only place this formula is computed — the player's charge, every UI price tag, the AI's affordability checks and its sell refund all call it. It used to be reimplemented five times, two of them wrong: one hardcoded copy charged the unrounded price while the UI displayed a rounded one, so an odd tooth count showed a price 0.5 gold from what it actually cost.
 
-> **⚠ DIVERGENCE** — The formula exists in three places: a hard-coded literal for the player's charge (`GameScene.ts:858`), a rounded copy for the UI price tag (`GearGridSection.ts:10`), and the constants themselves (`balance.constants.ts:18`). The charge is not rounded and the display is, so an odd tooth count displays a price 0.5 gold from what it takes.
+Placement cost is **linear** in teeth while almost everything a gear does scales linearly or better — output linearly, HP and torque quadratically. Large gears are therefore cheap for what they deliver, which is the same "bigger is better" shape noted above.
 
-> **⚠ DIVERGENCE** — Gears carry a `basePowerCost` and there is a `gearPowerCost()` formula scaling it quadratically, but nothing charges it (`GearSystem.ts:178`). Placement is gold-only. Either power becomes a real second cost — which would give the resource meaning and rebalance large gears — or the field should go.
+Gears no longer carry a power cost at all — see below.
 
-## Power is not a currency
+## Power was deleted, not fixed
 
-Every gear declares a power cost, the HUD implies power exists, and chain output is calculated in detail. None of it is stored: the tracked resources are gold, iron, crystal and aether. Chain output exists solely as a figure attached to a capacitor burst event that no system banks.
+Every gear used to declare a `basePowerCost`, and the HUD's language implied power was something you banked and spent. It never was: the tracked resources have only ever been gold, iron, crystal and aether, and chain "output" was a number computed in detail that fed a capacitor-burst event nothing consumed.
 
-This single gap explains four divergences (1, 6, 7, 10) and hollows out three gears — amplifier, capacitor, and to a degree the motor, whose `motorOutput` feeds only that unbanked number. Resolving it is the largest open design question in the game. See open question 1 in the [hub](../GAME_DESIGN.md#open-design-questions).
+Rather than build a fifth resource to justify that language, the language was removed. `basePowerCost` and the formula that scaled it are gone from the codebase entirely — placement has always been gold-only in practice, and now it is gold-only in the text too. The number that used to be called "power" is now framed for what it actually is: **chain motor output**, which feeds the capacitor's burst-yield calculation and nothing else. Motor and amplifier descriptions no longer mention power at all — the motor drives torque, the amplifier multiplies it, and the capacitor turns the chain's output into gold. See [Gears](gears.md#force-multiplier-gears) for the current mechanics.
 
 ---
 
@@ -164,8 +154,6 @@ Reach for these first, in roughly this order of impact.
 | `GEAR_PLACEMENT_COST_MULTIPLIER` | 0.5 | gold per tooth |
 | `REPOSITION_COOLDOWN_MS` | 3000 | gear move cooldown |
 <!-- END GENERATED: balance.constants -->
-
-> **⚠ DIVERGENCE** — `CAPACITOR_BURST_INTERVAL`, `LARGE_GEAR_GOLD_BONUS` and `AI_INITIAL_DECISION_DELAY` are declared and never read. The first is a remnant of time-based bursting, since replaced by rotation counting; the second describes a per-large-gear income bonus that does not exist.
 
 ---
 

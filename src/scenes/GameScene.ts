@@ -23,7 +23,7 @@ import { UnitState } from '../types/unit.types';
 import { TechState } from '../types/tech.types';
 import { AIStrategyProfile } from '../types/ai.types';
 import {
-  GEAR_DEFINITIONS, gearRadius, gearPowerCost, DEFAULT_TEETH,
+  GEAR_DEFINITIONS, gearRadius, DEFAULT_TEETH,
   motorOutput, motorTorque, spikeDamage, miningOutput,
   researcherOutput, converterOutput, healerOutput, healerRadius, turretMaxAmmo, turretRange,
 } from '../constants/gear.constants';
@@ -213,6 +213,7 @@ export class GameScene extends Phaser.Scene {
     this.rotationPhysics = new RotationPhysicsSystem(this.world, this.meshGraph, eventBus, this.gameClock);
     this.economySystem = new EconomySystem(eventBus, this.world);
     this.economySystem.setRotationPhysics(this.rotationPhysics);
+    this.rotationPhysics.setEconomySystem(this.economySystem);
     if (isPractice) this.economySystem.setPracticeMode(true);
     this.unitSystem = new UnitSystem(eventBus);
     this.unitSystem.setWorld(this.world);

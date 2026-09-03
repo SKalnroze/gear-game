@@ -2,7 +2,7 @@ import { GearState, GearType } from '../types/gear.types';
 import { World } from '../world/World';
 import { GearMeshGraph } from '../world/GearMeshGraph';
 import { EventBus } from './EventBus';
-import { GEAR_DEFINITIONS, GEAR_MESH_TOLERANCE, gearRadius, gearPowerCost, gearMaxHp, turretMaxAmmo } from '../constants/gear.constants';
+import { GEAR_DEFINITIONS, GEAR_MESH_TOLERANCE, gearRadius, gearMaxHp, turretMaxAmmo } from '../constants/gear.constants';
 import { SNAP_THRESHOLD, PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X } from '../constants/world.constants';
 import { REPOSITION_COOLDOWN_MS, gearPlacementCost } from '../constants/balance.constants';
 import { TechState } from '../types/tech.types';
@@ -172,13 +172,6 @@ export class GearSystem {
     });
 
     return gear;
-  }
-
-  /** Compute the power cost to place a gear of the given type and teeth count */
-  getPlacementCost(type: GearType, teeth: number): number {
-    const def = GEAR_DEFINITIONS[type];
-    if (!def) return 0;
-    return gearPowerCost(def.basePowerCost, teeth);
   }
 
   removeGear(gearId: string): boolean {

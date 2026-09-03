@@ -16,7 +16,7 @@ export const TECH_NODES: Record<string, TechNode> = {
   // T1
   basic_amplifier: {
     id: 'basic_amplifier', name: 'Basic Amplifier',
-    description: 'Unlocks the Amplifier gear. Multiplies downstream chain power by 1.4×.',
+    description: 'Unlocks the Amplifier gear. Multiplies the whole chain torque by 1.4x, so it spins faster.',
     tier: 1, goldCost: 20, researchTime: 15000,
     prereqs: [],
     effects: [{ kind: 'unlock_gear', gearType: 'amplifier' }],
@@ -32,7 +32,7 @@ export const TECH_NODES: Record<string, TechNode> = {
   },
   basic_overclock: {
     id: 'basic_overclock', name: 'Basic Overclock',
-    description: 'Unlocks the Overclock gear. +50% speed/power to adjacent gears for 10s.',
+    description: 'Unlocks the Overclock gear. +50% torque/omega to adjacent gears for 10s, then a 5s burnout.',
     tier: 1, goldCost: 30, researchTime: 21000,
     prereqs: [],
     effects: [{ kind: 'unlock_gear', gearType: 'overclock' }],
@@ -92,7 +92,7 @@ export const TECH_NODES: Record<string, TechNode> = {
   },
   super_amplifier: {
     id: 'super_amplifier', name: 'Super Amplifier',
-    description: 'Amplifiers now provide 2× multiplier instead of 1.4×.',
+    description: '+33% capacitor burst yield. (Despite the name, this does not touch the Amplifier gear itself -- its torque multiplier is fixed.)',
     tier: 3, goldCost: 120, researchTime: 75000,
     prereqs: ['gear_precision_3', 'power_efficiency_2'],
     effects: [{ kind: 'power_bonus_pct', value: 0.33 }],
@@ -269,7 +269,7 @@ export const TECH_NODES: Record<string, TechNode> = {
   },
   power_efficiency_1: {
     id: 'power_efficiency_1', name: 'Power Efficiency I',
-    description: 'All gears generate +10% more power.',
+    description: '+10% capacitor burst yield.',
     tier: 1, goldCost: 20, researchTime: 15000,
     prereqs: [],
     effects: [{ kind: 'power_bonus_pct', value: 0.1 }],
@@ -295,7 +295,7 @@ export const TECH_NODES: Record<string, TechNode> = {
   },
   power_efficiency_2: {
     id: 'power_efficiency_2', name: 'Power Efficiency II',
-    description: 'All gears generate an additional +15% power.',
+    description: '+15% capacitor burst yield, stacking with Power Efficiency I.',
     tier: 2, goldCost: 55, researchTime: 33000,
     prereqs: ['power_efficiency_1'],
     effects: [{ kind: 'power_bonus_pct', value: 0.15 }],
@@ -329,7 +329,7 @@ export const TECH_NODES: Record<string, TechNode> = {
   },
   power_overdrive: {
     id: 'power_overdrive', name: 'Power Overdrive',
-    description: '+25% power generation from all sources.',
+    description: '+25% capacitor burst yield, stacking with the Power Efficiency line.',
     tier: 3, goldCost: 130, researchTime: 78000,
     prereqs: ['power_efficiency_2', 'capacitor_upgrade'],
     effects: [{ kind: 'power_bonus_pct', value: 0.25 }],

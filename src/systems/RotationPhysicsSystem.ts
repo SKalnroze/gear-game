@@ -16,6 +16,7 @@ import {
 } from '../constants/balance.constants';
 import { meshOmega } from '../utils/MathUtils';
 import { GameClock } from './GameClock';
+import type { EconomySystem } from './EconomySystem';
 
 const TWO_PI = Math.PI * 2;
 
@@ -49,15 +50,20 @@ export class RotationPhysicsSystem {
   // Tech modifiers, per side. These were single values shared by both owners,
   // so one side's research changed the other side's chain output too.
   private powerBonusPct: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
-  private capacitorBurstMultiplier: Record<'player' | 'ai', number> = {
-    player: CAPACITOR_BURST_MULTIPLIER,
-    ai: CAPACITOR_BURST_MULTIPLIER,
-  };
+  // Additive bonus from researched tech, per side, on top of the base
+  // multiplier. Used to overwrite an absolute value from a hard-coded 2.5
+  // rather than composing -- a second capacitor tech node would have
+  // silently replaced the first's bonus instead of stacking with it.
+  private capacitorBurstBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
   /** Extra boost-window ms from researched overclock duration nodes, per side. */
   private overclockDurationBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
 
   // Optional ability system ref (set after construction)
   private abilitySystem: { isUnlocked: (id: 'power_surge' | 'counter_intel' | 'overclock_no_burnout') => boolean } | null = null;
+
+  // Optional economy ref (set after construction) -- capacitor bursts credit
+  // gold directly through it, once it is wired up.
+  private economySystem: EconomySystem | null = null;
 
   private readonly onMeshUpdated = () => this.rebuildChains();
   private readonly onGearPlaced = ({ gear }: { gear: GearState }) => {
@@ -83,8 +89,13 @@ export class RotationPhysicsSystem {
     this.powerBonusPct[owner] = pct;
   }
 
-  setCapacitorBurstMultiplier(owner: 'player' | 'ai', multiplier: number): void {
-    this.capacitorBurstMultiplier[owner] = multiplier;
+  setCapacitorBurstBonus(owner: 'player' | 'ai', bonus: number): void {
+    this.capacitorBurstBonus[owner] = bonus;
+  }
+
+  /** Burst multiplier for a side, including researched bonuses. */
+  private capacitorBurstMultiplier(owner: 'player' | 'ai'): number {
+    return CAPACITOR_BURST_MULTIPLIER + this.capacitorBurstBonus[owner];
   }
 
   rebuildChains(): void {
@@ -294,6 +305,7 @@ export class RotationPhysicsSystem {
     }
 
     // Compute inertia and torque
+    let amplifierCount = 0;
     for (const gId of chainGearIds) {
       const g = allGears.get(gId);
       if (!g) continue;
@@ -308,6 +320,20 @@ export class RotationPhysicsSystem {
         // Motor torque is scaled by its omega ratio at the reference frame (power conservation: P = τ × ω)
         totalMotorTorque += motorTorque(g.teeth) * (omegaRatios.get(gId) ?? 1.0);
       }
+      if (g.type === 'amplifier' && !g.isBurntOut) {
+        amplifierCount++;
+      }
+    }
+
+    // Each amplifier multiplies the chain's total torque, stacking. This is
+    // the amplifier's whole purpose: since omega = torque / inertia, boosting
+    // torque directly speeds up every gear on the chain, so everything hanging
+    // off gear:full_rotation (spawning, mining, research, healing, reload)
+    // happens more often. Previously this multiplier only fed an unbanked
+    // "power" figure consumed solely by the capacitor burst -- so a chain
+    // with no capacitor gained nothing from an amplifier at all.
+    if (amplifierCount > 0) {
+      totalMotorTorque *= Math.pow(AMPLIFIER_CHAIN_MULTIPLIER, amplifierCount);
     }
 
     // Return corrected motor omega with friction
@@ -427,25 +453,32 @@ export class RotationPhysicsSystem {
     });
 
     if (gear.type === 'capacitor' && rotationCount % CAPACITOR_BURST_ROTATIONS === 0) {
-      const chainOutput = this.computeChainOutput(chain, allGears);
+      const burstYield = this.computeChainOutput(chain, allGears);
       // Declared synergy: a capacitor meshed to a live overclock gear bursts
       // harder. The constant existed but nothing read it.
       const synergy = this.hasActiveOverclockNeighbor(gear.id, allGears)
         ? CAPACITOR_OVERCLOCK_BURST_BONUS
         : 0;
-      const burstPower = chainOutput * (this.capacitorBurstMultiplier[gear.owner] + synergy);
-      this.eventBus.emit('power:capacitor_burst', { gearId: gear.id, owner: gear.owner, powerReleased: burstPower });
+      const goldEarned = burstYield * (this.capacitorBurstMultiplier(gear.owner) + synergy);
+      // The capacitor's whole point: banking rotations and paying out on the
+      // 8th. Previously this number went nowhere -- it fed an event nothing
+      // consumed but VFX, so a chain with a capacitor gained nothing a
+      // player could observe.
+      this.economySystem?.earnGold(gear.owner, goldEarned);
+      this.eventBus.emit('power:capacitor_burst', { gearId: gear.id, owner: gear.owner, goldEarned });
     }
   }
 
   /**
-   * Compute the resource output for a chain per motor full rotation.
+   * Sum of motor output in a chain, boosted by researched burst-yield tech --
+   * this is the capacitor's "burst yield" per rotation. Amplifiers do not
+   * factor in here: their job is the chain's torque (computeChainPhysics),
+   * not this figure, so a chain benefits from an amplifier once, not twice.
    */
   computeChainOutput(chain: ChainInfo, allGears: Map<string, GearState>): number {
     if (!chain.hasMotor) return 0;
 
     let totalOutput = 0;
-    let multiplier = 1.0;
 
     for (const gearId of chain.gearIds) {
       const gear = allGears.get(gearId);
@@ -454,12 +487,9 @@ export class RotationPhysicsSystem {
       if (gear.type === 'motor' && !gear.isBurntOut) {
         totalOutput += motorOutput(gear.teeth);
       }
-      if (gear.type === 'amplifier' && !gear.isBurntOut) {
-        multiplier *= AMPLIFIER_CHAIN_MULTIPLIER;
-      }
     }
 
-    return totalOutput * multiplier * (1 + this.powerBonusPct[chain.owner]);
+    return totalOutput * (1 + this.powerBonusPct[chain.owner]);
   }
 
   /** Boost window length for a side, including researched extensions. */
@@ -539,6 +569,10 @@ export class RotationPhysicsSystem {
 
   setAbilitySystem(abilitySystem: { isUnlocked: (id: 'power_surge' | 'counter_intel' | 'overclock_no_burnout') => boolean }): void {
     this.abilitySystem = abilitySystem;
+  }
+
+  setEconomySystem(economySystem: EconomySystem): void {
+    this.economySystem = economySystem;
   }
 
   getChains(): Map<string, ChainInfo> {

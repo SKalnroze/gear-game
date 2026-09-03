@@ -3,6 +3,7 @@ import { RotationPhysicsSystem } from '../../src/systems/RotationPhysicsSystem';
 import { World } from '../../src/world/World';
 import { GearMeshGraph } from '../../src/world/GearMeshGraph';
 import type { EventBus } from '../../src/systems/EventBus';
+import type { EconomySystem } from '../../src/systems/EconomySystem';
 import { GameClock } from '../../src/systems/GameClock';
 import type { GearState, GearType } from '../../src/types/gear.types';
 import { gearRadius, motorTorque, motorOutput, INERTIA_DENSITY } from '../../src/constants/gear.constants';
@@ -128,8 +129,8 @@ describe('RotationPhysicsSystem', () => {
 
     it('a chain with no motor does not spin', () => {
       const { world } = rig([
-        makeGear('a', 0, 0, 10, 'amplifier'),
-        makeGear('b', 50, 0, 10, 'amplifier'),
+        makeGear('a', 0, 0, 10, 'armored'),
+        makeGear('b', 50, 0, 10, 'armored'),
       ]);
       expect(world.getGear('a')!.angularVelocity).toBe(0);
       expect(world.getGear('a')!.isSpinning).toBe(false);
@@ -139,7 +140,7 @@ describe('RotationPhysicsSystem', () => {
     it('a burnt-out motor drives nothing', () => {
       const { world } = rig([
         makeGear('m', 0, 0, 10, 'motor', { isBurntOut: true }),
-        makeGear('b', 50, 0, 10, 'amplifier'),
+        makeGear('b', 50, 0, 10, 'armored'),
       ]);
       expect(world.getGear('m')!.isSpinning).toBe(false);
       expect(world.getGear('b')!.isSpinning).toBe(false);
@@ -148,7 +149,7 @@ describe('RotationPhysicsSystem', () => {
     it('a meshed neighbour turns the opposite way', () => {
       const { world } = rig([
         makeGear('m', 0, 0, 10, 'motor'),
-        makeGear('b', 50, 0, 10, 'amplifier'),
+        makeGear('b', 50, 0, 10, 'armored'),
       ]);
       const m = world.getGear('m')!.angularVelocity;
       const b = world.getGear('b')!.angularVelocity;
@@ -159,7 +160,7 @@ describe('RotationPhysicsSystem', () => {
       // A 10-tooth motor drives a 20-tooth gear at half the speed, reversed.
       const { world } = rig([
         makeGear('m', 0, 0, 10, 'motor'),
-        makeGear('b', 75, 0, 20, 'amplifier'),
+        makeGear('b', 75, 0, 20, 'armored'),
       ]);
       const m = world.getGear('m')!.angularVelocity;
       const b = world.getGear('b')!.angularVelocity;
@@ -174,8 +175,8 @@ describe('RotationPhysicsSystem', () => {
     it('direction alternates along a three-gear run', () => {
       const { world } = rig([
         makeGear('m', 0, 0, 10, 'motor'),
-        makeGear('b', 50, 0, 10, 'amplifier'),
-        makeGear('c', 100, 0, 10, 'amplifier'),
+        makeGear('b', 50, 0, 10, 'armored'),
+        makeGear('c', 100, 0, 10, 'armored'),
       ]);
       const [m, b, c] = ['m', 'b', 'c'].map(id => world.getGear(id)!.angularVelocity);
       expect(Math.sign(b)).toBe(-Math.sign(m));
@@ -194,10 +195,91 @@ describe('RotationPhysicsSystem', () => {
     it('an unmeshed motor does not drive a distant gear', () => {
       const { world } = rig([
         makeGear('m', 0, 0, 10, 'motor'),
-        makeGear('far', 800, 0, 10, 'amplifier'),
+        makeGear('far', 800, 0, 10, 'armored'),
       ]);
       expect(world.getGear('m')!.isSpinning).toBe(true);
       expect(world.getGear('far')!.isSpinning).toBe(false);
+    });
+  });
+
+  describe('amplifier torque boost', () => {
+    // Amplifier's whole purpose: multiply the chain's torque so the chain
+    // spins faster, which speeds up every gear:full_rotation effect on it.
+    // Previously this multiplier fed an unbanked "power" figure only the
+    // capacitor burst consumed, so a chain with no capacitor got nothing
+    // from an amplifier at all.
+    it('one amplifier multiplies chain omega by AMPLIFIER_CHAIN_MULTIPLIER', () => {
+      const plain = rig([makeGear('m', 0, 0, 10, 'motor')]);
+      const boosted = rig([
+        makeGear('m', 0, 0, 10, 'motor'),
+        makeGear('amp', 50, 0, 10, 'amplifier'),
+      ]);
+
+      const plainOmega = Math.abs(plain.world.getGear('m')!.angularVelocity);
+      const boostedOmega = Math.abs(boosted.world.getGear('m')!.angularVelocity);
+
+      // computeChainPhysics divides boosted torque by a chain with one more
+      // gear's worth of inertia, so the ratio is the multiplier scaled by
+      // the inertia this second gear adds -- verify against the formula
+      // directly rather than assuming a bare 1.4x.
+      const expectedPlain = motorTorque(10) / inertiaOf(10);
+      const expectedBoosted = (motorTorque(10) * AMPLIFIER_CHAIN_MULTIPLIER) / (inertiaOf(10) + inertiaOf(10));
+      expect(plainOmega).toBeCloseTo(expectedPlain, 6);
+      expect(boostedOmega).toBeCloseTo(expectedBoosted, 6);
+      expect(boostedOmega).toBeGreaterThan(plainOmega * 0.5); // meaningfully faster, not just inertia-diluted
+    });
+
+    it('amplifiers stack multiplicatively', () => {
+      const one = rig([
+        makeGear('m', 0, 0, 10, 'motor'),
+        makeGear('amp1', 50, 0, 10, 'amplifier'),
+      ]);
+      const two = rig([
+        makeGear('m', 0, 0, 10, 'motor'),
+        makeGear('amp1', 50, 0, 10, 'amplifier'),
+        makeGear('amp2', 100, 0, 10, 'amplifier'),
+      ]);
+
+      const torqueOne = motorTorque(10) * AMPLIFIER_CHAIN_MULTIPLIER;
+      const torqueTwo = motorTorque(10) * AMPLIFIER_CHAIN_MULTIPLIER * AMPLIFIER_CHAIN_MULTIPLIER;
+      const omegaOne = torqueOne / (inertiaOf(10) * 2);
+      const omegaTwo = torqueTwo / (inertiaOf(10) * 3);
+
+      expect(Math.abs(one.world.getGear('m')!.angularVelocity)).toBeCloseTo(omegaOne, 6);
+      expect(Math.abs(two.world.getGear('m')!.angularVelocity)).toBeCloseTo(omegaTwo, 6);
+    });
+
+    it('a burnt-out amplifier contributes no boost', () => {
+      // A burnt-out gear is excluded from the chain traversal entirely
+      // (RotationPhysicsSystem.getChainGearIds stops at it), so a burnt-out
+      // amplifier meshed only to the motor is invisible to the physics --
+      // the result is identical to a lone motor, not a two-gear chain with
+      // no multiplier applied.
+      const r = rig([
+        makeGear('m', 0, 0, 10, 'motor'),
+        makeGear('amp', 50, 0, 10, 'amplifier', { isBurntOut: true }),
+      ]);
+      const expected = motorTorque(10) / inertiaOf(10);
+      expect(Math.abs(r.world.getGear('m')!.angularVelocity)).toBeCloseTo(expected, 6);
+    });
+
+    it('speeds up everything downstream, not just the motor', () => {
+      // A researcher or spawner three hops from the motor should still spin
+      // faster with an amplifier in the chain -- the whole chain shares one
+      // omega ratio tree, so boosting motor torque boosts all of it.
+      const plain = rig([
+        makeGear('m', 0, 0, 10, 'motor'),
+        makeGear('mid', 50, 0, 10, 'armored'),
+        makeGear('end', 100, 0, 10, 'armored'),
+      ]);
+      const boosted = rig([
+        makeGear('m', 0, 0, 10, 'motor'),
+        makeGear('amp', -50, 0, 10, 'amplifier'),
+        makeGear('mid', 50, 0, 10, 'armored'),
+        makeGear('end', 100, 0, 10, 'armored'),
+      ]);
+      expect(Math.abs(boosted.world.getGear('end')!.angularVelocity))
+        .toBeGreaterThan(Math.abs(plain.world.getGear('end')!.angularVelocity));
     });
   });
 
@@ -575,7 +657,10 @@ describe('RotationPhysicsSystem', () => {
     });
   });
 
-  describe('chain output', () => {
+  describe('chain output (capacitor burst yield)', () => {
+    // Amplifier no longer factors in here -- its job moved to
+    // computeChainPhysics (chain torque/speed), so a chain benefits from an
+    // amplifier once, not twice. See the "amplifier torque boost" suite.
     function outputOf(r: Rig): number {
       const chain = r.physics.getChainForGear('m')!;
       return r.physics.computeChainOutput(chain, r.world.getAllGears());
@@ -586,31 +671,13 @@ describe('RotationPhysicsSystem', () => {
       expect(outputOf(r)).toBeCloseTo(motorOutput(10), 6);
     });
 
-    it('an amplifier multiplies the chain', () => {
-      const r = rig([
+    it('an amplifier no longer changes this figure', () => {
+      const plain = rig([makeGear('m', 0, 0, 10, 'motor')]);
+      const withAmp = rig([
         makeGear('m', 0, 0, 10, 'motor'),
         makeGear('amp', 50, 0, 10, 'amplifier'),
       ]);
-      expect(outputOf(r)).toBeCloseTo(motorOutput(10) * AMPLIFIER_CHAIN_MULTIPLIER, 6);
-    });
-
-    it('amplifiers stack multiplicatively', () => {
-      const r = rig([
-        makeGear('m', 0, 0, 10, 'motor'),
-        makeGear('amp1', 50, 0, 10, 'amplifier'),
-        makeGear('amp2', 100, 0, 10, 'amplifier'),
-      ]);
-      expect(outputOf(r)).toBeCloseTo(
-        motorOutput(10) * AMPLIFIER_CHAIN_MULTIPLIER * AMPLIFIER_CHAIN_MULTIPLIER, 6,
-      );
-    });
-
-    it('a burnt-out amplifier stops contributing', () => {
-      const r = rig([
-        makeGear('m', 0, 0, 10, 'motor'),
-        makeGear('amp', 50, 0, 10, 'amplifier', { isBurntOut: true }),
-      ]);
-      expect(outputOf(r)).toBeCloseTo(motorOutput(10), 6);
+      expect(outputOf(withAmp)).toBeCloseTo(outputOf(plain), 6);
     });
 
     it('two motors on one chain sum their output', () => {
@@ -631,8 +698,8 @@ describe('RotationPhysicsSystem', () => {
 
     it('a chain without a motor outputs nothing', () => {
       const r = rig([
-        makeGear('a', 0, 0, 10, 'amplifier'),
-        makeGear('b', 50, 0, 10, 'amplifier'),
+        makeGear('a', 0, 0, 10, 'armored'),
+        makeGear('b', 50, 0, 10, 'armored'),
       ]);
       const chain = r.physics.getChainForGear('a')!;
       expect(r.physics.computeChainOutput(chain, r.world.getAllGears())).toBe(0);
@@ -654,6 +721,15 @@ describe('RotationPhysicsSystem', () => {
       for (let i = 0; i < turns; i++) r.physics.update(oneTurn);
     }
 
+    /** Minimal EconomySystem stub tracking gold credited per owner. */
+    function makeEconomyStub() {
+      const earned: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
+      const stub = {
+        earnGold: (owner: 'player' | 'ai', amount: number) => { earned[owner] += amount; },
+      };
+      return { stub: stub as unknown as EconomySystem, earned };
+    }
+
     it('bursts once every CAPACITOR_BURST_ROTATIONS turns', () => {
       const r = capRig();
       spin(r, CAPACITOR_BURST_ROTATIONS - 1);
@@ -666,26 +742,49 @@ describe('RotationPhysicsSystem', () => {
       expect(r.events('power:capacitor_burst')).toHaveLength(2);
     });
 
-    it('the burst releases the chain output times the burst multiplier', () => {
+    it('the burst pays gold worth the chain output times the burst multiplier', () => {
+      // The capacitor's whole point: previously this figure fed an event
+      // nothing consumed but VFX, so a chain with a capacitor gained nothing
+      // a player could observe. Wire a stub economy and confirm gold moves.
       const r = capRig();
+      const { stub, earned } = makeEconomyStub();
+      r.physics.setEconomySystem(stub);
       spin(r, CAPACITOR_BURST_ROTATIONS);
 
       const chain = r.physics.getChainForGear('cap')!;
       const chainOutput = r.physics.computeChainOutput(chain, r.world.getAllGears());
       const burst = r.events('power:capacitor_burst')[0].payload;
-      expect(burst.powerReleased).toBeCloseTo(chainOutput * CAPACITOR_BURST_MULTIPLIER, 6);
+
+      expect(burst.goldEarned).toBeCloseTo(chainOutput * CAPACITOR_BURST_MULTIPLIER, 6);
       expect(burst.owner).toBe('player');
+      expect(earned.player).toBeCloseTo(chainOutput * CAPACITOR_BURST_MULTIPLIER, 6);
+      expect(earned.ai).toBe(0);
     });
 
-    it('setCapacitorBurstMultiplier overrides the default', () => {
+    it('without an economy wired up, the burst event still fires (no crash)', () => {
+      // RotationPhysicsSystem.economySystem is optional -- confirms the `?.`
+      // guard, not a silent swallow of a required dependency.
       const r = capRig();
-      r.physics.setCapacitorBurstMultiplier('player', 10);
-      spin(r, CAPACITOR_BURST_ROTATIONS);
+      expect(() => spin(r, CAPACITOR_BURST_ROTATIONS)).not.toThrow();
+      expect(r.events('power:capacitor_burst')).toHaveLength(1);
+    });
 
+    it('capacitor_burst_multiplier research composes rather than overwrites', () => {
+      const r = capRig();
       const chain = r.physics.getChainForGear('cap')!;
       const chainOutput = r.physics.computeChainOutput(chain, r.world.getAllGears());
-      expect(r.events('power:capacitor_burst')[0].payload.powerReleased)
-        .toBeCloseTo(chainOutput * 10, 6);
+
+      // Two nodes granting +0.5 and +1.0 (TechSystem passes the running
+      // total, matching setOverclockDurationBonus's pattern) should stack to
+      // CAPACITOR_BURST_MULTIPLIER + 1.5, not overwrite each other -- this is
+      // what divergence #15 fixed: the old setter reset to a hard-coded 2.5
+      // plus the node's own value on every call.
+      r.physics.setCapacitorBurstBonus('player', 0.5);
+      r.physics.setCapacitorBurstBonus('player', 0.5 + 1.0);
+      spin(r, CAPACITOR_BURST_ROTATIONS);
+
+      expect(r.events('power:capacitor_burst')[0].payload.goldEarned)
+        .toBeCloseTo(chainOutput * (CAPACITOR_BURST_MULTIPLIER + 1.5), 6);
     });
 
     it('an adjacent live overclock gear makes the burst bigger', () => {
@@ -703,7 +802,7 @@ describe('RotationPhysicsSystem', () => {
 
         const chain = r.physics.getChainForGear('cap')!;
         const output = r.physics.computeChainOutput(chain, r.world.getAllGears());
-        return r.events('power:capacitor_burst')[0].payload.powerReleased / output;
+        return r.events('power:capacitor_burst')[0].payload.goldEarned / output;
       }
 
       expect(burstWith(-1)).toBeCloseTo(CAPACITOR_BURST_MULTIPLIER, 6);
@@ -715,7 +814,7 @@ describe('RotationPhysicsSystem', () => {
     it('a non-capacitor gear never bursts', () => {
       const r = rig([
         makeGear('m', 0, 0, 10, 'motor'),
-        makeGear('other', 50, 0, 10, 'amplifier'),
+        makeGear('other', 50, 0, 10, 'armored'),
       ]);
       const omega = Math.abs(r.world.getGear('other')!.angularVelocity);
       for (let i = 0; i < CAPACITOR_BURST_ROTATIONS + 2; i++) {

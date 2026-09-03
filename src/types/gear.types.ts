@@ -11,22 +11,9 @@ export type GearType =
 
 export interface GearDefinition {
   type: GearType;
-  basePowerCost: number;   // power cost at 10 teeth; scales as Math.round(basePowerCost * (teeth/10))
   goldCost: number;
-  synergies: GearSynergy[];
   description: string;
   unlockNode?: string;     // tech node required to unlock (undefined = available from start)
-}
-
-export interface GearSynergy {
-  requiredNeighbor: GearType;
-  bonus: SynergyBonus;
-  description: string;
-}
-
-export interface SynergyBonus {
-  type: 'chain_power_pct' | 'burst_multiplier' | 'speed_pct';
-  value: number;
 }
 
 export interface GearState {

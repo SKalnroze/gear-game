@@ -27,6 +27,7 @@ const TYPE_COLORS: Record<GearType, number> = {
   infantry_spawner: NEON.green,
   artillery_spawner: NEON.blue,
   cavalry_spawner: NEON.orange,
+  wrench_spawner: 0x999999,
   iron_guard_spawner: 0xcc9966,
   crystal_sentinel_spawner: 0x66ccff,
   aether_phantom_spawner: 0xcc66ff,

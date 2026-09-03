@@ -173,6 +173,13 @@ export const GEAR_DEFINITIONS: Record<GearType, GearDefinition> = {
     unlockNode: 'unlock_cavalry_spawner',
   },
 
+  wrench_spawner: {
+    type: 'wrench_spawner',
+    goldCost: 5,
+    description: 'Spawns a Wrench unit per full rotation (free). Wrenches latch onto enemy gears and add friction -- the anti-machine unit.',
+    unlockNode: 'unlock_wrench_spawner',
+  },
+
   iron_guard_spawner: {
     type: 'iron_guard_spawner',
     goldCost: 8,

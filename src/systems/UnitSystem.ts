@@ -1,4 +1,5 @@
 import { UnitState, UnitType, UnitDefinition } from '../types/unit.types';
+import type { GearState } from '../types/gear.types';
 import { EventBus } from './EventBus';
 import { UNIT_DEFINITIONS } from '../constants/unit.constants';
 import { gearRadius, crackLevelFor } from '../constants/gear.constants';
@@ -18,7 +19,10 @@ import {
   computeAttackCooldown,
   computeChargeDamage,
 } from './unit.utils';
-import { computeDamage } from '../constants/unit.constants';
+import { computeDamage, getChainUnitType } from '../constants/unit.constants';
+import { COMBO_CHAIN_MIN_GEARS } from '../constants/balance.constants';
+import type { RotationPhysicsSystem } from './RotationPhysicsSystem';
+import type { TechSystem } from './TechSystem';
 
 let _nextUnitId = 1;
 function nextUnitId(): string {
@@ -98,6 +102,8 @@ export class UnitSystem {
   private units: Map<string, UnitState> = new Map();
   private world: World | null = null;
   private economySystem: EconomySystem | null = null;
+  private rotationPhysics: RotationPhysicsSystem | null = null;
+  private techSystem: TechSystem | null = null;
 
   // Cold zone system (crystal sentinel)
   private coldZones: ColdZone[] = [];
@@ -132,6 +138,14 @@ export class UnitSystem {
 
   setEconomySystem(economySystem: EconomySystem): void {
     this.economySystem = economySystem;
+  }
+
+  setRotationPhysics(rotationPhysics: RotationPhysicsSystem): void {
+    this.rotationPhysics = rotationPhysics;
+  }
+
+  setTechSystem(techSystem: TechSystem): void {
+    this.techSystem = techSystem;
   }
 
   isUnitTypeUnlocked(type: UnitType): boolean {
@@ -1108,6 +1122,42 @@ export class UnitSystem {
     this.units.delete(unitId);
   }
 
+  /** Elite unlock tech per core spawner base type. */
+  private static readonly ELITE_TECH: Record<'infantry' | 'artillery' | 'cavalry', string> = {
+    infantry: 'elite_infantry_unlock',
+    artillery: 'elite_artillery_unlock',
+    cavalry: 'elite_cavalry_unlock',
+  };
+
+  /**
+   * What infantry_spawner/artillery_spawner/cavalry_spawner actually produce
+   * this rotation, once chain composition and research are factored in. Any
+   * other spawner type (including wrench_spawner) passes its base type
+   * straight through -- only the core three have an upgrade path.
+   */
+  private resolveCoreSpawnerUnitType(
+    gear: GearState,
+    baseUnitType: UnitType,
+    owner: 'player' | 'ai',
+  ): UnitType {
+    if (baseUnitType !== 'infantry' && baseUnitType !== 'artillery' && baseUnitType !== 'cavalry') {
+      return baseUnitType;
+    }
+    if (!this.rotationPhysics || !this.techSystem) return baseUnitType;
+
+    const chain = this.rotationPhysics.getChainForGear(gear.id);
+    const chainSize = chain?.gearIds.length ?? 1;
+    const hasConverter = chain?.hasConverter ?? false;
+
+    const eliteResearched = this.techSystem.isResearched(UnitSystem.ELITE_TECH[baseUnitType], owner);
+    const mixedUnlocked =
+      this.techSystem.isResearched('unlock_infantry', owner) &&
+      this.techSystem.isResearched('unlock_artillery_spawner', owner) &&
+      this.techSystem.isResearched('unlock_cavalry_spawner', owner);
+
+    return getChainUnitType(baseUnitType, chainSize, eliteResearched, mixedUnlocked, hasConverter, COMBO_CHAIN_MIN_GEARS);
+  }
+
   /**
    * Try to spawn a unit when a spawner gear completes a rotation.
    * Each spawner gear type directly spawns its corresponding unit type.
@@ -1123,13 +1173,20 @@ export class UnitSystem {
       infantry_spawner: 'infantry',
       artillery_spawner: 'artillery',
       cavalry_spawner: 'cavalry',
+      wrench_spawner: 'wrench',
       iron_guard_spawner: 'iron_guard',
       crystal_sentinel_spawner: 'crystal_sentinel',
       aether_phantom_spawner: 'aether_phantom',
     };
 
-    const unitType = spawnerMap[gear.type];
-    if (!unitType) return; // Not a spawner gear
+    const baseUnitType = spawnerMap[gear.type];
+    if (!baseUnitType) return; // Not a spawner gear
+
+    // The three core spawners can produce something other than their base
+    // type -- an elite upgrade or the generalist "mixed" -- depending on
+    // the chain they sit on and what the owner has researched. See
+    // getChainUnitType for the exact conditions.
+    const unitType = this.resolveCoreSpawnerUnitType(gear, baseUnitType, owner);
 
     const def = UNIT_DEFINITIONS[unitType];
     if (!def) return;
@@ -1143,6 +1200,11 @@ export class UnitSystem {
       infantry: 'Infantry',
       artillery: 'Artillery',
       cavalry: 'Cavalry',
+      mixed: 'Mixed',
+      elite_infantry: 'Elite Infantry',
+      elite_artillery: 'Elite Artillery',
+      elite_cavalry: 'Elite Cavalry',
+      wrench: 'Wrench',
       iron_guard: 'Iron Guard',
       crystal_sentinel: 'Sentinel',
       aether_phantom: 'Phantom',

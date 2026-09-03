@@ -9,6 +9,8 @@ export const OVERCLOCK_BURNOUT_DURATION = 5000;  // 5 seconds disabled after bur
 export const BASE_GOLD_PER_SEC = 2;
 export const OVERCLOCK_SPEED_BONUS = 0.5;   // +50% speed
 export const AMPLIFIER_CHAIN_MULTIPLIER = 1.4;
+/** Minimum gears on a chain to count as "big" -- gates both Combo Chain Bonus and elite/mixed spawn upgrades. */
+export const COMBO_CHAIN_MIN_GEARS = 4;
 export const CAPACITOR_BURST_MULTIPLIER = 2.5;
 export const CAPACITOR_BURST_ROTATIONS = 8;
 

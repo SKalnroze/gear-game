@@ -19,6 +19,7 @@ const GEAR_DOT_COLORS: Record<GearType, number> = {
   infantry_spawner: 0x44ff88,
   artillery_spawner: 0x4488ff,
   cavalry_spawner: 0xff8800,
+  wrench_spawner: 0x999999,
   iron_guard_spawner: RESOURCE_COLORS.iron,
   crystal_sentinel_spawner: RESOURCE_COLORS.crystal,
   aether_phantom_spawner: RESOURCE_COLORS.aether,

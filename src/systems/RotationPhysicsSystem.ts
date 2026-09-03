@@ -5,6 +5,7 @@ import { EventBus } from './EventBus';
 import { GEAR_DEFINITIONS, INERTIA_DENSITY, gearRadius, motorTorque, motorOutput, crackLevelFor } from '../constants/gear.constants';
 import {
   AMPLIFIER_CHAIN_MULTIPLIER,
+  COMBO_CHAIN_MIN_GEARS,
   OVERCLOCK_SPEED_BONUS,
   CAPACITOR_BURST_MULTIPLIER,
   CAPACITOR_BURST_ROTATIONS,
@@ -57,6 +58,8 @@ export class RotationPhysicsSystem {
   private capacitorBurstBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
   /** Extra boost-window ms from researched overclock duration nodes, per side. */
   private overclockDurationBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
+  /** Extra torque multiplier on chains of 4+ gears, from Combo Chain Bonus, per side. */
+  private chainComboBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
 
   // Optional ability system ref (set after construction)
   private abilitySystem: { isUnlocked: (id: 'power_surge' | 'counter_intel' | 'overclock_no_burnout') => boolean } | null = null;
@@ -91,6 +94,10 @@ export class RotationPhysicsSystem {
 
   setCapacitorBurstBonus(owner: 'player' | 'ai', bonus: number): void {
     this.capacitorBurstBonus[owner] = bonus;
+  }
+
+  setChainComboBonus(owner: 'player' | 'ai', bonus: number): void {
+    this.chainComboBonus[owner] = bonus;
   }
 
   /** Burst multiplier for a side, including researched bonuses. */
@@ -162,7 +169,7 @@ export class RotationPhysicsSystem {
       // Pass 1: Compute chain physics for this motor's chain
       const chainGearIds = this.getChainGearIds(gear.id, visited);
       const chainGears = chainGearIds.map(id => allGears.get(id)).filter(Boolean) as GearState[];
-      const correctedMotorOmega = this.computeChainPhysics(chainGearIds, chainGears, allGears);
+      const correctedMotorOmega = this.computeChainPhysics(chainGearIds, chainGears, allGears, gear.owner);
 
       // Pass 2: Propagate torque with jam detection
       const mTorque = motorTorque(gear.teeth);
@@ -259,7 +266,8 @@ export class RotationPhysicsSystem {
   private computeChainPhysics(
     chainGearIds: string[],
     chainGears: GearState[],
-    allGears: Map<string, GearState>
+    allGears: Map<string, GearState>,
+    owner: 'player' | 'ai'
   ): number {
     // Compute effective inertia and total motor torque
     let chainEffectiveInertia = 0;
@@ -334,6 +342,14 @@ export class RotationPhysicsSystem {
     // with no capacitor gained nothing from an amplifier at all.
     if (amplifierCount > 0) {
       totalMotorTorque *= Math.pow(AMPLIFIER_CHAIN_MULTIPLIER, amplifierCount);
+    }
+
+    // Combo Chain Bonus: a second, gear-type-agnostic way into the same
+    // "big chain spins faster" territory the amplifier occupies -- reward
+    // the chain's *size* directly rather than one specific gear on it.
+    const comboBonus = this.chainComboBonus[owner];
+    if (comboBonus > 0 && chainGearIds.length >= COMBO_CHAIN_MIN_GEARS) {
+      totalMotorTorque *= 1 + comboBonus;
     }
 
     // Return corrected motor omega with friction

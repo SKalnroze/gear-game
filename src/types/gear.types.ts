@@ -2,7 +2,7 @@ export type GearType =
   'motor' | 'amplifier' | 'capacitor' | 'overclock' |
   'spiked' | 'armored' |
   'iron_miner' | 'crystal_miner' | 'aether_miner' |
-  'infantry_spawner' | 'artillery_spawner' | 'cavalry_spawner' |
+  'infantry_spawner' | 'artillery_spawner' | 'cavalry_spawner' | 'wrench_spawner' |
   'iron_guard_spawner' | 'crystal_sentinel_spawner' | 'aether_phantom_spawner' |
   'researcher' |
   'iron_converter' | 'crystal_converter' | 'aether_converter' |

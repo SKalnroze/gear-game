@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeDamage, getCounterMultiplier, IRON_GUARD_DAMAGE_REDUCTION } from '../../src/constants/unit.constants';
+import { computeDamage, getChainUnitType, getCounterMultiplier, IRON_GUARD_DAMAGE_REDUCTION } from '../../src/constants/unit.constants';
 
 /**
  * computeDamage is the one function every damage-application site now
@@ -41,5 +41,46 @@ describe('computeDamage', () => {
   it('no active shield (default factor) leaves damage unchanged', () => {
     const dealt = computeDamage('infantry', { type: 'crystal_sentinel' }, 10);
     expect(dealt).toBeCloseTo(10 * getCounterMultiplier('infantry', 'crystal_sentinel'), 6);
+  });
+});
+
+/**
+ * getChainUnitType revives the retired chain-composition rule (a core
+ * spawner's output depends on the chain it's on, not just its own gear
+ * type) and extends it to make mixed and the elites reachable, which they
+ * were not before -- they were fully implemented and tested but no spawner
+ * gear could ever produce them.
+ */
+describe('getChainUnitType', () => {
+  const MIN = 4;
+
+  it('with nothing researched, a core spawner just produces its base type', () => {
+    expect(getChainUnitType('infantry', 10, false, false, true, MIN)).toBe('infantry');
+  });
+
+  it('elite tech alone, on a short chain, is not enough', () => {
+    expect(getChainUnitType('cavalry', 3, true, false, false, MIN)).toBe('cavalry');
+  });
+
+  it('elite tech + a chain at combo size upgrades to the elite variant', () => {
+    expect(getChainUnitType('cavalry', MIN, true, false, false, MIN)).toBe('elite_cavalry');
+    expect(getChainUnitType('infantry', MIN, true, false, false, MIN)).toBe('elite_infantry');
+    expect(getChainUnitType('artillery', MIN, true, false, false, MIN)).toBe('elite_artillery');
+  });
+
+  it('a converter with no core-spawner-tech investment does not unlock mixed', () => {
+    expect(getChainUnitType('infantry', 10, false, false, true, MIN)).toBe('infantry');
+  });
+
+  it('mixed-unlocked but no converter on this chain: still the base type', () => {
+    expect(getChainUnitType('infantry', 10, false, true, false, MIN)).toBe('infantry');
+  });
+
+  it('mixed-unlocked with a converter on the chain produces mixed', () => {
+    expect(getChainUnitType('infantry', 10, false, true, true, MIN)).toBe('mixed');
+  });
+
+  it('mixed takes priority over an elite upgrade when both conditions are met', () => {
+    expect(getChainUnitType('cavalry', MIN, true, true, true, MIN)).toBe('mixed');
   });
 });

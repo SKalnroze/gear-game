@@ -105,6 +105,7 @@ export class GearUnitInteractionSystem {
           case 'infantry_spawner':
           case 'artillery_spawner':
           case 'cavalry_spawner':
+          case 'wrench_spawner':
           case 'iron_guard_spawner':
           case 'crystal_sentinel_spawner':
           case 'aether_phantom_spawner':

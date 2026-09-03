@@ -51,7 +51,7 @@ function makeRig() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   system.setEconomySystem(makeEconomy() as any);
   return {
-    system, world, emitted,
+    system, world, bus, emitted,
     events: (name: string) => emitted.filter(e => e.event === name),
     spawned: () => emitted.filter(e => e.event === 'unit:spawned').map(e => e.payload.unit as UnitState),
   };
@@ -287,6 +287,82 @@ describe('UnitSystem', () => {
 
       expect(ally.shieldFactor).toBeLessThan(1);
       expect(ally.shieldTimer).toBeGreaterThan(0);
+    });
+  });
+
+  describe('core spawners produce elite/mixed units when the chain and research call for it', () => {
+    /** Minimal GearState for an infantry_spawner sitting in the world. */
+    function makeSpawnerGear(): any {
+      return {
+        id: 'spawner1', definitionKey: 'infantry_spawner', type: 'infantry_spawner',
+        teeth: 10, x: 0, y: 0, owner: 'player',
+        angularVelocity: 0, currentAngle: 0, accumulatedAngle: 0,
+        frictionLoad: 0, torqueOutput: 0, isSpinning: true, isBurntOut: false,
+        hp: 100, maxHp: 100, isJammed: false,
+      };
+    }
+
+    function makeStubRotationPhysics(chain: { gearIds: string[]; hasConverter: boolean } | undefined) {
+      return { getChainForGear: () => chain } as any;
+    }
+
+    function makeStubTechSystem(researched: Set<string>) {
+      return { isResearched: (nodeId: string) => researched.has(nodeId) } as any;
+    }
+
+    it('with no rotation-physics/tech wiring, falls back to the base type (existing rigs keep working)', () => {
+      const r = makeRig();
+      r.world.placeGear(makeSpawnerGear());
+
+      r.bus.emit('gear:full_rotation', { gearId: 'spawner1', owner: 'player', rotationCount: 1 });
+
+      expect(r.spawned()[0].type).toBe('infantry');
+    });
+
+    it('elite tech researched + chain at combo size (4 gears) upgrades to the elite unit', () => {
+      const r = makeRig();
+      r.world.placeGear(makeSpawnerGear());
+      r.system.setRotationPhysics(makeStubRotationPhysics({ gearIds: ['a', 'b', 'c', 'd'], hasConverter: false }));
+      r.system.setTechSystem(makeStubTechSystem(new Set(['elite_infantry_unlock'])));
+
+      r.bus.emit('gear:full_rotation', { gearId: 'spawner1', owner: 'player', rotationCount: 1 });
+
+      expect(r.spawned()[0].type).toBe('elite_infantry');
+    });
+
+    it('elite tech researched but the chain is under combo size: still base type', () => {
+      const r = makeRig();
+      r.world.placeGear(makeSpawnerGear());
+      r.system.setRotationPhysics(makeStubRotationPhysics({ gearIds: ['a', 'b'], hasConverter: false }));
+      r.system.setTechSystem(makeStubTechSystem(new Set(['elite_infantry_unlock'])));
+
+      r.bus.emit('gear:full_rotation', { gearId: 'spawner1', owner: 'player', rotationCount: 1 });
+
+      expect(r.spawned()[0].type).toBe('infantry');
+    });
+
+    it('all three core spawner techs + a converter on the chain produces mixed', () => {
+      const r = makeRig();
+      r.world.placeGear(makeSpawnerGear());
+      r.system.setRotationPhysics(makeStubRotationPhysics({ gearIds: ['a'], hasConverter: true }));
+      r.system.setTechSystem(makeStubTechSystem(new Set([
+        'unlock_infantry', 'unlock_artillery_spawner', 'unlock_cavalry_spawner',
+      ])));
+
+      r.bus.emit('gear:full_rotation', { gearId: 'spawner1', owner: 'player', rotationCount: 1 });
+
+      expect(r.spawned()[0].type).toBe('mixed');
+    });
+
+    it('a converter present but core spawner techs incomplete: no mixed, base type instead', () => {
+      const r = makeRig();
+      r.world.placeGear(makeSpawnerGear());
+      r.system.setRotationPhysics(makeStubRotationPhysics({ gearIds: ['a'], hasConverter: true }));
+      r.system.setTechSystem(makeStubTechSystem(new Set(['unlock_infantry']))); // missing the other two
+
+      r.bus.emit('gear:full_rotation', { gearId: 'spawner1', owner: 'player', rotationCount: 1 });
+
+      expect(r.spawned()[0].type).toBe('infantry');
     });
   });
 

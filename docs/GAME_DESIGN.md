@@ -142,9 +142,6 @@ Places where the implementation does not match the design intent stated in this 
 
 | # | Divergence | Where | Chapter |
 |---|---|---|---|
-| 3 | **Five unit types are unreachable.** `mixed`, all three elites and `wrench` have no spawner gear, so no match can produce them. They are fully implemented and tested but unplayable. | `UnitSystem.ts:1091` | [Units](design/units.md) |
-| 8 | **Combo Chain Bonus does nothing.** `chain_combo_bonus` is an empty case in the effect switch, so a 110-gold node has no effect. | `TechSystem.ts:240` | [Tech tree](design/tech-tree.md#gears-column) |
-| 18 | **`getChainUnitType()` is never called.** A chain-composition-determines-unit-type rule is fully written and unused — a remnant of an earlier design. | `unit.constants.ts:210` | [Units](design/units.md) |
 | 21 | **Only units can damage a base.** Turrets, projectiles and gears cannot reach base HP at all, so there is no ranged pressure on the win condition. | `WinConditionSystem.ts:40` | [Balance](design/balance.md#the-win-condition) |
 
 ---
@@ -153,8 +150,7 @@ Places where the implementation does not match the design intent stated in this 
 
 Unresolved intent, recorded so the decisions are made deliberately rather than by default.
 
-1. **How do elite and support units become reachable?** Divergence 3 leaves five units built and unplayable. Do they get spawner gears, or does something like the retired `getChainUnitType` rule return, where chain *composition* decides what a spawner emits?
-2. **Is there a second way to win?** Divergence 21 makes the only route "walk a unit into a wall". A defensive machine with no spawners cannot win, only fail to lose.
+1. **Is there a second way to win?** Divergence 21 makes the only route "walk a unit into a wall". A defensive machine with no spawners cannot win, only fail to lose.
 
 ---
 

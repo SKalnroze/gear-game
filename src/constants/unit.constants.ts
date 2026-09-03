@@ -228,14 +228,33 @@ export function computeDamage(
   return dmg;
 }
 
-// Determines unit type produced by a chain composition
+/**
+ * What a core spawner (infantry/artillery/cavalry) actually produces, once
+ * the chain it sits on and the owner's research are taken into account.
+ * Revives the old chain-composition idea (this function used to decide unit
+ * type from hasMotor/hasAmplifier/hasConverter alone, and was never called)
+ * and extends it to cover the five unit types that otherwise have no
+ * spawner at all: mixed and the three elites.
+ *
+ * Mixed takes priority over an elite upgrade when both conditions are met:
+ * it requires a converter placed on the chain by deliberate choice, on top
+ * of all three core spawner techs, so it reads as the stronger signal of
+ * intent. An elite upgrade only needs the matching elite tech and a chain
+ * that has grown to combo size -- the passive, no-extra-thought path.
+ */
 export function getChainUnitType(
-  hasMotor: boolean,
-  hasAmplifier: boolean,
+  baseType: 'infantry' | 'artillery' | 'cavalry',
+  chainSize: number,
+  eliteResearched: boolean,
+  mixedUnlocked: boolean,
   hasConverter: boolean,
+  comboMinGears: number,
 ): UnitType {
-  if (hasMotor && hasAmplifier && hasConverter) return 'mixed';
-  if (hasMotor && hasConverter) return 'cavalry';
-  if (hasMotor && hasAmplifier) return 'artillery';
-  return 'infantry';
+  if (mixedUnlocked && hasConverter) return 'mixed';
+  if (eliteResearched && chainSize >= comboMinGears) {
+    if (baseType === 'infantry') return 'elite_infantry';
+    if (baseType === 'artillery') return 'elite_artillery';
+    if (baseType === 'cavalry') return 'elite_cavalry';
+  }
+  return baseType;
 }

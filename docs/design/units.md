@@ -110,15 +110,17 @@ The intent of these exponents: bigger spawners make **fewer, tougher, slower, mo
 
 **Behaviour.** Seeks an enemy gear, latches on, and adds friction until removed. Deals no damage.
 
-**Status.** Implemented but unreachable — no spawner produces it.
+**Status.** Implemented. Its own spawner, `wrench_spawner`, produces it directly — a plain, cheap, early-tier gear like the other support spawners, needing only `unlock_wrench_spawner`.
 
 ### Mixed and the Elites
 
 **Intent.** Elites are the late-tech reward: strictly stronger versions of the core three, gated behind deep research, so a long match escalates. `Mixed` is a generalist with no counter weaknesses.
 
-**Status.** Implemented, tested, and **unreachable** — no spawner gear produces any of them.
+**Status.** Implemented and reachable. Neither has its own spawner gear — instead, the three core spawners (`infantry_spawner`, `artillery_spawner`, `cavalry_spawner`) produce them under the right chain conditions, via `getChainUnitType()` (`unit.constants.ts`), the chain-composition-decides-output rule this section used to describe as retired and unused. It now runs on every core-spawner rotation:
 
-> **⚠ DIVERGENCE** — Five of eleven unit types cannot occur in a match (`UnitSystem.ts:1091`). Their tech nodes are researchable and their stats are tuned. A retired function, `getChainUnitType()` (`unit.constants.ts:210`), still encodes an older rule where a chain's *composition* — motor + amplifier + converter — decided which unit its spawner emitted. That rule is a live candidate for making these units reachable again. See open question 1 in the [hub](../GAME_DESIGN.md#open-design-questions).
+- **Elite upgrade.** Once the matching elite tech is researched (`elite_infantry_unlock` / `elite_artillery_unlock` / `elite_cavalry_unlock`) *and* the spawner's chain has grown to combo size (4+ gears — the same threshold Combo Chain Bonus uses), the spawner produces the elite variant instead of the base unit. No new gear to place: growing the chain is the trigger.
+- **Mixed.** Once all three core spawner techs are researched (`unlock_infantry`, `unlock_artillery_spawner`, `unlock_cavalry_spawner`) *and* the chain carries any converter gear (iron/crystal/aether), every core spawner on it produces `mixed` instead. This takes priority over an elite upgrade when both conditions are met — a converter is a deliberate placement, a stronger signal of intent than merely growing the chain.
+- Neither condition needs the *other* side's tech or chain state — this is evaluated per owner, same as everything else research gates.
 
 ---
 

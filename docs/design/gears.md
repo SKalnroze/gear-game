@@ -71,6 +71,7 @@ Costs and unlocks for all 22 gear types.
 | Infantry Spawner | 5 | _from start_ | Spawns an Infantry unit per full rotation (5 gold cost). |
 | Artillery Spawner | 8 | `unlock_artillery_spawner` | Spawns an Artillery unit per full rotation (8 gold cost). |
 | Cavalry Spawner | 12 | `unlock_cavalry_spawner` | Spawns a Cavalry unit per full rotation (12 gold cost). |
+| Wrench Spawner | 5 | `unlock_wrench_spawner` | Spawns a Wrench unit per full rotation (free). Wrenches latch onto enemy gears and add friction -- the anti-machine unit. |
 | Iron Guard Spawner | 8 | `unlock_iron_guard_spawner` | Spawns an Iron Guard unit per full rotation (8 iron cost). |
 | Crystal Sentinel Spawner | 6 | `unlock_crystal_sentinel_spawner` | Spawns a Crystal Sentinel unit per full rotation (6 crystal cost). |
 | Aether Phantom Spawner | 5 | `unlock_aether_phantom_spawner` | Spawns an Aether Phantom unit per full rotation (5 aether cost). |
@@ -155,7 +156,7 @@ Costs and unlocks for all 22 gear types.
 
 **Status.** Implemented. See [Units](units.md) for what each produces.
 
-> **⚠ DIVERGENCE** — There are six spawner gears but eleven unit types. `mixed`, the three elites and `wrench` have no spawner and cannot appear in a match (`UnitSystem.ts:1091`). See open question 1 in the [hub](../GAME_DESIGN.md#open-design-questions).
+There are seven spawner gears (a `wrench_spawner` joins the original six) and eleven unit types. The remaining four — `mixed` and the three elites — have no spawner of their own; instead the three core spawners (infantry/artillery/cavalry) produce them under the right conditions. See [Units](units.md) for exactly what those conditions are.
 
 ---
 

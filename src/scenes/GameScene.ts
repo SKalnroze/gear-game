@@ -218,6 +218,7 @@ export class GameScene extends Phaser.Scene {
     this.unitSystem = new UnitSystem(eventBus);
     this.unitSystem.setWorld(this.world);
     this.unitSystem.setEconomySystem(this.economySystem);
+    this.unitSystem.setRotationPhysics(this.rotationPhysics);
     this.combatSystem = new CombatSystem(eventBus, this.unitSystem);
     this.winSystem = new WinConditionSystem(eventBus, isPractice);
     this.gearUnitInteraction = new GearUnitInteractionSystem(this.world, eventBus);
@@ -229,6 +230,7 @@ export class GameScene extends Phaser.Scene {
       this.rotationPhysics, this.winSystem, this.playerTech, this.aiTech,
       this.gameClock, this.abilitySystem,
     );
+    this.unitSystem.setTechSystem(this.techSystem);
 
     // create controllers based on lobby slots
     if (rightAI) {

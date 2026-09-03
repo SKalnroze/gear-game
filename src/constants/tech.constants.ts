@@ -123,7 +123,7 @@ export const TECH_NODES: Record<string, TechNode> = {
   },
   combo_chain_bonus: {
     id: 'combo_chain_bonus', name: 'Combo Chain Bonus',
-    description: 'Chains with 4+ gears generate 25% more power.',
+    description: 'Chains with 4+ gears spin 25% faster.',
     tier: 3, goldCost: 110, researchTime: 66000,
     prereqs: ['super_amplifier'],
     effects: [{ kind: 'chain_combo_bonus', value: 0.25 }],
@@ -168,6 +168,17 @@ export const TECH_NODES: Record<string, TechNode> = {
     effects: [
       { kind: 'unlock_gear', gearType: 'cavalry_spawner' },
       { kind: 'unlock_unit', unitType: 'cavalry' },
+    ],
+    column: 1,
+  },
+  unlock_wrench_spawner: {
+    id: 'unlock_wrench_spawner', name: 'Wrench Spawner',
+    description: 'Unlocks the Wrench Spawner gear. Each rotation spawns a Wrench, which latches onto an enemy gear and adds friction.',
+    tier: 1, goldCost: 20, researchTime: 30000,
+    prereqs: [],
+    effects: [
+      { kind: 'unlock_gear', gearType: 'wrench_spawner' },
+      { kind: 'unlock_unit', unitType: 'wrench' },
     ],
     column: 1,
   },

@@ -22,11 +22,11 @@ Research runs on game time, so pausing genuinely pauses it, and game speed scale
 | Column | Nodes | Total gold | Total research time |
 |---|---|---|---|
 | Gears | 13 | 1205 | 612s |
-| Units | 12 | 740 | 645s |
+| Units | 13 | 760 | 675s |
 | Economy | 13 | 820 | 582s |
 | Abilities | 2 | 100 | 60s |
 | Defense | 8 | 525 | 330s |
-| **All** | **48** | **3390** | **2229s** |
+| **All** | **49** | **3410** | **2259s** |
 <!-- END GENERATED: tech.summary -->
 
 ## Shape
@@ -61,7 +61,7 @@ The **Gear Precision** line is the backbone: each node unlocks larger tooth coun
 | **Gear Precision V**<br>`gear_precision_5` | T3 | 200 | 75s | `gear_precision_4` | `unlock_teeth` (teeth=50)<br>`unlock_teeth` (teeth=55)<br>`unlock_teeth` (teeth=60) |
 <!-- END GENERATED: tech.gears -->
 
-> **⚠ DIVERGENCE** — `Combo Chain Bonus` (110 gold, 66 s) grants `chain_combo_bonus`, which is an empty case in the effect switch (`TechSystem.ts:240`). It does nothing.
+`Combo Chain Bonus` (110 gold, 66 s) grants `chain_combo_bonus`: a second, gear-type-agnostic way into the same "big chain spins faster" territory the Amplifier occupies. Any chain of 4+ gears on a side that has researched it gets its total motor torque multiplied by `1 + 0.25`, composing with further Combo Chain research the same way Capacitor Burst and Overclock Duration bonuses do.
 
 `Overclock Mastery`'s "duration doubled" text is accurate, not a mismatch: its hard prereq `Extended Overclock` always puts a player at 15s of boost time before this node can be researched, and its own flat +15s takes that to 30s — exactly double. `Super Amplifier`'s description was corrected instead of the code: it grants +33% capacitor burst yield, and despite the name does not touch the Amplifier gear's own torque multiplier, which is fixed at 1.4×. See [Gears](gears.md#amplifier).
 
@@ -74,6 +74,7 @@ The **Gear Precision** line is the backbone: each node unlocks larger tooth coun
 |---|---|---|---|---|---|
 | **Infantry Training**<br>`unlock_infantry` | T1 | 15 | 12s | — | `unit_hp_pct` (unitType=infantry, value=0.2) |
 | **Quick March**<br>`infantry_speed` | T1 | 15 | 12s | `unlock_infantry` | `unit_speed_pct` (unitType=infantry, value=0.2) |
+| **Wrench Spawner**<br>`unlock_wrench_spawner` | T1 | 20 | 30s | — | `unlock_gear` (gearType=wrench_spawner)<br>`unlock_unit` (unitType=wrench) |
 | **Artillery Spawner**<br>`unlock_artillery_spawner` | T1 | 25 | 45s | — | `unlock_gear` (gearType=artillery_spawner)<br>`unlock_unit` (unitType=artillery) |
 | **Cavalry Spawner**<br>`unlock_cavalry_spawner` | T1 | 30 | 54s | — | `unlock_gear` (gearType=cavalry_spawner)<br>`unlock_unit` (unitType=cavalry) |
 | **Iron Guard Spawner**<br>`unlock_iron_guard_spawner` | T2 | 20 | 36s | `unlock_iron_mining` | `unlock_gear` (gearType=iron_guard_spawner)<br>`unlock_unit` (unitType=iron_guard) |
@@ -86,7 +87,7 @@ The **Gear Precision** line is the backbone: each node unlocks larger tooth coun
 | **Total War**<br>`total_war` | T3 | 150 | 90s | `elite_infantry_unlock`<br>`elite_artillery_unlock`<br>`elite_cavalry_unlock` | `unit_damage_pct` (unitType=infantry, value=0.2)<br>`unit_damage_pct` (unitType=artillery, value=0.2)<br>`unit_damage_pct` (unitType=cavalry, value=0.2) |
 <!-- END GENERATED: tech.units -->
 
-Note that the elite unlocks and `Total War` sit at the end of long chains, so roster escalation is a late-match phenomenon by design — though see divergence 3: the elites have no spawner and cannot currently be produced.
+Note that the elite unlocks and `Total War` sit at the end of long chains, so roster escalation is a late-match phenomenon by design. Researching an elite node doesn't unlock a new gear — it changes what the matching core spawner produces once its chain reaches combo size (4+ gears). See [Units](units.md) for the exact rule.
 
 ## Economy column
 

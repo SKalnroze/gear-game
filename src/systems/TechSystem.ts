@@ -26,6 +26,7 @@ export class TechSystem {
 
   private powerBonusPct: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
   private overclockDurationBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
+  private chainComboBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
   private capacitorBurstBonus: Record<'player' | 'ai', number> = { player: 0, ai: 0 };
 
   private abilitySystem: AbilitySystem | null = null;
@@ -244,9 +245,17 @@ export class TechSystem {
         break;
       }
 
-      case 'chain_combo_bonus':
+      case 'chain_combo_bonus': {
+        const comboBonus = (this.chainComboBonus[owner] += effect.value);
+        this.rotationPhysics.setChainComboBonus(owner, comboBonus);
         break;
+      }
     }
+  }
+
+  isResearched(nodeId: TechNodeId, owner: 'player' | 'ai'): boolean {
+    const tech = owner === 'player' ? this.playerTech : this.aiTech;
+    return tech.researched.has(nodeId);
   }
 
   getPlayerTech(): TechState {

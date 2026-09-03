@@ -101,6 +101,13 @@ export class GameScene extends Phaser.Scene {
   private dragGearType: GearType | null = null;
   private dragGearTeeth: number = DEFAULT_TEETH;
   private isDragging: boolean = false;
+  // The downTime of the press that started this drag (selected the gear card). The
+  // panel's collapse tween mutates panelState.topY live for ~220ms after that same
+  // press, so if its pointerup lands after topY has animated past the pointer, the
+  // selecting click itself would otherwise read as "released in the world" and place
+  // immediately. Comparing downTime forces placement to require a genuinely later,
+  // distinct press-release pair.
+  private dragStartedAtDownTime: number = -1;
   private removeMode: boolean = false;
   private asEnemyMode: boolean = false;  // practice only: place gears as enemy owner
   private isPaused: boolean = false;      // pause all game simulation
@@ -592,6 +599,7 @@ export class GameScene extends Phaser.Scene {
       this.dragGearType = gearType;
       this.dragGearTeeth = teeth ?? this.selectedTeeth;
       this.isDragging = true;
+      this.dragStartedAtDownTime = this.input.activePointer.downTime;
       this.removeMode = false;
       // Draw ghost immediately at centre of visible world for instant feedback
       const cam = this.cameras.main;
@@ -836,6 +844,10 @@ export class GameScene extends Phaser.Scene {
 
       // ─── Palette drop ────────────────────────────────────────────────
       if (!this.isDragging || !this.dragGearType) return;
+      // This is the same press that selected the card, not a later click in the
+      // world -- the panel's collapse tween may have already animated topY past
+      // the pointer by now, so don't trust that check for this particular press.
+      if (pointer.downTime === this.dragStartedAtDownTime) return;
       // Released inside panel — keep gear selected, user will click in world to place
       if (pointer.y > panelState.topY) return;
       if (pointer.y > WORLD_HEIGHT) {
@@ -1231,7 +1243,10 @@ export class GameScene extends Phaser.Scene {
       if (pointer.x < hMargin)              { cam.scrollX -= scrollAmount; moved = true; }
       else if (pointer.x > vw - hMargin)    { cam.scrollX += scrollAmount; moved = true; }
       if (pointer.y < vMargin)              { cam.scrollY -= scrollAmount; moved = true; }
-      else if (pointer.y > vh - vMargin)    { cam.scrollY += scrollAmount; moved = true; }
+      // Bottom edge only: don't scroll the world while the pointer is over the
+      // (bottom-docked) panel -- panelState.topY is the same "over panel" boundary
+      // used everywhere else in this scene.
+      else if (pointer.y > vh - vMargin && pointer.y < panelState.topY) { cam.scrollY += scrollAmount; moved = true; }
       if (moved) this.clampCamera();
     }
 

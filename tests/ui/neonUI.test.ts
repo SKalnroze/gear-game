@@ -13,9 +13,11 @@ vi.mock('../../src/constants/ui.constants', () => ({
   BG: { panel: 0x020614 },
   NEON: { cyan: 0x00ffcc },
   NEON_STR: { cyan: '#00ffcc' },
+  GAME_SETTINGS: { uiScale: 1 },
 }));
 
 import { NeonUI } from '../../src/ui/NeonUI';
+import { GAME_SETTINGS } from '../../src/constants/ui.constants';
 
 describe('NeonUI.colorToStr', () => {
   it('converts a 6-digit hex color', () => {
@@ -63,6 +65,24 @@ describe('NeonUI.neonTextStyle', () => {
   it('bold=true → fontStyle is "bold"', () => {
     const style = NeonUI.neonTextStyle('#00ffcc', 14, true);
     expect(style.fontStyle).toBe('bold');
+  });
+
+  it('fontSize scales with GAME_SETTINGS.uiScale, then restores', () => {
+    GAME_SETTINGS.uiScale = 1.5;
+    try {
+      expect(NeonUI.neonTextStyle('#00ffcc', 20).fontSize).toBe('30px');
+    } finally {
+      GAME_SETTINGS.uiScale = 1;
+    }
+  });
+
+  it('rounds a fractional scaled size', () => {
+    GAME_SETTINGS.uiScale = 0.85;
+    try {
+      expect(NeonUI.neonTextStyle('#00ffcc', 11).fontSize).toBe(`${Math.round(11 * 0.85)}px`);
+    } finally {
+      GAME_SETTINGS.uiScale = 1;
+    }
   });
 
   it('shadow uses same color as text', () => {

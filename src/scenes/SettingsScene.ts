@@ -38,6 +38,14 @@ export class SettingsScene extends NeonSceneBase {
       });
     stack.push(speedH, LAYOUT.GAP);
 
+    // ── Display ────────────────────────────────────────────────────────
+    const displayH = neonSection(this, r => this.reg(r), h => this.h(h),
+      px, stack.peek(), panelW, 'DISPLAY', NEON.cyan,
+      (inner, ix) => {
+        this.buildDisplayContent(ix, inner);
+      });
+    stack.push(displayH, LAYOUT.GAP);
+
     // ── Edge scrolling ─────────────────────────────────────────────────
     const edgeH = neonSection(this, r => this.reg(r), h => this.h(h),
       px, stack.peek(), panelW, 'EDGE SCROLLING', NEON.magenta,
@@ -95,6 +103,50 @@ export class SettingsScene extends NeonSceneBase {
     zone.on('pointerdown', () => { GAME_SETTINGS.soundEnabled = !GAME_SETTINGS.soundEnabled; saveSettings(); draw(); });
     zone.on('pointerover', () => { btnG.clear(); NeonUI.drawButton(btnG, ix, btnY, toggleW, toggleH, GAME_SETTINGS.soundEnabled ? NEON.green : NEON.red, true); });
     zone.on('pointerout',  () => draw());
+  }
+
+  private buildDisplayContent(ix: number, inner: VStack): void {
+    const sizes = [
+      { label: 'SMALL', value: 0.85 },
+      { label: 'NORMAL', value: 1 },
+      { label: 'LARGE', value: 1.25 },
+      { label: 'XL', value: 1.5 },
+    ];
+    const btnW = 76, btnH = 24, btnGap = 8;
+    const btnY = inner.push(btnH);
+    const sizeBtnGs: Phaser.GameObjects.Graphics[] = [];
+    const sizeLabels: Phaser.GameObjects.Text[] = [];
+
+    const draw = () => {
+      sizes.forEach((s, i) => {
+        const bx = ix + i * (btnW + btnGap);
+        const isActive = GAME_SETTINGS.uiScale === s.value;
+        sizeBtnGs[i].clear();
+        NeonUI.drawButton(sizeBtnGs[i], bx, btnY, btnW, btnH, isActive ? NEON.yellow : NEON.cyan, isActive);
+        sizeLabels[i].setColor(isActive ? NEON_STR.yellow : '#667788');
+      });
+    };
+
+    sizes.forEach((s, i) => {
+      const bx = ix + i * (btnW + btnGap);
+      sizeBtnGs[i] = this.reg(this.add.graphics());
+      sizeLabels[i] = this.reg(this.add.text(bx + btnW / 2, btnY + btnH / 2, s.label, {
+        fontSize: '12px', color: '#667788', fontFamily: 'monospace', fontStyle: 'bold',
+      }).setOrigin(0.5));
+      const zone = this.reg(this.add.zone(bx + btnW / 2, btnY + btnH / 2, btnW, btnH).setInteractive({ cursor: 'pointer' }));
+      zone.on('pointerdown', () => {
+        GAME_SETTINGS.uiScale = s.value;
+        saveSettings();
+        draw();
+        // Text size is read once at scene construction, not live-updated.
+        // Restarting this scene previews the new scale immediately; other
+        // scenes (menus, the next match) pick it up next time they're
+        // built -- deliberately not forced mid-match, which would mean
+        // rebuilding the whole HUD out from under a running game.
+        this.scene.restart();
+      });
+    });
+    draw();
   }
 
   private buildSpeedContent(ix: number, _iw: number, inner: VStack): void {

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BG } from '../constants/ui.constants';
+import { BG, GAME_SETTINGS } from '../constants/ui.constants';
 
 /**
  * Static drawing helpers for the neon UI aesthetic.
@@ -79,14 +79,20 @@ export class NeonUI {
     return '#' + color.toString(16).padStart(6, '0');
   }
 
-  /** Returns a Phaser text style config with neon glow shadow */
+  /**
+   * Returns a Phaser text style config with neon glow shadow. `size` is
+   * scaled by the user's uiScale setting -- this is the one shared place
+   * almost every piece of UI text in the game builds its style through,
+   * so scaling here reaches panels, buttons, labels and tooltips together
+   * without touching each call site.
+   */
   static neonTextStyle(
     color: string,
     size: number,
     bold: boolean = false,
   ): Phaser.Types.GameObjects.Text.TextStyle {
     return {
-      fontSize: `${size}px`,
+      fontSize: `${Math.round(size * GAME_SETTINGS.uiScale)}px`,
       color,
       fontFamily: 'monospace',
       fontStyle: bold ? 'bold' : '',

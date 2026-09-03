@@ -40,6 +40,7 @@ function loadSettings(): {
   edgeScrollEnabled: boolean;
   edgeScrollSpeed: number;
   edgeScrollPercent: number;
+  uiScale: number;
 } {
   try {
     const raw = localStorage.getItem('gear_game_settings');
@@ -51,10 +52,11 @@ function loadSettings(): {
         edgeScrollEnabled: parsed.edgeScrollEnabled ?? false,
         edgeScrollSpeed: parsed.edgeScrollSpeed ?? 300,
         edgeScrollPercent: parsed.edgeScrollPercent ?? 5,
+        uiScale: parsed.uiScale ?? 1,
       };
     }
   } catch { /* ignore */ }
-  return { soundEnabled: true, gameSpeed: 1, edgeScrollEnabled: false, edgeScrollSpeed: 300, edgeScrollPercent: 5 };
+  return { soundEnabled: true, gameSpeed: 1, edgeScrollEnabled: false, edgeScrollSpeed: 300, edgeScrollPercent: 5, uiScale: 1 };
 }
 
 export const GAME_SETTINGS = loadSettings();

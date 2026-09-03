@@ -40,6 +40,7 @@ import { ParticleManager } from '../systems/ParticleManager';
 import { FloatingTextManager } from '../ui/FloatingTextManager';
 import { GAME_SETTINGS } from '../constants/ui.constants';
 import { TurretSystem } from '../systems/TurretSystem';
+import { MinelayerSystem } from '../systems/MinelayerSystem';
 import { AIDebugOverlay } from '../ai/AIDebugOverlay';
 import { GameEventLogger } from '../ai/GameEventLogger';
 import { GameStatsTracker } from '../systems/GameStatsTracker';
@@ -87,6 +88,8 @@ export class GameScene extends Phaser.Scene {
   private projectileGraphics!: Phaser.GameObjects.Graphics;
   private rangeCircleGraphics!: Phaser.GameObjects.Graphics;
   private turretSystem!: TurretSystem;
+  private minelayerSystem!: MinelayerSystem;
+  private mineGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private aiDebugOverlay!: AIDebugOverlay;
   private gameEventLogger!: GameEventLogger;
 
@@ -279,6 +282,7 @@ export class GameScene extends Phaser.Scene {
     this.projectileGraphics = this.add.graphics().setDepth(150);
     this.rangeCircleGraphics = this.add.graphics().setDepth(145);
     this.turretSystem = new TurretSystem(this.world, eventBus, this.projectileSystem, this.unitSystem);
+    this.minelayerSystem = new MinelayerSystem(this.world, eventBus);
 
     this.gameStartTime = Date.now();
     this.gameStatsTracker = new GameStatsTracker(
@@ -364,6 +368,26 @@ export class GameScene extends Phaser.Scene {
         onUpdate: () => drawZone(0.6 + data.t * 0.4),
       });
       (zg as any)._pulseTween = tween;
+    });
+
+    // Mine landed and armed for detonation — a small warning marker while it
+    // arms, then (per-frame in update()) hidden from whichever owner isn't
+    // the mine's own, in a normal match.
+    eventBus.on('mine:created', ({ id, x, y, owner }: { id: string; x: number; y: number; owner: 'player' | 'ai' }) => {
+      const mg = this.add.graphics().setDepth(88);
+      const color = owner === 'player' ? 0x44ffcc : 0xff4488;
+      mg.lineStyle(1.5, color, 0.8);
+      mg.strokeCircle(x, y, 6);
+      mg.lineStyle(1, color, 0.5);
+      mg.strokeCircle(x, y, 10);
+      this.mineGraphics.set(id, mg);
+    });
+
+    eventBus.on('mine:detonated', ({ x, y, radius, id }: { id: string; x: number; y: number; radius: number; owner: 'player' | 'ai' }) => {
+      const mg = this.mineGraphics.get(id);
+      if (mg) { mg.destroy(); this.mineGraphics.delete(id); }
+      // Quick shared burst visual, same shape as a landed artillery shell.
+      eventBus.emit('projectile:hit', { id, x, y, aoeRadius: radius });
     });
 
     // Cold zone expired — remove visual
@@ -496,6 +520,7 @@ export class GameScene extends Phaser.Scene {
     this.playerAIController = null;
     this.projectileSystem.destroy();
     this.turretSystem.destroy();
+    this.minelayerSystem.destroy();
     this.techSystem.destroy();
     this.aiDebugOverlay.destroy();
     this.gameEventLogger.destroy();
@@ -508,6 +533,8 @@ export class GameScene extends Phaser.Scene {
       zg.destroy();
     }
     this.coldZoneGraphics.clear();
+    for (const [, mg] of this.mineGraphics) mg.destroy();
+    this.mineGraphics.clear();
     eventBus.removeAllListeners();
   }
 
@@ -1292,6 +1319,8 @@ export class GameScene extends Phaser.Scene {
       this.combatSystem.update(now);
       this.techSystem.update(now);
       this.turretSystem.update(deltaSec, now);
+      this.minelayerSystem.update(deltaSec, now, this.unitSystem.getAllUnits(), this.projectileSystem);
+      this.updateMineVisibility();
       this.aiController?.update(now);
       this.playerAIController?.update(now);
     }
@@ -1363,6 +1392,25 @@ export class GameScene extends Phaser.Scene {
   /** Which owner label corresponds to the human player's side. */
   private _playerOwner(): 'player' | 'ai' {
     return this.playerIsRight ? 'ai' : 'player';
+  }
+
+  /**
+   * An armed mine is hidden from the opposing owner's view -- the one
+   * genuinely per-side-invisible thing in the game. There's no per-viewer
+   * world rendering system otherwise, so this is scoped narrowly to mines:
+   * always visible while arming (a fair warning), always visible in
+   * spectate (no human "enemy" to hide it from) and practice (already a
+   * sandbox with the debug overlay on), and owner-gated only in a normal
+   * human-vs-AI match.
+   */
+  private updateMineVisibility(): void {
+    const isPractice = this.leftSlot.kind === 'human' && this.rightSlot.kind === 'human';
+    for (const [id, mine] of this.minelayerSystem.getMines()) {
+      const mg = this.mineGraphics.get(id);
+      if (!mg) continue;
+      const visible = !mine.armed || this.isSpectate || isPractice || mine.owner === this._playerOwner();
+      mg.setVisible(visible);
+    }
   }
 
   /** The side opposing the human. */

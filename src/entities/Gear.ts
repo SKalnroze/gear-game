@@ -28,6 +28,7 @@ const GEAR_COLORS: Record<GearType, number> = {
   aether_converter: 0xdd44ff,
   crossbow_turret: 0xffdd00,
   artillery_turret: 0xff6600,
+  minelayer: 0xaa3355,
   healer: 0x44ff88,
 };
 
@@ -54,6 +55,7 @@ const GEAR_LABELS: Record<GearType, string> = {
   aether_converter: 'Ae\u2192G',
   crossbow_turret: 'XBow',
   artillery_turret: 'ATur',
+  minelayer: 'Mine',
   healer: 'HEAL',
 };
 

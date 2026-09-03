@@ -54,7 +54,7 @@ This is a real design constraint on layout, not an error state — an even ring 
 
 ## The catalogue
 
-Costs and unlocks for all 22 gear types.
+Costs and unlocks for all 23 gear types.
 
 <!-- BEGIN GENERATED: gears.catalogue -->
 | Gear | Gold cost | Unlocked by | In-game description |
@@ -81,6 +81,7 @@ Costs and unlocks for all 22 gear types.
 | Aether Converter | 0 | `aether_to_gold` | Converts aether into gold on each full rotation at the best rate. |
 | Crossbow Turret | 5 | `crossbow_turret_tech` | Defensive turret. Each rotation buys 1 ammo bolt (2 gold). Fires quickly at nearby enemies; low damage, medium range. |
 | Artillery Turret | 8 | `artillery_turret_tech` | Heavy turret. Each rotation buys 1 ammo shell (6 gold). Fires slowly with AoE; high damage, long range. |
+| Minelayer | 6 | `unlock_minelayer` | Each rotation buys 1 mine shell (5 gold). Lobs a mine into a zone ahead of it; mines arm after a short delay, then hide from the enemy until triggered. |
 | Healer | 0 | `healer_gear_tech` | Emits a healing aura on each full rotation. Heals nearby friendly gears and units. Aura size and healing scale with gear size. |
 <!-- END GENERATED: gears.catalogue -->
 
@@ -217,6 +218,16 @@ There are seven spawner gears (a `wrench_spawner` joins the original six) and el
 **Player decision.** A turret on a fast chain is expensive; on a slow chain it is a poor turret. Its placement is a bet on both.
 
 **Behaviour.** Crossbow fires fast, cheap, short-ranged single shots that slow the target. Artillery fires slowly at long range with area damage. Both target the nearest enemy unit in range, ignoring lane and direction.
+
+**Status.** Implemented.
+
+### Minelayer
+
+**Intent.** Ranged defence that punishes the opponent's information, not their position — unlike a turret, it never aims at a target. It seeds a zone ahead of it with hidden explosives, so an enemy either scouts carefully or accepts the risk of the ground itself. It sits next to Spiked in the tech chain and costs a little more, as the early, cheap answer to "how do I make my lane dangerous before I can afford turrets."
+
+**Player decision.** Because a mine's payoff depends on the enemy not knowing it's there, a minelayer is at its best on a lane the opponent hasn't yet approached — laid reactively once a threat is already close, its mines arm too late to matter.
+
+**Behaviour.** Each rotation buys one mine shell (5 gold, fed the same way turret ammo is). On cooldown, it lobs a shell in an artillery-style arc to a random point within a zone ahead of it — never at a specific enemy — provided that point isn't within `mineRadius(teeth) × 1.5` of one of its own existing mines; if the zone is too crowded, it holds its ammo and tries again next tick. A landed mine is a small visible marker for 1.5s while it arms, then — the one place in the game with real per-side visibility — disappears from the opposing owner's view entirely (visible in spectate and practice, where there's no "enemy" to hide it from). It detonates in an artillery-style area burst on contact with an enemy unit, or when caught in another explosion's blast radius (a mine can be chain-detonated by a nearby artillery shell or an Iron Guard's death blast). Mine size and damage scale with the teeth of the minelayer that fired it.
 
 **Status.** Implemented.
 

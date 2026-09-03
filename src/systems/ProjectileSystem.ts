@@ -32,6 +32,8 @@ export interface ProjectileState {
   slowFactor: number;  // 0 for artillery, 0.5 for crystal shard
   slowDuration: number;// 0 for artillery, 2.0 for crystal shard
   hitGears: boolean;   // true for artillery AoE
+  /** Set only for a minelayer's shell: on landing, place a mine instead of exploding immediately. */
+  mineShell?: { radius: number; damage: number };
 }
 
 /**
@@ -122,6 +124,44 @@ export class ProjectileSystem {
     return id;
   }
 
+  /**
+   * Create a mine shell: visually and ballistically identical to an
+   * artillery shell (same arc), but on landing it places a mine instead of
+   * detonating immediately. `radius`/`damage` are pre-scaled from the
+   * firing gear's teeth by the caller (MinelayerSystem), since this class
+   * has no notion of gears.
+   */
+  fireMineShell(
+    unit: UnitState,
+    targetX: number,
+    targetY: number,
+    radius: number,
+    damage: number,
+  ): string {
+    const travelTime = 1.5;
+    return this.addProjectile({
+      owner: unit.owner,
+      ownerUnitId: unit.id,
+      type: 'artillery_shell',
+      x: unit.x,
+      y: unit.y,
+      vx: 0,
+      vy: 0,
+      startX: unit.x,
+      startY: unit.y,
+      targetX,
+      targetY,
+      travelTime,
+      elapsed: 0,
+      damage: 0,
+      aoeRadius: 0,
+      slowFactor: 0,
+      slowDuration: 0,
+      hitGears: false,
+      mineShell: { radius, damage },
+    });
+  }
+
   getProjectiles(): Map<string, ProjectileState> {
     return this.projectiles;
   }
@@ -167,9 +207,21 @@ export class ProjectileSystem {
     proj.y = proj.startY + (proj.targetY - proj.startY) * t + arcHeight * Math.sin(Math.PI * t);
 
     if (proj.elapsed >= proj.travelTime) {
-      // Hit! AoE damage
-      this.explodeArtillery(proj, allUnits, world, eventBus);
-      eventBus.emit('projectile:hit', { id: proj.id, x: proj.targetX, y: proj.targetY, aoeRadius: proj.aoeRadius });
+      if (proj.mineShell) {
+        // Land silently and place a mine rather than exploding on arrival.
+        eventBus.emit('mine:landed', {
+          x: proj.targetX, y: proj.targetY, owner: proj.owner,
+          radius: proj.mineShell.radius, damage: proj.mineShell.damage,
+        });
+      } else {
+        // Hit! AoE damage
+        this.explodeArtillery(proj, allUnits, world, eventBus);
+        // Generic AoE signal -- lets other systems (MinelayerSystem's
+        // chain-detonation) react to "something exploded here" without
+        // this class needing to know they exist.
+        eventBus.emit('aoe:explosion', { x: proj.targetX, y: proj.targetY, radius: proj.aoeRadius, owner: proj.owner });
+        eventBus.emit('projectile:hit', { id: proj.id, x: proj.targetX, y: proj.targetY, aoeRadius: proj.aoeRadius });
+      }
       toRemove.push(proj.id);
     }
   }

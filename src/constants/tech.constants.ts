@@ -422,7 +422,6 @@ export const TECH_NODES: Record<string, TechNode> = {
     effects: [{ kind: 'unlock_gear', gearType: 'spiked' }],
     column: 4,
   },
-
   // T2
   armored_gears: {
     id: 'armored_gears', name: 'Armored Gears',
@@ -446,6 +445,14 @@ export const TECH_NODES: Record<string, TechNode> = {
     tier: 2, goldCost: 55, researchTime: 36000,
     prereqs: ['spiked_gears'],
     effects: [{ kind: 'unlock_gear', gearType: 'crossbow_turret' }],
+    column: 4,
+  },
+  unlock_minelayer: {
+    id: 'unlock_minelayer', name: 'Minelayer',
+    description: 'Unlocks the Minelayer gear. Each rotation buys a mine shell (5 gold). Lobs hidden mines into a zone ahead of it.',
+    tier: 2, goldCost: 55, researchTime: 33000,
+    prereqs: ['spiked_gears'],
+    effects: [{ kind: 'unlock_gear', gearType: 'minelayer' }],
     column: 4,
   },
   healer_gear_tech: {

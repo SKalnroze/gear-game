@@ -25,8 +25,8 @@ Research runs on game time, so pausing genuinely pauses it, and game speed scale
 | Units | 13 | 760 | 675s |
 | Economy | 13 | 820 | 582s |
 | Abilities | 2 | 100 | 60s |
-| Defense | 8 | 525 | 330s |
-| **All** | **49** | **3410** | **2259s** |
+| Defense | 9 | 580 | 363s |
+| **All** | **50** | **3465** | **2292s** |
 <!-- END GENERATED: tech.summary -->
 
 ## Shape
@@ -147,6 +147,7 @@ The two lines are a genuine choice: gold nodes pay immediately and passively, mi
 | **Spiked Gears**<br>`spiked_gears` | T1 | 45 | 27s | — | `unlock_gear` (gearType=spiked) |
 | **Armored Gears**<br>`armored_gears` | T2 | 45 | 27s | `base_fortification` | `unlock_gear` (gearType=armored) |
 | **Crossbow Turret**<br>`crossbow_turret_tech` | T2 | 55 | 36s | `spiked_gears` | `unlock_gear` (gearType=crossbow_turret) |
+| **Minelayer**<br>`unlock_minelayer` | T2 | 55 | 33s | `spiked_gears` | `unlock_gear` (gearType=minelayer) |
 | **Healing Gear**<br>`healer_gear_tech` | T2 | 60 | 42s | `armored_gears` | `unlock_gear` (gearType=healer) |
 | **Fortress Wall**<br>`fortress_wall` | T2 | 80 | 48s | `base_fortification`<br>`armored_gears` | `base_hp_bonus` (value=50) |
 | **Artillery Turret**<br>`artillery_turret_tech` | T3 | 90 | 66s | `crossbow_turret_tech` | `unlock_gear` (gearType=artillery_turret) |

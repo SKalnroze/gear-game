@@ -37,6 +37,7 @@ const TYPE_COLORS: Record<GearType, number> = {
   aether_converter: 0xdd44ff,
   crossbow_turret: 0xffdd00,
   artillery_turret: 0xff6600,
+  minelayer: 0xaa3355,
   healer: 0x44ff88,
 };
 

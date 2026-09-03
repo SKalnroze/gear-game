@@ -6,7 +6,7 @@ export type GearType =
   'iron_guard_spawner' | 'crystal_sentinel_spawner' | 'aether_phantom_spawner' |
   'researcher' |
   'iron_converter' | 'crystal_converter' | 'aether_converter' |
-  'crossbow_turret' | 'artillery_turret' |
+  'crossbow_turret' | 'artillery_turret' | 'minelayer' |
   'healer';
 
 export interface GearDefinition {

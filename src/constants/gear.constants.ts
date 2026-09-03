@@ -83,6 +83,21 @@ export function turretRange(teeth: number, type: 'crossbow_turret' | 'artillery_
   return Math.round(base * Math.sqrt(teeth / 10));
 }
 
+/** How far ahead of a minelayer its firing zone reaches, same sqrt-scaling idiom as turretRange. */
+export function minelayerFireZoneRange(teeth: number): number {
+  return Math.round(180 * Math.sqrt(teeth / 10));
+}
+
+/** Mine AoE explosion radius on detonation -- scales with the firing gear's size. */
+export function mineRadius(teeth: number): number {
+  return Math.max(20, Math.round(teeth * 3));
+}
+
+/** Mine detonation damage -- high, deliberately above the artillery turret's per-hit damage. */
+export function mineDamage(teeth: number): number {
+  return Math.max(15, Math.round(teeth * 3));
+}
+
 // ─── Physics constants ───────────────────────────────────────────────────────
 
 export const GEAR_MESH_TOLERANCE = 4;  // pixels
@@ -240,6 +255,13 @@ export const GEAR_DEFINITIONS: Record<GearType, GearDefinition> = {
     goldCost: 8,
     description: 'Heavy turret. Each rotation buys 1 ammo shell (6 gold). Fires slowly with AoE; high damage, long range.',
     unlockNode: 'artillery_turret_tech',
+  },
+
+  minelayer: {
+    type: 'minelayer',
+    goldCost: 6,
+    description: 'Each rotation buys 1 mine shell (5 gold). Lobs a mine into a zone ahead of it; mines arm after a short delay, then hide from the enemy until triggered.',
+    unlockNode: 'unlock_minelayer',
   },
 
   healer: {

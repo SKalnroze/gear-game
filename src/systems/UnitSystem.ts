@@ -1058,6 +1058,10 @@ export class UnitSystem {
     const radius = unit.size * 3;
     const damage = unit.baseDamage * 4;
 
+    // Generic AoE signal -- lets other systems (MinelayerSystem's
+    // chain-detonation) react to "something exploded here".
+    this.eventBus.emit('aoe:explosion', { x: unit.x, y: unit.y, radius, owner: unit.owner });
+
     // Damage all units within radius (both sides)
     for (const [, other] of allUnits) {
       if (other.id === unit.id) continue;

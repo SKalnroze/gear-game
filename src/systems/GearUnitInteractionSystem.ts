@@ -107,6 +107,7 @@ export class GearUnitInteractionSystem {
           case 'aether_converter':
           case 'crossbow_turret':
           case 'artillery_turret':
+          case 'minelayer':
           case 'healer':
           case 'infantry_spawner':
           case 'artillery_spawner':

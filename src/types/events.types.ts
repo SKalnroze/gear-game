@@ -52,6 +52,17 @@ export interface GameEventMap {
   'cold_zone:created': { id: string; x: number; y: number; radius: number };
   'cold_zone:expired': { id: string };
 
+  // Generic AoE signal -- any explosion (artillery, iron guard death blast)
+  // emits this so unrelated systems (mine chain-detonation) can react
+  // without the explosion source needing to know they exist.
+  'aoe:explosion': { x: number; y: number; radius: number; owner: 'player' | 'ai' };
+
+  // Minelayer / mine events
+  'mine:landed': { x: number; y: number; owner: 'player' | 'ai'; radius: number; damage: number };
+  'mine:created': { id: string; x: number; y: number; owner: 'player' | 'ai' };
+  'mine:armed': { id: string };
+  'mine:detonated': { id: string; x: number; y: number; radius: number; owner: 'player' | 'ai' };
+
   // Combat events
   'combat:damage_dealt': { attackerId: string; defenderId: string; damage: number; multiplier: number };
   'combat:base_damaged': { owner: 'player' | 'ai'; damage: number; remainingHp: number };

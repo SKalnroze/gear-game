@@ -166,6 +166,19 @@ export class EconomySystem {
       } else if (currentAmmo >= maxAmmo) {
         this.eventBus.emit('gear:rotation_result', { gearId, owner, text: 'AMMO FULL', color: 0xff8800 });
       }
+    } else if (gear.type === 'minelayer') {
+      // Buy 1 mine shell (5 gold)
+      const ammoCost = 5;
+      const maxAmmo = gear.maxAmmo ?? 3;
+      const currentAmmo = gear.ammo ?? 0;
+      if (currentAmmo < maxAmmo && this.canAffordGold(owner, ammoCost)) {
+        this.spendGold(owner, ammoCost);
+        gear.ammo = currentAmmo + 1;
+        this.world.updateGear(gear);
+        this.eventBus.emit('gear:rotation_result', { gearId, owner, text: `+1 mine (${gear.ammo}/${maxAmmo})`, color: 0xff4488 });
+      } else if (currentAmmo >= maxAmmo) {
+        this.eventBus.emit('gear:rotation_result', { gearId, owner, text: 'AMMO FULL', color: 0xff4488 });
+      }
     }
   };
 

@@ -153,15 +153,12 @@ Places where the implementation does not match the design intent stated in this 
 | 9 | **Declared gear synergies are not read.** `GearDefinition.synergies` has no consumer. The motor↔amplifier adjacency bonus never applies; the capacitor↔overclock one works only because it is hard-coded elsewhere. | `gear.constants.ts:103` | [Gears](design/gears.md#synergies) |
 | 10 | **Power cost is inert.** Every gear carries a `basePowerCost` and there is a `gearPowerCost()` formula, but placement is charged in gold only. | `GearSystem.ts:178` | [Balance](design/balance.md#gear-placement) |
 | 11 | **Placement cost is computed in three places.** The UI rounds it and the charge does not, so displayed and charged prices differ by 0.5 gold on odd tooth counts. | `GameScene.ts:858`, `GearGridSection.ts:10`, `balance.constants.ts:18` | [Balance](design/balance.md#gear-placement) |
-| 12 | **The AI never pays for gears.** No code path charges the AI for placement; only the player's placement calls `spendGold`. | `GameScene.ts:864` | [Balance](design/balance.md#gear-placement) |
 | 13 | **Dead AI modules.** `AIEvaluator.ts`, `AIPlanner.ts` and `AI_STRATEGIES` are referenced nowhere. | `src/ai/` | [Units](design/units.md#the-ai-opponent) |
 | 14 | **`unlock_gear` is a no-op.** The effect case is empty; gating actually works by reading `def.unlockNode` at placement time. Harmless, but the effect list lies about the mechanism. | `TechSystem.ts:181` | [Tech tree](design/tech-tree.md#what-the-effects-do) |
 | 15 | **Capacitor tech overwrites rather than composes.** `capacitor_burst_multiplier` sets an absolute value from a hard-coded `2.5` instead of building on the current multiplier. | `TechSystem.ts:220` | [Tech tree](design/tech-tree.md#what-the-effects-do) |
-| 16 | **The AI cannot benefit from ability research.** `enable_ability` is applied only when the owner is the player, so AI gold spent on those nodes buys nothing. | `TechSystem.ts:228` | [Tech tree](design/tech-tree.md#abilities) |
 | 17 | **Node text contradicts node effect.** Super Amplifier says "2× multiplier" but grants +33% power; Overclock Mastery says "duration doubled" but adds a flat 15 s. | `tech.constants.ts:93`, `:113` | [Tech tree](design/tech-tree.md) |
 | 18 | **`getChainUnitType()` is never called.** A chain-composition-determines-unit-type rule is fully written and unused — a remnant of an earlier design. | `unit.constants.ts:210` | [Units](design/units.md) |
 | 19 | **Unreferenced constants.** `CAPACITOR_BURST_INTERVAL`, `LARGE_GEAR_GOLD_BONUS` and `AI_INITIAL_DECISION_DELAY` are declared and never read. | `balance.constants.ts` | [Balance](design/balance.md) |
-| 20 | **Ability cooldowns ignore game speed and pause.** Everything else runs on `GameClock`; ability cooldowns still read the wall clock. The settings screen admits this in a note. | `AbilitySystem.ts:45` | [Views](design/views.md#settings) |
 | 21 | **Only units can damage a base.** Turrets, projectiles and gears cannot reach base HP at all, so there is no ranged pressure on the win condition. | `WinConditionSystem.ts:40` | [Balance](design/balance.md#the-win-condition) |
 
 ---
@@ -174,7 +171,6 @@ Unresolved intent, recorded so the decisions are made deliberately rather than b
 2. **How do elite and support units become reachable?** Divergence 3 leaves five units built and unplayable. Do they get spawner gears, or does something like the retired `getChainUnitType` rule return, where chain *composition* decides what a spawner emits?
 3. **Should the counter triangle govern all combat?** Divergence 4 means the RPS relationship advertised in unit descriptions is honoured by melee only. Either every damage path consults it, or the descriptions and the tech that leans on counter-picking need rewriting.
 4. **Is there a second way to win?** Divergence 21 makes the only route "walk a unit into a wall". A defensive machine with no spawners cannot win, only fail to lose.
-5. **What is the AI's economy?** Divergence 12 means the AI builds for free, so its difficulty tuning is not measured against the same constraint as the player's.
 
 ---
 

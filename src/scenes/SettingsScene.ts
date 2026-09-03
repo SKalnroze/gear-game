@@ -125,10 +125,6 @@ export class SettingsScene extends NeonSceneBase {
     });
     draw();
 
-    const noteX = ix + speeds.length * (btnW + btnGap) + 10;
-    this.reg(this.add.text(noteX, btnY + 4, 'Note: ability cooldowns use real time', {
-      fontSize: '9px', color: '#445566', fontFamily: 'monospace',
-    }));
   }
 
   private buildEdgeScrollContent(ix: number, _iw: number, inner: VStack): void {

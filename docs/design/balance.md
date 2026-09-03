@@ -149,11 +149,20 @@ Reach for these first, in roughly this order of impact.
 | `ARMORED_DAMAGE_RATE` | 0.08 | unit damage to armored gears |
 | `UNIT_GEAR_DAMAGE_RATE` | 1 | unit damage to ordinary gears |
 | `WRENCH_FRICTION_VALUE` | 30 | friction a wrench adds |
-| `AI_DECISION_INTERVAL` | 2000 | AI think period, ms |
+| `AI_POLL_INTERVAL` | 500 | how often the AI re-evaluates the board, ms (actual action rate is throttled by its APM budget, not this) |
+| `AI_ACTION_BUDGET_CAPACITY` | 4 | AI action-budget burst allowance, actions |
 | `GEAR_PLACEMENT_COST_BASE` | 10 | flat gold per gear |
 | `GEAR_PLACEMENT_COST_MULTIPLIER` | 0.5 | gold per tooth |
 | `REPOSITION_COOLDOWN_MS` | 3000 | gear move cooldown |
 <!-- END GENERATED: balance.constants -->
+
+`AI_APM` (`balance.constants.ts`) sets the AI's actions-per-minute budget per difficulty — its actual difficulty axis, see [Units](units.md#the-ai-opponent):
+
+| Difficulty | APM |
+|---|---|
+| Easy | 14 |
+| Medium | 26 |
+| Hard | 42 |
 
 ---
 

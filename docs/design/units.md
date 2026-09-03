@@ -160,23 +160,41 @@ Direction is derived from which half of the map a side occupies, never from its 
 
 ## The AI opponent
 
-The AI plays the same game by the same rules: it places gears, researches, and lets its machine produce.
+**Intent.** The AI should feel like a person on the other side of the board, not a script. It plays the same game by the same rules — the same `GearSystem.tryPlace`, `TechSystem.startResearch`, `EconomySystem.spendGold`, and (as of this pass) the same `AbilitySystem` a human's clicks go through, gold-checked and tech-gated identically. What makes it feel human isn't a privileged shortcut; it's that its *reach* (how fast it can act) is limited the way a person's hands are, and its *judgment* is layered the way a person's actually is — a standing plan for the match, revised strategy as the board changes, and moment-to-moment tactics that serve whichever strategy is currently in force.
 
-**Difficulty** changes how much machine it can manage — chain count, gear sizes, how carefully it picks locations, and whether it acts every opportunity or skips some at random.
+### The three layers
 
-**Personality** changes what it wants, and is chosen per slot in the lobby:
+Every decision the AI makes traces back through three levels, cheapest-to-recompute at the top:
 
-| Personality | Wants |
+1. **Goal — fixed.** Get enough units into the enemy base. Never re-evaluated; everything below serves it.
+2. **Strategic posture — recomputed periodically** (`AIStrategicPlanner`, every few seconds, independent of the action-budget clock below). A continuous read of the match: economy strength (gold income, chain capacity used), threat level (own/opponent base HP), match age, and what the opponent's build says about their intentions (their unit mix, their researched tech). Output is a blend, not a single label — **economy / defense / offense** weights that sum to 1, plus how many chains the AI believes it can currently sustain. Personality (below) biases this blend; it doesn't override it. A rusher who is losing still shifts weight toward defense — the posture reflects the game, personality just tilts the starting point.
+3. **Tactical execution — every decision tick** (`AIChainPlanner`, unchanged in spirit from before this pass). Given the current posture, which chain gets the next gear, which gear, what size, and where. This is where counter-picking, chain-phase progression (bootstrap → spawn → amplify → support → expand → full) and placement scoring already lived, and still do — they now read their targets (how many economy/defense/combat chains to run, when a chain is worth recycling) from the posture instead of a fixed number baked in at match start.
+
+This is why chain count no longer plateaus: the old model capped total chains at a fixed number per difficulty (2/3/5) that never moved for the rest of the match — once full, the AI had nothing left to decide but small `expand`-phase tweaks. Capacity is now a function of the economy the AI has actually built (`AIStrategicPlanner.computeCapacity`) — it keeps growing as gold income grows, with difficulty setting how fast it's willing to reach for that growth, not a ceiling on how far it can go.
+
+### APM, not faked mistakes
+
+**Difficulty is an actions-per-minute budget**, not a hidden coin-flip. Every AI-executed action (place a gear, start research, sell, reposition, use an ability) costs from a per-side budget that refills continuously at a fixed rate — easy refills slowest, hard fastest — with a small burst allowance so the AI can spend a run of banked actions at once, the way a person queues up several moves and executes them in a burst. The AI evaluates the board often; what differs by difficulty is purely how much it can *do* about what it sees, which is the same kind of constraint a human's hands are under, not a difference in whether it "notices" a move exists. The old easy-mode behavior — silently discarding over half its decision ticks — was a fake: it looked like incompetence but wasn't a constraint the AI was actually reasoning under. Real placement mistakes exist instead: at low difficulty, the placement search sometimes settles for a valid-but-flawed slot, and occasionally accepts a rotation conflict it would otherwise reject — an actual mis-mesh, seeded and consequential (it can jam), not merely a worse-looking gear. Hard never does either.
+
+### Zoning
+
+Chain placement follows the same lane geometry a human should: **defense chains sit in the lane band**, where marching units actually walk, built as a barrier the enemy must fight through rather than route around; **economy and spawner-heavy combat chains sit off-lane**, in the back of the zone, out of marching units' reach. This was already true before this pass for the (fixed, capped) defense/economy roles; what's new is that it now scales with the posture's role weights instead of stopping at one or two chains of each kind regardless of how large the economy has grown.
+
+### Personality
+
+Chosen per slot in the lobby, and still meaningfully different — but now expressed as a bias on the strategic posture and research priority, not a fixed, unconditional build order:
+
+| Personality | Bias |
 |---|---|
-| **Rusher** | Two combat chains before anything else; boosts spawner and speed research |
-| **Economist** | Holds more gold in reserve; boosts mining and conversion research |
-| **Turtle** | Defence before economy; heavily boosts armour, spikes, turrets, fortification |
-| **Balanced** | No bias |
+| **Rusher** | Posture starts offense-heavy; boosts spawner and speed research |
+| **Economist** | Posture starts economy-heavy; holds more gold in reserve; boosts mining and conversion research |
+| **Turtle** | Posture starts defense-heavy; heavily boosts armour, spikes, turrets, fortification |
+| **Balanced** | No bias — posture is driven purely by the match state |
 
-**Threat assessment** is percentage-based on base HP and shifts research priority — under pressure the AI reprices fortification above everything else.
+**Threat assessment** is percentage-based on base HP and feeds the posture directly (a critical threat pulls weight toward defense/offense and away from economy) as well as shifting research priority — under pressure the AI reprices fortification above everything else.
 
-**Counter-picking.** It keeps a rolling 45-second window of the units it has seen you spawn and, if one type dominates, researches and builds the spawner that counters it. Now that the counter matrix applies to every unit's attacks, not just melee, the counter it picks actually counters what it saw.
+**Counter-picking.** It keeps a rolling 45-second window of the units it has seen you spawn and, if one type dominates, researches and builds the spawner that counters it. The counter matrix applies to every unit's attacks, not just melee, so the counter it picks actually counters what it saw.
 
 `AIEvaluator.ts`, `AIPlanner.ts` and the `AI_STRATEGIES` table described an earlier decision model, superseded by `AIChainPlanner`; confirmed zero references anywhere in `src/` or `tests/` and deleted.
 
-The AI pays for its gear placements the same way the player does — `AIController.executeDecision` charges gold up front and refunds it if `tryPlace` refuses the location, so its difficulty is tuned against the same constraint the player plays under.
+The AI pays for its gear placements the same way the player does — `AIController.executeDecision` charges gold up front and refunds it if `tryPlace` refuses the location, so its difficulty is tuned against the same constraint the player plays under. Its abilities now run through the same `AbilitySystem` a human's ACTIONS-tab click does (one instance per side) instead of a parallel, invisible cooldown tracker — unlocking Overclock Mastery, for instance, now actually stops the AI's own overclock gears from burning out, which it silently never did before.

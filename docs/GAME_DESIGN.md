@@ -118,6 +118,8 @@ These words are used precisely throughout the design and the code. Where the cod
 | **Owner vs side** | *Owner* (`'player'` / `'ai'`) says whose a thing is. *Side* says which half of the map they hold. The lobby can seat a human on either side, so these are independent — code that conflates them is a bug. |
 | **Chain phase** | The AI's read of how complete a chain is: bootstrap → spawn → amplify → support → expand → full. |
 | **Threat level** | The AI's read of the match: critical, danger, normal, winning. Derived from base HP percentages. |
+| **Strategic posture** | The AI's continuously-recomputed economy/defense/offense weighting, driven by threat level, economy strength and observed opponent behaviour. Sits between its fixed goal (win) and its per-tick tactical execution (which gear, where) — see [Units](design/units.md#the-ai-opponent). |
+| **Action budget** | The AI's actions-per-minute pool, difficulty-scaled and refilling continuously. Every executed action (place, sell, reposition, research, ability) spends from it. This is the AI's difficulty axis — not a hidden mistake-injection or skip chance. |
 | **Divergence** | A recorded mismatch between this document's stated intent and what the code does. |
 
 ---

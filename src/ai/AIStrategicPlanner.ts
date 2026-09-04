@@ -16,6 +16,14 @@ export interface StrategicInputs {
   /** ms since the match started. */
   matchElapsedMs: number;
   profile: Exclude<AIStrategyProfile, 'practice'>;
+  /**
+   * True when threat was 'critical' or 'danger' within the recent past, even
+   * if it has since eased back to 'normal'/'winning'. Lets the posture keep
+   * leaning toward economy for a window after weathering a push -- "the push
+   * bought time, spend it on economy" -- instead of snapping straight back
+   * to the personality baseline the instant threat drops.
+   */
+  recentlyThreatened?: boolean;
 }
 
 export interface StrategicPosture {
@@ -56,6 +64,16 @@ export function computePosture(inputs: StrategicInputs): StrategicPosture {
     // Ahead: press the advantage economically, spend less urgency on defense.
     base.economy *= 1.25;
     base.defense *= 0.85;
+  }
+
+  // Weathered a push: threat has eased (no longer critical/danger) but was
+  // recently critical/danger. Keep leaning into economy for a window rather
+  // than snapping straight back to the personality baseline -- successfully
+  // surviving a push bought time, and that time is worth spending on
+  // catching the economy up, not just resuming the pre-push build order.
+  if (inputs.recentlyThreatened && inputs.threat !== 'critical' && inputs.threat !== 'danger') {
+    base.economy *= 1.3;
+    base.offense *= 0.85;
   }
 
   const total = base.economy + base.defense + base.offense;

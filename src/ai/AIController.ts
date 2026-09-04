@@ -19,6 +19,7 @@ import { AbilitySystem } from '../systems/AbilitySystem';
 import { AI_POLL_INTERVAL, AI_APM, AI_ACTION_BUDGET_CAPACITY, gearPlacementCost } from '../constants/balance.constants';
 import { gearRadius } from '../constants/gear.constants';
 import { TECH_NODES } from '../constants/tech.constants';
+import { TechNode } from '../types/tech.types';
 import { randomChoice } from '../utils/MathUtils';
 import { byPhase, assessThreatLevel as assessThreatLevelPure } from './ai.utils';
 import { RotationPhysicsSystem } from '../systems/RotationPhysicsSystem';
@@ -101,6 +102,10 @@ export class AIController {
 
   /** Last threat level seen — used to log transitions */
   private lastThreatLevel: ThreatLevel | null = null;
+
+  /** clock.now of the most recent 'critical'/'danger' threat reading — drives recentlyThreatened. */
+  private lastSeriousThreatAt: number = -Infinity;
+  private static readonly RECENT_THREAT_WINDOW_MS = 25000;
 
   /** Epoch when this controller was created — used for elapsed-time stamps in logs */
   private clock: GameClock;
@@ -312,6 +317,8 @@ export class AIController {
       return;
     }
 
+    this.maybeRebuildResearchPlan();
+
     // Every executed action spends from the action budget -- how much the AI
     // can actually get done this poll is bounded by APM, not by whether it
     // "noticed" a good move exists. Idle decisions are free (there was
@@ -323,7 +330,6 @@ export class AIController {
       if (decision.type !== 'idle') this.actionBudget.spend(1);
     }
 
-    this.maybeRebuildResearchPlan();
     if (this.actionBudget.canAfford(1) && this.tryAutoResearch()) this.actionBudget.spend(1);
     if (this.actionBudget.canAfford(1) && this.tryUseAbilities(now)) this.actionBudget.spend(1);
   }
@@ -334,12 +340,16 @@ export class AIController {
     if (now - this.lastPostureAt < AIController.POSTURE_REBUILD_INTERVAL) return;
     this.lastPostureAt = now;
     const prevCapacity = this.posture.capacity;
+    const threat = this.assessThreatLevel();
+    if (threat === 'critical' || threat === 'danger') this.lastSeriousThreatAt = now;
+    const recentlyThreatened = now - this.lastSeriousThreatAt < AIController.RECENT_THREAT_WINDOW_MS;
     this.posture = computePosture({
       personality: this.personality,
-      threat: this.assessThreatLevel(),
+      threat,
       goldPerSec: this.economySystem.getGoldPerSec(this.owner),
       matchElapsedMs: this.clock.now - this.startTime,
       profile: this.strategyProfile,
+      recentlyThreatened,
     });
     if (this.posture.capacity !== prevCapacity) {
       this.log(`POSTURE: capacity ${prevCapacity} → ${this.posture.capacity}  eco=${(this.posture.economy * 100).toFixed(0)}% def=${(this.posture.defense * 100).toFixed(0)}% off=${(this.posture.offense * 100).toFixed(0)}%`);
@@ -542,17 +552,42 @@ export class AIController {
     // so tryAutoResearch() can spend the gold on research instead.
     // Emergency override: when the AI has NO active spawner in any chain, skip the reserve
     // entirely so gold goes straight toward rebuilding unit production capacity.
-    // Cap: never reserve more than 40g — prevents expensive late-game nodes from
-    // freezing all gear placement while income slowly trickles in.
     if (this.strategyProfile !== 'easy') {
       const hasAnySpawner = this.chainPlans.some(p => p.stats.spawnerTypes.length > 0);
-      // Cap reserve at 20g so expensive research nodes (40-45g) don't block gear building
-      // for 30-50s. The AI can still accumulate toward research while placing gears.
-      const researchReserve = hasAnySpawner ? Math.min(this.getNextResearchCost(), 20) : 0;
+      const nextNode = this.getNextResearchNode();
+      // Economy-critical research (no economy-enabling tech researched yet --
+      // the exact gate determineNextChainRole() checks -- and the top of the
+      // queue is itself an economy-column node) gets a FULL, uncapped reserve.
+      // This closes a real poverty loop: with a flat 20g cap, gear placement
+      // always consumed any gold above the cap before an economy-unlocking
+      // node (often 40g+, e.g. Crystal Mining) could ever be saved for -- an
+      // AI whose spawner upkeep already ate its passive income could place
+      // cheap gears forever and never afford the tech that would let it
+      // start an economy chain at all. This only lifts the cap for the FIRST
+      // economy-enabling node, not every subsequent economy-column node --
+      // gating on hasEconomyTech() (one node) rather than "has an economy
+      // chain placed" avoids a second trap where research keeps outbidding
+      // chain bootstrapping for every node in the whole economy column back
+      // to back, since a completed economy chain needs a bootstrap decision
+      // (and its own gold) to ever actually happen. Once one economy tech is
+      // in, the normal 20g cap resumes and chain-building gets its turn.
+      const isEconomyCritical = !this.hasEconomyTech() && nextNode?.column === 2;
+      // Cap reserve at 20g for everything else so expensive research nodes
+      // (40-90g) don't block gear building for 30-50s -- the AI can still
+      // accumulate toward research while placing gears. (This cap can't
+      // itself fund a >20g node -- tryAutoResearch() still checks the full
+      // cost -- but simulation showed lifting it for every node, not just
+      // the economy-critical one, changes chain-composition dynamics badly:
+      // gold gets spent the instant it clears 15g on the cheapest gear
+      // available instead of accumulating toward fewer, better purchases,
+      // which nets MORE total spawner upkeep and a worse economy overall.)
+      const researchReserve = hasAnySpawner
+        ? (isEconomyCritical ? (nextNode?.goldCost ?? 0) : Math.min(this.getNextResearchCost(), 20))
+        : 0;
       const spendable = gold - researchReserve;
       if (spendable < this.getGearPlacementCost(10) && threat !== 'critical') {
         const reason = researchReserve > 0
-          ? `budget: ${gold.toFixed(0)}g held — ${researchReserve}g reserved for "${this.researchPlan.currentGoal}"`
+          ? `budget: ${gold.toFixed(0)}g held — ${researchReserve}g reserved for "${this.researchPlan.currentGoal}"${isEconomyCritical ? ' (economy-critical)' : ''}`
           : `insufficient gold (${gold.toFixed(0)}g) for cheapest gear`;
         return this.withReason({ type: 'idle' }, reason);
       }
@@ -709,11 +744,10 @@ export class AIController {
       if (combatCount < 2) return 'combat';
     }
 
-    // Economy chains: only start when iron mining is available so the chain can actually mine.
+    // Economy chains: only start when a mining node is available so the chain can actually mine.
     // basic_amplifier alone isn't enough — a chain with just motor+amplifier+researcher
     // contributes very little that the combat chains don't already cover.
-    const hasEconomyTech = this.aiResearched.has('unlock_iron_mining')
-      || this.aiResearched.has('unlock_crystal_mining');
+    const hasEconomyTech = this.hasEconomyTech();
     const economyChainCount = this.chainPlans.filter(p => p.role === 'economy').length;
     const maxEconomyChains = roleCapFromPosture(this.posture, this.posture.economy, 1);
     if (this.personality !== 'turtle' && hasEconomyTech && economyChainCount < maxEconomyChains) return 'economy';
@@ -1014,21 +1048,37 @@ export class AIController {
 
   // ─── Research planning ────────────────────────────────────────────────────
 
+  /** True once any mining node is researched -- the gate for actually starting an economy chain. */
+  private hasEconomyTech(): boolean {
+    return this.aiResearched.has('unlock_iron_mining')
+      || this.aiResearched.has('unlock_crystal_mining')
+      || this.aiResearched.has('unlock_aether_mining');
+  }
+
+  /**
+   * The next researchable node in the priority queue (already-researched and
+   * prereq-blocked entries skipped), or null if research is in progress, has
+   * no tech system, or nothing is queued/available.
+   */
+  private getNextResearchNode(): TechNode | null {
+    if (this.aiResearchInProgress || !this.techSystem) return null;
+    for (const nodeId of this.researchPlan.prioritizedQueue) {
+      const node = TECH_NODES[nodeId];
+      if (!node) continue;
+      if (this.aiResearched.has(nodeId)) continue;
+      if (!node.prereqs.every(p => this.aiResearched.has(p))) continue;
+      return node;
+    }
+    return null;
+  }
+
   /**
    * Returns the gold cost of the next researchable node in the priority queue.
    * Returns 0 when research is in progress, no tech system, or nothing queued.
    * Used to reserve that gold in the gear-placement budget.
    */
   private getNextResearchCost(): number {
-    if (this.aiResearchInProgress || !this.techSystem) return 0;
-    for (const nodeId of this.researchPlan.prioritizedQueue) {
-      const node = TECH_NODES[nodeId];
-      if (!node) continue;
-      if (this.aiResearched.has(nodeId)) continue;
-      if (!node.prereqs.every(p => this.aiResearched.has(p))) continue;
-      return node.goldCost;
-    }
-    return 0;
+    return this.getNextResearchNode()?.goldCost ?? 0;
   }
 
   private maybeRebuildResearchPlan(): void {

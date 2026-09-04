@@ -50,12 +50,20 @@ export class SoundManager {
   playGearMesh():   void { this._go(() => this._gearMesh()); }
   playGearTick():   void { this._go(() => this._gearTick()); }
 
-  /** Gear teeth jamming against another gear — harsh grinding stress. */
-  playGearJam(): void {
+  /**
+   * Gear teeth jamming against another gear — harsh grinding stress.
+   * `severity` (0-1, from RotationPhysicsSystem's jamSeverity) scales
+   * volume and pitch so a light jam grinds quietly and a severe one is a
+   * genuinely harsh crunch — the crush force made audible.
+   */
+  playGearJam(severity: number = 1): void {
+    const s = Math.max(0, Math.min(1, severity));
+    const vol = 0.5 + s * 0.5;       // quiet at low severity, full-bodied at high
+    const pitchDrop = 1 + s * 0.4;   // harder jams grind lower
     this._go(() => {
-      this._noise(0.60, 0.45, 95, 0.55);             // low grinding body
-      this._osc('square', 68, 52, 0.40, 0.28);        // buzzing mechanical strain
-      this._noise(0.45, 0.12, 260, 1.4);              // initial crunch transient
+      this._noise(0.60 * vol, 0.45, 95 / pitchDrop, 0.55);   // low grinding body
+      this._osc('square', 68 / pitchDrop, 52 / pitchDrop, 0.40, 0.28 * vol); // buzzing strain
+      this._noise(0.45 * vol, 0.12, 260, 1.4);                // initial crunch transient
     });
   }
 
@@ -96,8 +104,8 @@ export class SoundManager {
     });
   }
 
-  /** Wrench unit latches onto a gear. */
-  playWrenchLatch(): void {
+  /** Slime unit latches onto a gear. */
+  playSlimePop(): void {
     this._go(() => {
       this._noise(0.55, 0.09, 380, 4.2);              // metallic clang
       this._osc('square', 245, 98, 0.18, 0.22, 0.04); // resonant clank
@@ -127,7 +135,7 @@ export class SoundManager {
         case 'iron_guard':      this._spawnIronGuard();      break;
         case 'crystal_sentinel':this._spawnCrystalSentinel();break;
         case 'aether_phantom':  this._spawnAetherPhantom();  break;
-        case 'wrench':          this._spawnWrench();         break;
+        case 'slime':          this._spawnSlime();         break;
         default:                this._spawnInfantry();
       }
     });
@@ -145,7 +153,7 @@ export class SoundManager {
         case 'iron_guard':      this._dieIronGuard();      break;
         case 'crystal_sentinel':this._dieCrystalSentinel();break;
         case 'aether_phantom':  this._dieAetherPhantom();  break;
-        case 'wrench':          this._dieWrench();         break;
+        case 'slime':          this._dieSlime();         break;
         default:                this._dieInfantry();
       }
     });
@@ -162,7 +170,7 @@ export class SoundManager {
         case 'elite_cavalry':   this._attackCavalry();      break;
         case 'iron_guard':      this._attackIronGuard();    break;
         case 'aether_phantom':  this._attackAetherPhantom();break;
-        case 'wrench':          this._attackWrench();       break;
+        case 'slime':          this._attackSlime();       break;
         // Ranged types play projectile sounds instead
         default: break;
       }
@@ -448,7 +456,7 @@ export class SoundManager {
     this._osc('sine', 420, 2400, 0.25, 0.10, 0.10);
   }
 
-  private _spawnWrench(): void {
+  private _spawnSlime(): void {
     // Mechanical click + clank
     this._noise(0.46, 0.06, 870, 6.2);                // sharp click
     this._osc('square', 365, 185, 0.15, 0.24, 0.04);  // resonant clank
@@ -530,7 +538,7 @@ export class SoundManager {
     this._osc('sine', 1200, 145, 0.30, 0.10, 0.06);
   }
 
-  private _dieWrench(): void {
+  private _dieSlime(): void {
     // Parts scattering — 3 metallic pops
     this._noise(0.42, 0.08, 520, 2.6, 0.00);
     this._noise(0.36, 0.08, 740, 2.6, 0.07);
@@ -564,7 +572,7 @@ export class SoundManager {
     this._osc('sine', 900, 300, 0.15, 0.09, 0.05);
   }
 
-  private _attackWrench(): void {
+  private _attackSlime(): void {
     // Gear friction grind
     this._noise(0.40, 0.25, 325, 3.6);
     this._osc('sawtooth', 82, 62, 0.20, 0.18);

@@ -220,7 +220,7 @@ export class ActionsSection {
       { key: 'elite_infantry', label: 'ELITE INF',  color: NEON.green   },
       { key: 'elite_artillery',label: 'ELITE ART',  color: NEON.blue    },
       { key: 'elite_cavalry',  label: 'ELITE CAV',  color: NEON.orange  },
-      { key: 'wrench',         label: 'WRENCH',     color: NEON.yellow  },
+      { key: 'slime',         label: 'SLIME',     color: NEON.yellow  },
     ];
 
     const PILL_W = 98, PILL_H = 28, PILL_GAP = 8, PILLS_PER_ROW = 4;

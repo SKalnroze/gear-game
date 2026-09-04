@@ -21,12 +21,12 @@ Research runs on game time, so pausing genuinely pauses it, and game speed scale
 <!-- BEGIN GENERATED: tech.summary -->
 | Column | Nodes | Total gold | Total research time |
 |---|---|---|---|
-| Gears | 13 | 1205 | 612s |
-| Units | 13 | 760 | 675s |
+| Gears | 14 | 1255 | 642s |
+| Units | 14 | 785 | 711s |
 | Economy | 13 | 865 | 612s |
 | Abilities | 2 | 100 | 60s |
-| Defense | 9 | 580 | 363s |
-| **All** | **50** | **3510** | **2322s** |
+| Defense | 10 | 630 | 396s |
+| **All** | **53** | **3635** | **2421s** |
 <!-- END GENERATED: tech.summary -->
 
 ## Shape
@@ -50,6 +50,7 @@ The **Gear Precision** line is the backbone: each node unlocks larger tooth coun
 | **Basic Capacitor**<br>`basic_capacitor` | T1 | 25 | 18s | — | `unlock_gear` (gearType=capacitor) |
 | **Basic Overclock**<br>`basic_overclock` | T1 | 30 | 21s | — | `unlock_gear` (gearType=overclock) |
 | **Gear Precision I**<br>`gear_precision_1` | T1 | 40 | 24s | — | `unlock_teeth` (teeth=5)<br>`unlock_teeth` (teeth=15) |
+| **Relief Valve**<br>`unlock_relief_valve` | T2 | 50 | 30s | `gear_precision_1` | `unlock_gear` (gearType=relief_valve) |
 | **Capacitor Upgrade**<br>`capacitor_upgrade` | T2 | 60 | 36s | `basic_capacitor` | `capacitor_burst_multiplier` (value=1) |
 | **Extended Overclock**<br>`extended_overclock` | T2 | 60 | 36s | `basic_overclock` | `overclock_duration_bonus` (value=5000) |
 | **Gear Precision II**<br>`gear_precision_2` | T2 | 80 | 36s | `gear_precision_1` | `unlock_teeth` (teeth=20)<br>`unlock_teeth` (teeth=25) |
@@ -74,8 +75,9 @@ The **Gear Precision** line is the backbone: each node unlocks larger tooth coun
 |---|---|---|---|---|---|
 | **Infantry Training**<br>`unlock_infantry` | T1 | 15 | 12s | — | `unit_hp_pct` (unitType=infantry, value=0.2) |
 | **Quick March**<br>`infantry_speed` | T1 | 15 | 12s | `unlock_infantry` | `unit_speed_pct` (unitType=infantry, value=0.2) |
-| **Wrench Spawner**<br>`unlock_wrench_spawner` | T1 | 20 | 30s | — | `unlock_gear` (gearType=wrench_spawner)<br>`unlock_unit` (unitType=wrench) |
+| **Slime Spawner**<br>`unlock_slime_spawner` | T1 | 20 | 30s | — | `unlock_gear` (gearType=slime_spawner)<br>`unlock_unit` (unitType=slime) |
 | **Artillery Spawner**<br>`unlock_artillery_spawner` | T1 | 25 | 45s | — | `unlock_gear` (gearType=artillery_spawner)<br>`unlock_unit` (unitType=artillery) |
+| **Crossbow Spawner**<br>`unlock_crossbow_spawner` | T1 | 25 | 36s | — | `unlock_gear` (gearType=crossbow_spawner)<br>`unlock_unit` (unitType=crossbow) |
 | **Cavalry Spawner**<br>`unlock_cavalry_spawner` | T1 | 30 | 54s | — | `unlock_gear` (gearType=cavalry_spawner)<br>`unlock_unit` (unitType=cavalry) |
 | **Iron Guard Spawner**<br>`unlock_iron_guard_spawner` | T2 | 20 | 36s | `unlock_iron_mining` | `unlock_gear` (gearType=iron_guard_spawner)<br>`unlock_unit` (unitType=iron_guard) |
 | **Cavalry Charge**<br>`cavalry_charge` | T2 | 65 | 39s | `unlock_cavalry_spawner` | `unit_speed_pct` (unitType=cavalry, value=0.3)<br>`unit_damage_pct` (unitType=cavalry, value=0.15) |
@@ -148,6 +150,7 @@ The two lines are a genuine choice: gold nodes pay immediately and passively, mi
 | **Base Fortification**<br>`base_fortification` | T1 | 30 | 24s | — | `base_hp_bonus` (value=20) |
 | **Spiked Gears**<br>`spiked_gears` | T1 | 45 | 27s | — | `unlock_gear` (gearType=spiked) |
 | **Armored Gears**<br>`armored_gears` | T2 | 45 | 27s | `base_fortification` | `unlock_gear` (gearType=armored) |
+| **Sentry**<br>`unlock_sentry` | T2 | 50 | 33s | `spiked_gears` | `unlock_gear` (gearType=sentry_gear)<br>`unlock_gear` (gearType=sentry_spawner)<br>`unlock_unit` (unitType=sentry_unit) |
 | **Crossbow Turret**<br>`crossbow_turret_tech` | T2 | 55 | 36s | `spiked_gears` | `unlock_gear` (gearType=crossbow_turret) |
 | **Minelayer**<br>`unlock_minelayer` | T2 | 55 | 33s | `spiked_gears` | `unlock_gear` (gearType=minelayer) |
 | **Healing Gear**<br>`healer_gear_tech` | T2 | 60 | 42s | `armored_gears` | `unlock_gear` (gearType=healer) |

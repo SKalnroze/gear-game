@@ -55,6 +55,26 @@ const COLD_ZONE_DURATION = 5.0; // seconds
 const COLD_ZONE_SLOW_FACTOR = 0.45;
 const COLD_GEAR_FRICTION = 20;
 
+let _slimePuddleId = 1;
+function nextSlimePuddleId(): string {
+  return `puddle_${_slimePuddleId++}`;
+}
+
+/**
+ * A slime's death puddle -- unlike a cold zone (enemy-only), it slows and
+ * adds gear friction for BOTH sides, since the slime itself dealt no damage
+ * and doesn't take sides on the way out.
+ */
+interface SlimePuddle {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  endTime: number; // seconds (game time / 1000)
+  slowFactor: number;
+  gearFriction: number;
+}
+
 
 /** Charge acceleration for cavalry (px/s²) */
 const CAVALRY_CHARGE_ACCEL = 200;
@@ -110,6 +130,8 @@ export class UnitSystem {
   // Cold zone system (crystal sentinel)
   private coldZones: ColdZone[] = [];
   private gearsWithColdFriction: Set<string> = new Set();
+  private slimePuddles: SlimePuddle[] = [];
+  private gearsWithPuddleFriction: Set<string> = new Set();
 
   // Tech modifiers, keyed `${owner}:${unitType}`. These used to be keyed by
   // unit type alone, so a tech node one side researched buffed *both* sides'
@@ -238,7 +260,7 @@ export class UnitSystem {
     // 1. Update behavior state machines per unit type
     for (const [, unit] of allUnits) {
       if (unit.reachedBase) continue;
-      if (unit.attachedGearId) continue; // attached wrench units don't march
+      if (unit.attachedGearId) continue; // attached slime units don't march
 
       // Apply shield timer (crystal sentinel aura)
       if (unit.shieldTimer > 0) {
@@ -257,8 +279,8 @@ export class UnitSystem {
       }
 
       switch (unit.type) {
-        case 'wrench':
-          this.updateWrench(unit, deltaSec);
+        case 'slime':
+          this.updateSlime(unit, deltaSec);
           break;
         case 'infantry':
           this.updateInfantry(unit, deltaSec, now, allUnits, allGears);
@@ -284,6 +306,12 @@ export class UnitSystem {
         case 'elite_infantry':
           this.updateInfantry(unit, deltaSec, now, allUnits, allGears);
           break;
+        case 'crossbow':
+          this.updateCrossbow(unit, deltaSec, now, allUnits, allGears);
+          break;
+        case 'sentry_unit':
+          this.updateSentryUnit(unit, deltaSec, now, allGears);
+          break;
         default:
           // Default march
           this.marchForward(unit, deltaSec);
@@ -291,8 +319,9 @@ export class UnitSystem {
       }
     }
 
-    // 1b. Update cold zones (crystal sentinel icy areas)
+    // 1b. Update cold zones (crystal sentinel icy areas) and slime puddles
     this.updateColdZones(now, allUnits, allGears);
+    this.updateSlimePuddles(now, allUnits, allGears);
 
     // 1c. Apply this frame's pending knockback -- done after every unit's own
     // behavior update so it can't be clobbered by a not-yet-visited unit
@@ -335,6 +364,15 @@ export class UnitSystem {
         // Emit visual explosion event so GameScene shows the AoE circle
         const explosionRadius = unit.size * 3;
         this.eventBus.emit('projectile:hit', { id: 'iron_explode', x: unit.x, y: unit.y, aoeRadius: explosionRadius });
+      } else if (unit.type === 'slime') {
+        const def = UNIT_DEFINITIONS.slime;
+        this.createSlimePuddle(
+          unit.x, unit.y,
+          def.puddleRadius ?? 50,
+          def.puddleSlowFactor ?? 0.55,
+          def.frictionValue ?? 20,
+          now,
+        );
       }
       this.eventBus.emit('unit:died', { unitId: unit.id, owner: unit.owner });
     }
@@ -382,13 +420,15 @@ export class UnitSystem {
     unit.behaviorState = 'marching';
   }
 
-  private updateWrench(unit: UnitState, deltaSec: number): void {
-    if (!unit.inCombat) {
-      this.marchForward(unit, deltaSec);
-    } else {
-      unit.vx = 0;
-      unit.vy = 0;
-    }
+  /**
+   * Slime never stops to fight and never deals damage -- it exists to pile
+   * up. Always marching (normal collision still applies, unlike Aether
+   * Phantom's pass-through) is exactly what lets a mass of them physically
+   * clog the lane.
+   */
+  private updateSlime(unit: UnitState, deltaSec: number): void {
+    this.marchForward(unit, deltaSec);
+    unit.inCombat = false;
   }
 
   private updateInfantry(
@@ -681,6 +721,123 @@ export class UnitSystem {
       this.marchForward(unit, deltaSec);
       unit.inCombat = false;
     }
+  }
+
+  /**
+   * Crossbow: stops and shoots instead of closing to melee, like Artillery,
+   * but a direct hitscan hit (no projectile arc) at a much shorter range and
+   * a slower cadence than Infantry's melee cooldown -- same per-hit damage,
+   * lower DPS, per the roster design.
+   */
+  private updateCrossbow(
+    unit: UnitState,
+    deltaSec: number,
+    now: number,
+    allUnits: Map<string, UnitState>,
+    allGears: ReturnType<World['getAllGears']>,
+  ): void {
+    const effectiveSpeed = unit.speed * (unit.slowFactor ?? 1);
+    const detectRange = unit.attackRange * 1.5;
+
+    let targetX = -1;
+    let targetY = -1;
+    let targetDist = Infinity;
+    let targetUnit: UnitState | null = null;
+
+    for (const [, other] of allUnits) {
+      if (other.owner === unit.owner) continue;
+      if (other.reachedBase) continue;
+      if (!isInFront(unit, other.x, this.playerRight)) continue;
+      const d = distance(unit.x, unit.y, other.x, other.y);
+      if (d < detectRange && d < targetDist) {
+        targetDist = d;
+        targetX = other.x;
+        targetY = other.y;
+        targetUnit = other;
+      }
+    }
+
+    if (targetX < 0) {
+      for (const [, gear] of allGears) {
+        if (gear.owner === unit.owner) continue;
+        if (gear.hp <= 0 || gear.isBurntOut) continue;
+        if (!isInFront(unit, gear.x, this.playerRight)) continue;
+        if (!gearInLane(gear.y)) continue;
+        const d = distance(unit.x, unit.y, gear.x, gear.y);
+        if (d < detectRange && d < targetDist) {
+          targetDist = d;
+          targetX = gear.x;
+          targetY = gear.y;
+          targetUnit = null;
+        }
+      }
+    }
+
+    if (targetX < 0) {
+      this.marchForward(unit, deltaSec);
+      unit.inCombat = false;
+      return;
+    }
+
+    if (targetDist <= unit.attackRange) {
+      unit.vx = 0;
+      unit.vy = 0;
+      unit.behaviorState = 'firing';
+      unit.inCombat = true;
+
+      // Slower cadence than Infantry's melee cooldown -- same per-hit
+      // damage, lower DPS, per the crossbow's design.
+      const cooldown = computeAttackCooldown(unit.size) * 1.8;
+      if (now - unit.lastAttackTime > cooldown && targetUnit) {
+        const dmg = computeDamage(unit.type, targetUnit, unit.baseDamage);
+        targetUnit.hp -= dmg;
+        unit.lastAttackTime = now;
+        this.eventBus.emit('unit:damaged', {
+          unitId: targetUnit.id,
+          damage: dmg,
+          x: targetUnit.x,
+          y: targetUnit.y,
+        });
+        if (targetUnit.hp <= 0) targetUnit.hp = 0;
+      }
+    } else {
+      const dx = targetX - unit.x;
+      const dy = targetY - unit.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      unit.vx = (dx / d) * effectiveSpeed;
+      unit.vy = (dy / d) * effectiveSpeed;
+      unit.behaviorState = 'marching';
+      unit.inCombat = false;
+    }
+  }
+
+  /**
+   * Sentry unit: marches like any other unit (it's not a dedicated fighter),
+   * but periodically pulses true-sight in a radius, revealing any hidden
+   * enemy mines caught in it early -- the counter to the Minelayer's
+   * per-owner mine visibility, "mines are the stealth layer" per design.
+   */
+  private updateSentryUnit(
+    unit: UnitState,
+    deltaSec: number,
+    now: number,
+    allGears: ReturnType<World['getAllGears']>,
+  ): void {
+    this.marchForward(unit, deltaSec);
+    unit.inCombat = false;
+
+    const def = UNIT_DEFINITIONS.sentry_unit;
+    const interval = def.sightPulseIntervalMs ?? 2000;
+    if (now - unit.lastAttackTime < interval) return;
+    unit.lastAttackTime = now;
+
+    void allGears; // reserved for a future direct mine-reveal hook; MinelayerSystem listens to the pulse event itself
+    this.eventBus.emit('sentry:pulse', {
+      owner: unit.owner,
+      x: unit.x,
+      y: unit.y,
+      radius: def.sightRadius ?? 150,
+    });
   }
 
   private updateIronGuard(
@@ -1020,6 +1177,93 @@ export class UnitSystem {
     }
   }
 
+  // ─── Slime puddle helpers ────────────────────────────────────────────────
+
+  /** Create a slime puddle at (x,y) on death. Overlapping puddles refresh rather than stack. */
+  private createSlimePuddle(x: number, y: number, radius: number, slowFactor: number, gearFriction: number, now: number): void {
+    const nowSec = now * 0.001;
+    const existing = this.slimePuddles.find(p => distance(p.x, p.y, x, y) < p.radius * 0.6);
+    const duration = UNIT_DEFINITIONS.slime.puddleDuration ?? 6;
+
+    if (existing) {
+      existing.endTime = nowSec + duration;
+      return;
+    }
+
+    const id = nextSlimePuddleId();
+    this.slimePuddles.push({ id, x, y, radius, endTime: nowSec + duration, slowFactor, gearFriction });
+    this.eventBus.emit('slime_puddle:created', { id, x, y, radius });
+  }
+
+  /**
+   * Process slime puddles: expire old ones, slow units and add gear friction
+   * for BOTH sides -- unlike a cold zone, a puddle doesn't take sides.
+   */
+  private updateSlimePuddles(
+    now: number,
+    allUnits: Map<string, UnitState>,
+    allGears: ReturnType<World['getAllGears']>,
+  ): void {
+    const nowSec = now * 0.001;
+
+    this.slimePuddles = this.slimePuddles.filter(p => {
+      if (p.endTime < nowSec) {
+        this.eventBus.emit('slime_puddle:expired', { id: p.id });
+        return false;
+      }
+      return true;
+    });
+
+    if (this.slimePuddles.length === 0 && this.gearsWithPuddleFriction.size === 0) return;
+
+    for (const [, unit] of allUnits) {
+      if (unit.reachedBase) continue;
+      for (const puddle of this.slimePuddles) {
+        const d = distance(unit.x, unit.y, puddle.x, puddle.y);
+        if (d < puddle.radius) {
+          unit.slowTimer = 0.25;
+          unit.slowFactor = Math.min(unit.slowFactor, puddle.slowFactor);
+          break;
+        }
+      }
+    }
+
+    const gearsInPuddle = new Set<string>();
+    for (const [gearId, gear] of allGears) {
+      for (const puddle of this.slimePuddles) {
+        const d = distance(gear.x, gear.y, puddle.x, puddle.y);
+        if (d < puddle.radius + gearRadius(gear.teeth)) {
+          gearsInPuddle.add(gearId);
+          break;
+        }
+      }
+    }
+
+    for (const gearId of gearsInPuddle) {
+      if (!this.gearsWithPuddleFriction.has(gearId)) {
+        const gear = allGears.get(gearId);
+        if (gear) {
+          const puddleFriction = UNIT_DEFINITIONS.slime.frictionValue ?? 20;
+          gear.frictionLoad = (gear.frictionLoad ?? 0) + puddleFriction;
+          if (this.world) this.world.updateGear(gear);
+          this.gearsWithPuddleFriction.add(gearId);
+        }
+      }
+    }
+
+    for (const gearId of this.gearsWithPuddleFriction) {
+      if (!gearsInPuddle.has(gearId)) {
+        const gear = allGears.get(gearId);
+        if (gear) {
+          const puddleFriction = UNIT_DEFINITIONS.slime.frictionValue ?? 20;
+          gear.frictionLoad = Math.max(0, (gear.frictionLoad ?? 0) - puddleFriction);
+          if (this.world) this.world.updateGear(gear);
+        }
+        this.gearsWithPuddleFriction.delete(gearId);
+      }
+    }
+  }
+
   // ─── Physics helpers ────────────────────────────────────────────────────
 
   private resolveUnitCollisions(allUnits: Map<string, UnitState>): void {
@@ -1152,7 +1396,7 @@ export class UnitSystem {
   /**
    * What infantry_spawner/artillery_spawner/cavalry_spawner actually produce
    * this rotation, once chain composition and research are factored in. Any
-   * other spawner type (including wrench_spawner) passes its base type
+   * other spawner type (including slime_spawner) passes its base type
    * straight through -- only the core three have an upgrade path.
    */
   private resolveCoreSpawnerUnitType(
@@ -1193,7 +1437,7 @@ export class UnitSystem {
       infantry_spawner: 'infantry',
       artillery_spawner: 'artillery',
       cavalry_spawner: 'cavalry',
-      wrench_spawner: 'wrench',
+      slime_spawner: 'slime',
       iron_guard_spawner: 'iron_guard',
       crystal_sentinel_spawner: 'crystal_sentinel',
       aether_phantom_spawner: 'aether_phantom',
@@ -1224,7 +1468,7 @@ export class UnitSystem {
       elite_infantry: 'Elite Infantry',
       elite_artillery: 'Elite Artillery',
       elite_cavalry: 'Elite Cavalry',
-      wrench: 'Wrench',
+      slime: 'Slime',
       iron_guard: 'Iron Guard',
       crystal_sentinel: 'Sentinel',
       aether_phantom: 'Phantom',
@@ -1273,5 +1517,7 @@ export class UnitSystem {
     this.eventBus.off('unit:died', this.onUnitDied);
     this.coldZones = [];
     this.gearsWithColdFriction.clear();
+    this.slimePuddles = [];
+    this.gearsWithPuddleFriction.clear();
   }
 }

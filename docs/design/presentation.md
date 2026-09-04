@@ -64,8 +64,8 @@ The most information-dense object on screen. A gear communicates, simultaneously
 | **Owner** | A coloured ring inside the body |
 | **Rotation** | The whole gear turns; a white dot near the hub gives a speed cue at small sizes |
 | **Damage** | Cracks in four tiers, radiating from the hub, seeded from the gear's id so a given gear always cracks identically — a stable identity, not noise |
-| **Jam** | A pulsing red double ring; the strongest alarm in the visual language, because a jam is a self-destructing state |
-| **Friction** | An orange ring pulsing in proportion to load — how a wrench attack becomes visible |
+| **Jam** | A pulsing red double ring, its speed and brightness scaled by `jamSeverity(jamStress)` — a light grind pulses slow and dim, a severe crush pulses fast and bright; the strongest alarm in the visual language, because a jam is a self-destructing state |
+| **Friction** | An orange ring pulsing in proportion to load — how a slime puddle standing on a gear becomes visible |
 | **Burnout** | The gear fades and gains a red cross |
 | **Health** | A bar below the gear, shown only when damaged |
 | **Move cooldown** | A grey wedge that unwinds |
@@ -84,7 +84,9 @@ Each type has a distinct silhouette so a zoomed-out lane is readable as a compos
 | Iron Guard | Square with armour plate and corner bolts |
 | Crystal Sentinel | Hexagon |
 | Aether Phantom | Translucent octagon with a glow ring |
-| Wrench | Square with a wrench glyph |
+| Crossbow | Circle with sword and shield (shares Infantry's generic silhouette) |
+| Sentry Unit | Circle with sword and shield (shares Infantry's generic silhouette) |
+| Slime | Squat wobbly blob with a glossy highlight |
 
 Owner is a colour tint over the shape, with a small direction marker ahead of the body. Animation is used sparingly and always to signal state: cavalry draws a tapering trail *only while charging*, infantry sweeps an arc *on the attack frame*, phantoms pulse translucency with a per-unit phase so a group does not blink in unison.
 

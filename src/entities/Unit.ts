@@ -14,8 +14,11 @@ const UNIT_COLORS: Record<UnitType, number> = {
   iron_guard: 0x888888,
   crystal_sentinel: 0x44ddff,
   aether_phantom: 0xdd44ff,
+  // Ranged skirmisher / detection utility
+  crossbow: 0xccaa66,
+  sentry_unit: 0x66ffcc,
   // Special
-  wrench: 0xffdd55,
+  slime: 0x66dd33,
 };
 
 /** Per-type size map fallback if state.size is not set */
@@ -30,7 +33,9 @@ const UNIT_SIZES: Record<UnitType, number> = {
   iron_guard: 11,
   crystal_sentinel: 10,
   aether_phantom: 10,
-  wrench: 8,
+  crossbow: 9,
+  sentry_unit: 10,
+  slime: 7,
 };
 
 /**
@@ -134,8 +139,8 @@ export class UnitEntity extends Phaser.GameObjects.Container {
       case 'crystal_sentinel':
         this.drawCrystalSentinel(g, color, size);
         break;
-      case 'wrench':
-        this.drawWrench(g, color, ownerColor, size);
+      case 'slime':
+        this.drawSlime(g, color, ownerColor, size);
         break;
       default:
         this.drawGeneric(g, color, ownerColor, size);
@@ -421,25 +426,24 @@ export class UnitEntity extends Phaser.GameObjects.Container {
     return (r << 16) | (green << 8) | b;
   }
 
-  private drawWrench(
+  private drawSlime(
     g: Phaser.GameObjects.Graphics,
     color: number,
     ownerColor: number,
     size: number,
   ): void {
-    g.fillStyle(color, 1);
-    g.lineStyle(1, 0xffffff, 0.8);
-    g.fillRect(-size, -size, size * 2, size * 2);
-    g.strokeRect(-size, -size, size * 2, size * 2);
+    // A squat, wobbly blob -- no damage, just mass to pile up with.
+    g.fillStyle(color, 0.85);
+    g.lineStyle(1.5, 0xffffff, 0.6);
+    g.fillEllipse(0, size * 0.15, size * 1.9, size * 1.5);
+    g.strokeEllipse(0, size * 0.15, size * 1.9, size * 1.5);
 
     g.fillStyle(ownerColor, 0.3);
-    g.fillRect(-size, -size, size * 2, size * 2);
+    g.fillEllipse(0, size * 0.15, size * 1.9, size * 1.5);
 
-    // Wrench icon: two small circles at top and bottom with a bar
-    g.fillStyle(0xffffff, 0.8);
-    g.fillCircle(0, -size * 0.4, size * 0.25);
-    g.fillCircle(0, size * 0.4, size * 0.25);
-    g.fillRect(-size * 0.1, -size * 0.4, size * 0.2, size * 0.8);
+    // Glossy highlight
+    g.fillStyle(0xffffff, 0.5);
+    g.fillEllipse(-size * 0.35, -size * 0.15, size * 0.5, size * 0.3);
   }
 
   private drawGeneric(

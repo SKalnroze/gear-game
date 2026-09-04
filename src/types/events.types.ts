@@ -15,12 +15,10 @@ export interface GameEventMap {
   'gear:burnt_out': { gearId: string };
   'gear:overclock_started': { gearId: string; duration: number };
   'gear:full_rotation': { gearId: string; owner: 'player' | 'ai'; rotationCount: number };
-  'gear:unit_attached': { gearId: string; unitId: string; frictionAdded: number };
-  'gear:unit_detached': { gearId: string; unitId: string };
   'gear:snap_preview': { x: number; y: number; valid: boolean };
   'gear:repositioned': { gearId: string; oldX: number; oldY: number; newX: number; newY: number };
   'gear:rotation_result': { gearId: string; owner: 'player' | 'ai'; text: string; color: number };
-  'gear:jammed': { gearId: string; conflictingGearId: string; torque: number };
+  'gear:jammed': { gearId: string; conflictingGearId: string; torque: number; severity: number };
   'gear:jam_cleared': { gearId: string };
   'gear:damaged': { gearId: string; damage: number; remainingHp: number; source: 'jam' | 'combat' };
   'gear:destroyed': { gearId: string; owner: 'player' | 'ai'; cause: 'jam' | 'combat' };
@@ -51,6 +49,9 @@ export interface GameEventMap {
   'cold_beam:fired': { owner: 'player' | 'ai'; srcX: number; srcY: number; dstX: number; dstY: number };
   'cold_zone:created': { id: string; x: number; y: number; radius: number };
   'cold_zone:expired': { id: string };
+  'slime_puddle:created': { id: string; x: number; y: number; radius: number };
+  'slime_puddle:expired': { id: string };
+  'sentry:pulse': { owner: 'player' | 'ai'; x: number; y: number; radius: number };
 
   // Generic AoE signal -- any explosion (artillery, iron guard death blast)
   // emits this so unrelated systems (mine chain-detonation) can react

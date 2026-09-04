@@ -54,7 +54,7 @@ This is a real design constraint on layout, not an error state — an even ring 
 
 ## The catalogue
 
-Costs and unlocks for all 23 gear types.
+Costs and unlocks for all 27 gear types.
 
 <!-- BEGIN GENERATED: gears.catalogue -->
 | Gear | Gold cost | Unlocked by | In-game description |
@@ -71,7 +71,9 @@ Costs and unlocks for all 23 gear types.
 | Infantry Spawner | 5 | _from start_ | Spawns an Infantry unit per full rotation (5 gold cost). |
 | Artillery Spawner | 8 | `unlock_artillery_spawner` | Spawns an Artillery unit per full rotation (8 gold cost). |
 | Cavalry Spawner | 12 | `unlock_cavalry_spawner` | Spawns a Cavalry unit per full rotation (12 gold cost). |
-| Wrench Spawner | 5 | `unlock_wrench_spawner` | Spawns a Wrench unit per full rotation (free). Wrenches latch onto enemy gears and add friction -- the anti-machine unit. |
+| Slime Spawner | 5 | `unlock_slime_spawner` | Spawns a Slime unit per full rotation (2 gold cost -- cheap and spammable). Slimes deal no damage and never stop to fight; they pile up and physically clog the lane, then burst into a slowing puddle on death. |
+| Crossbow Spawner | 6 | `unlock_crossbow_spawner` | Spawns a Crossbow unit per full rotation (6 gold cost). Ranged skirmisher: same per-hit damage as Infantry, lower DPS, stops and shoots instead of closing to melee. |
+| Sentry Spawner | 8 | `unlock_sentry` | Spawns a Sentry unit per full rotation (10 gold cost). Pulses true-sight as it marches, revealing hidden enemy mines early. |
 | Iron Guard Spawner | 8 | `unlock_iron_guard_spawner` | Spawns an Iron Guard unit per full rotation (8 iron cost). |
 | Crystal Sentinel Spawner | 6 | `unlock_crystal_sentinel_spawner` | Spawns a Crystal Sentinel unit per full rotation (6 crystal cost). |
 | Aether Phantom Spawner | 5 | `unlock_aether_phantom_spawner` | Spawns an Aether Phantom unit per full rotation (5 aether cost). |
@@ -83,6 +85,8 @@ Costs and unlocks for all 23 gear types.
 | Artillery Turret | 8 | `artillery_turret_tech` | Heavy turret. Each rotation buys 1 ammo shell (6 gold). Fires slowly with AoE; high damage, long range. |
 | Minelayer | 6 | `unlock_minelayer` | Each rotation buys 1 mine shell (5 gold). Lobs a mine into a zone ahead of it; mines arm after a short delay, then hide from the enemy until triggered. |
 | Healer | 0 | `healer_gear_tech` | Emits a healing aura on each full rotation. Heals nearby friendly gears and units. Aura size and healing scale with gear size. |
+| Sentry Gear | 6 | `unlock_sentry` | Pulses true-sight on each full rotation, revealing hidden enemy mines within its radius early. Stationary counter to the Minelayer. |
+| Relief Valve | 8 | `unlock_relief_valve` | A clutch built to take a jam for the chain instead of breaking. Sharply reduces its own jam damage, and softens jam damage on a meshed neighbour too. |
 <!-- END GENERATED: gears.catalogue -->
 
 <!-- BEGIN GENERATED: gears.formulas -->
@@ -157,7 +161,7 @@ Costs and unlocks for all 23 gear types.
 
 **Status.** Implemented. See [Units](units.md) for what each produces.
 
-There are seven spawner gears (a `wrench_spawner` joins the original six) and eleven unit types. The remaining four — `mixed` and the three elites — have no spawner of their own; instead the three core spawners (infantry/artillery/cavalry) produce them under the right conditions. See [Units](units.md) for exactly what those conditions are.
+There are nine spawner gears (`crossbow_spawner` and `sentry_spawner` join the original seven) and thirteen unit types. The remaining four — `mixed` and the three elites — have no spawner of their own; instead the three core spawners (infantry/artillery/cavalry) produce them under the right conditions. See [Units](units.md) for exactly what those conditions are.
 
 ---
 
@@ -236,6 +240,22 @@ There are seven spawner gears (a `wrench_spawner` joins the original six) and el
 **Intent.** Makes a defensive position sustainable, converting rotation into repair so a machine under sustained pressure can hold without the player intervening.
 
 **Behaviour.** Each rotation heals all friendly gears and units within `radius × 3`, for `teeth × 1.5` each.
+
+**Status.** Implemented.
+
+### Sentry
+
+**Intent.** The stationary counter to the Minelayer's hidden mines — mines are the one place in the game with genuine per-side visibility, and a Sentry is how a player answers that without having to guess. Its mobile counterpart is the [Sentry Unit](units.md#sentry-unit); both emit the identical pulse.
+
+**Behaviour.** Each rotation, pulses true-sight in a radius (same radius formula as the Healer's aura, `radius × 3`), revealing any hidden enemy mine caught in it to its owner for a few seconds.
+
+**Status.** Implemented.
+
+### Relief Valve
+
+**Intent.** A gear built to take a jam for the chain instead of the chain breaking — see [Balance](balance.md#jamming) for the damage model it modifies. Placed near a jam-prone chokepoint (an odd-cycle-heavy layout), it turns a jam from "something breaks" into "something absorbs it."
+
+**Behaviour.** While jammed itself, its own jam damage is cut sharply (85% reduction). A jammed gear meshed directly to a live Relief Valve also takes reduced jam damage (40% reduction) — the valve softens the shock for its neighbour, not just itself.
 
 **Status.** Implemented.
 

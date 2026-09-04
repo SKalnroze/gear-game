@@ -1458,7 +1458,8 @@ export class GameScene extends Phaser.Scene {
     for (const [id, mine] of this.minelayerSystem.getMines()) {
       const mg = this.mineGraphics.get(id);
       if (!mg) continue;
-      const visible = !mine.armed || this.isSpectate || isPractice || mine.owner === this._playerOwner();
+      const revealedBySentry = mine.revealedUntil !== undefined && this.gameClock.now < mine.revealedUntil;
+      const visible = !mine.armed || this.isSpectate || isPractice || mine.owner === this._playerOwner() || revealedBySentry;
       mg.setVisible(visible);
     }
   }

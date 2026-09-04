@@ -25,7 +25,9 @@ export const TYPE_MASS_MULT: Partial<Record<UnitType, number>> = {
   infantry: 1.0,
   elite_infantry: 1.0,
   mixed: 1.0,
-  wrench: 1.0,
+  crossbow: 0.9,
+  sentry_unit: 1.0,
+  slime: 0.6,
 };
 
 // ─── Stat scaling ─────────────────────────────────────────────────────────────
@@ -58,11 +60,15 @@ export function computeScaledStats(def: UnitDefinition, teeth: number, unitType:
     size:        Math.max(4, Math.round(teeth * 1.2)),
     // Artillery: stop-and-fire range = 5 unit diameters (10 × size)
     // Crystal sentinel: ranged, stops ~3 diameters away (6 × size)
+    // Crossbow: short ranged skirmish distance (4 × size) -- stops well short
+    // of melee contact but far closer than artillery/sentinel
     attackRange: (unitType === 'artillery' || unitType === 'elite_artillery')
       ? Math.max(4, Math.round(teeth * 1.2)) * 10
       : (unitType === 'crystal_sentinel')
         ? Math.max(4, Math.round(teeth * 1.2)) * 6
-        : Math.max(ENGAGE_DISTANCE, Math.round(ENGAGE_DISTANCE * Math.pow(s, 0.8))),
+        : (unitType === 'crossbow')
+          ? Math.max(4, Math.round(teeth * 1.2)) * 4
+          : Math.max(ENGAGE_DISTANCE, Math.round(ENGAGE_DISTANCE * Math.pow(s, 0.8))),
     mass:        Math.max(1, Math.round(baseMass * massMult)),
     costAmount:  Math.max(1, Math.round(def.costAmount  * Math.pow(s, 1.3))),
   };

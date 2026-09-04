@@ -12,6 +12,8 @@ import { LANE_Y_MIN, LANE_Y_MAX } from '../constants/world.constants';
 const MINELAYER_COOLDOWN_MS = 3000;
 /** Arm delay after landing -- visible while arming, hidden from the enemy afterward. */
 const MINE_ARM_DELAY_S = 1.5;
+/** How long a sentry pulse keeps a revealed mine visible to the enemy. */
+const SENTRY_REVEAL_DURATION_MS = 3000;
 /** How close an enemy unit must walk to trip a mine (its physical footprint, not its blast radius). */
 const MINE_TRIGGER_RADIUS = 14;
 /** A candidate drop point is valid only if no same-owner mine sits within radius * this factor. */
@@ -27,6 +29,8 @@ export interface MineState {
   damage: number;
   armed: boolean;
   age: number; // seconds since landing
+  /** game-clock ms until which a Sentry pulse has revealed this mine to its enemy, if hidden. */
+  revealedUntil?: number;
 }
 
 let _nextMineId = 1;
@@ -67,20 +71,29 @@ export class MinelayerSystem {
     this.lastFireTime.delete(gearId);
   };
 
+  /** Queued until the next update() call, which is where `now` (game clock) is available. */
+  private pendingSentryPulses: Array<{ owner: 'player' | 'ai'; x: number; y: number; radius: number }> = [];
+  private readonly onSentryPulse = (pulse: { owner: 'player' | 'ai'; x: number; y: number; radius: number }): void => {
+    this.pendingSentryPulses.push(pulse);
+  };
+
   constructor(world: World, eventBus: EventBus) {
     this.world = world;
     this.eventBus = eventBus;
     this.eventBus.on('mine:landed', this.onMineLanded);
     this.eventBus.on('aoe:explosion', this.onAoeExplosion);
     this.eventBus.on('gear:removed', this.onGearRemoved);
+    this.eventBus.on('sentry:pulse', this.onSentryPulse);
   }
 
   destroy(): void {
     this.eventBus.off('mine:landed', this.onMineLanded);
     this.eventBus.off('aoe:explosion', this.onAoeExplosion);
     this.eventBus.off('gear:removed', this.onGearRemoved);
+    this.eventBus.off('sentry:pulse', this.onSentryPulse);
     this.mines.clear();
     this.lastFireTime.clear();
+    this.pendingSentryPulses = [];
   }
 
   getMines(): Map<string, MineState> {
@@ -93,9 +106,28 @@ export class MinelayerSystem {
     allUnits: Map<string, UnitState>,
     projectileSystem: ProjectileSystem,
   ): void {
+    this.applySentryPulses(now);
     this.updateFiring(now, projectileSystem);
     this.updateArming(deltaSec);
     this.updateContactDetonation(allUnits);
+  }
+
+  /**
+   * A Sentry pulse (gear or unit) reveals any enemy mine caught in its
+   * radius for SENTRY_REVEAL_DURATION_MS -- the counter to a Minelayer's
+   * per-owner hidden mines, "mines are the stealth layer" per design.
+   */
+  private applySentryPulses(now: number): void {
+    if (this.pendingSentryPulses.length === 0) return;
+    for (const pulse of this.pendingSentryPulses) {
+      for (const [, mine] of this.mines) {
+        if (mine.owner === pulse.owner) continue; // only reveals the enemy's hidden mines
+        if (distance(pulse.x, pulse.y, mine.x, mine.y) <= pulse.radius) {
+          mine.revealedUntil = now + SENTRY_REVEAL_DURATION_MS;
+        }
+      }
+    }
+    this.pendingSentryPulses = [];
   }
 
   private updateFiring(now: number, projectileSystem: ProjectileSystem): void {

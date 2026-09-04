@@ -96,9 +96,9 @@ export class GameSoundManager {
       soundManager.playGearPlace();
     });
 
-    bus.on('gear:jammed', () => {
+    bus.on('gear:jammed', ({ severity }) => {
       if (!this._ok) return;
-      soundManager.playGearJam();
+      soundManager.playGearJam(severity);
     });
 
     bus.on('gear:destroyed', () => {
@@ -116,10 +116,10 @@ export class GameSoundManager {
       soundManager.playGearOverclock();
     });
 
-    bus.on('gear:unit_attached', () => {
-      // Wrench latching onto a gear
+    bus.on('slime_puddle:created', () => {
+      // Slime bursts into a puddle on death
       if (!this._ok) return;
-      soundManager.playWrenchLatch();
+      soundManager.playSlimePop();
     });
 
     bus.on('gear:healer_pulse', () => {

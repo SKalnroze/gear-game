@@ -19,7 +19,7 @@ const GEAR_DOT_COLORS: Record<GearType, number> = {
   infantry_spawner: 0x44ff88,
   artillery_spawner: 0x4488ff,
   cavalry_spawner: 0xff8800,
-  wrench_spawner: 0x999999,
+  slime_spawner: 0x999999,
   iron_guard_spawner: RESOURCE_COLORS.iron,
   crystal_sentinel_spawner: RESOURCE_COLORS.crystal,
   aether_phantom_spawner: RESOURCE_COLORS.aether,
@@ -31,6 +31,10 @@ const GEAR_DOT_COLORS: Record<GearType, number> = {
   artillery_turret: 0xff6600,
   minelayer: 0xaa3355,
   healer: 0x44ff88,
+  crossbow_spawner: 0xffcc44,
+  sentry_spawner: 0x66ffcc,
+  sentry_gear: 0x66ffcc,
+  relief_valve: 0xffaa22,
 };
 
 /**

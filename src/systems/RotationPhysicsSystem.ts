@@ -14,6 +14,9 @@ import {
   OVERCLOCK_BURNOUT_DURATION,
   JAM_DAMAGE_RATE,
   JAM_STRESS_MULTIPLIER,
+  jamSeverity,
+  RELIEF_VALVE_SELF_DAMAGE_MULT,
+  RELIEF_VALVE_NEIGHBOR_DAMAGE_MULT,
 } from '../constants/balance.constants';
 import { meshOmega } from '../utils/MathUtils';
 import { GameClock } from './GameClock';
@@ -161,6 +164,7 @@ export class RotationPhysicsSystem {
       const gear = allGears.get(gearId);
       if (gear) {
         gear.isJammed = false;
+        gear.jamStress = 0;
         this.world.updateGear(gear);
         this.eventBus.emit('gear:jam_cleared', { gearId });
       }
@@ -367,17 +371,21 @@ export class RotationPhysicsSystem {
    * Mark two gears as jammed and record stress.
    */
   private markJammed(gearA: GearState, gearB: GearState, torque: number): void {
+    const stress = torque * JAM_STRESS_MULTIPLIER;
+
     gearA.isJammed = true;
     gearA.angularVelocity = 0;
     gearA.isSpinning = false;
-    this.jamStressMap.set(gearA.id, torque * JAM_STRESS_MULTIPLIER);
+    gearA.jamStress = stress;
+    this.jamStressMap.set(gearA.id, stress);
     this.jammedPairs.set(gearA.id, gearB.id);
     this.world.updateGear(gearA);
 
     gearB.isJammed = true;
     gearB.angularVelocity = 0;
     gearB.isSpinning = false;
-    this.jamStressMap.set(gearB.id, torque * JAM_STRESS_MULTIPLIER);
+    gearB.jamStress = stress;
+    this.jamStressMap.set(gearB.id, stress);
     this.jammedPairs.set(gearB.id, gearA.id);
     this.world.updateGear(gearB);
 
@@ -385,6 +393,7 @@ export class RotationPhysicsSystem {
       gearId: gearA.id,
       conflictingGearId: gearB.id,
       torque,
+      severity: jamSeverity(stress),
     });
   }
 
@@ -435,7 +444,17 @@ export class RotationPhysicsSystem {
         continue;
       }
 
-      const dmg = stress * JAM_DAMAGE_RATE * deltaSec;
+      let dmg = stress * JAM_DAMAGE_RATE * deltaSec;
+      // Relief valve: a gear built to take a jam for the chain instead of
+      // breaking. Reduces its own jam damage sharply, and softens damage on
+      // a meshed neighbour that's jammed too -- the mechanical equivalent of
+      // a clutch or flywheel absorbing shock so the rest of the train
+      // doesn't have to.
+      if (gear.type === 'relief_valve') {
+        dmg *= RELIEF_VALVE_SELF_DAMAGE_MULT;
+      } else if (this.meshGraph.getNeighbors(gearId).some(nId => allGears.get(nId)?.type === 'relief_valve')) {
+        dmg *= RELIEF_VALVE_NEIGHBOR_DAMAGE_MULT;
+      }
       gear.hp = Math.max(0, gear.hp - dmg);
       gear.crackLevel = crackLevelFor(gear.hp, gear.maxHp);
       this.world.updateGear(gear);

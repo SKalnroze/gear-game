@@ -31,7 +31,9 @@ Base values, calibrated at 10 teeth. A spawner's tooth count scales everything.
 | Iron Guard | 80 | 35 | 10 | 12 | 8 iron | 36 |
 | Crystal Sentinel | 50 | 55 | 6 | 8 | 6 crystal | 72 |
 | Aether Phantom | 25 | 100 | 4 | 6 | 5 aether | 36 |
-| Wrench | 20 | 50 | 0 | 0 | — | 36 |
+| Crossbow | 20 | 60 | 5 | 3 | 6 gold | 48 |
+| Sentry Unit | 30 | 45 | 2 | 2 | 10 gold | 36 |
+| Slime | 10 | 40 | 0 | 0 | 2 gold | 36 |
 <!-- END GENERATED: units.stats -->
 
 **Combat dmg** is dealt to units and gears in the field; **base dmg** is the damage applied to the enemy base on arrival. They are separate numbers, so a unit can be a good raider and a poor fighter or the reverse.
@@ -104,13 +106,29 @@ The intent of these exponents: bigger spawners make **fewer, tougher, slower, mo
 
 **Status.** Implemented.
 
-### Wrench
+### Crossbow
 
-**Intent.** The anti-machine unit, and the purest expression of the game's thesis: instead of attacking health, it attacks *rotation*. A latched wrench adds friction, slowing the whole chain it is attached to.
+**Intent.** A ranged skirmisher that trades melee's damage-per-hit efficiency for reach — it answers a harasser that closes distance before Infantry can, at the cost of losing hard to anything fast enough to close on *it*.
 
-**Behaviour.** Seeks an enemy gear, latches on, and adds friction until removed. Deals no damage.
+**Behaviour.** Same per-hit combat damage as Infantry, but a slower cadence (1.8× Infantry's cooldown) means lower DPS for that reach. Detects at 1.5× its attack range, stops and fires a direct hit at attack range instead of closing to melee contact — the same stop-and-shoot shape as Artillery, just much shorter ranged and without the shell arc.
 
-**Status.** Implemented. Its own spawner, `wrench_spawner`, produces it directly — a plain, cheap, early-tier gear like the other support spawners, needing only `unlock_wrench_spawner`.
+**Status.** Implemented. Its own spawner, `crossbow_spawner`, needs `unlock_crossbow_spawner`.
+
+### Sentry Unit
+
+**Intent.** The mobile half of the stealth counter. Mines are the one hidden thing in the game (see [Minelayer](gears.md#minelayer)); a Sentry answers that by pulsing true-sight as it marches, so a player doesn't have to guess where the opponent's mines are before walking into the lane.
+
+**Behaviour.** Marches like any other unit — no special targeting, weak in a straight fight (low HP and damage; it's a detection tool, not a fighter). Every `sightPulseIntervalMs` (2s) it emits a `sentry:pulse` in a radius around itself; any hidden enemy mine caught in that radius is revealed to its owner for a few seconds. The stationary [Sentry gear](gears.md#sentry) emits the identical pulse on each full rotation, so a base can be defended by either the mobile or the stationary version.
+
+**Status.** Implemented. Its own spawner, `sentry_spawner`, and the Sentry gear both need `unlock_sentry`.
+
+### Slime
+
+**Intent.** The clog unit, and the purest expression of the game's thesis in a different direction from the old anti-machine idea it replaces: instead of attacking anything, it exists to physically be in the way. A pile of slimes blocking the lane is a wall built from bodies, not gear placement.
+
+**Behaviour.** Deals no damage and never stops to fight — always marching, so normal unit-unit collision (unlike Aether Phantom's pass-through) is what lets several of them pile up and slow an advance. Very cheap and low-HP by design, meant to be spammed. On death it bursts into a puddle (`puddleRadius`/`puddleDuration`/`puddleSlowFactor` on its definition) that slows **both sides'** units and adds friction to gears standing in it, then dissipates — unlike a Crystal Sentinel cold zone, which only affects the enemy.
+
+**Status.** Implemented. Its own spawner, `slime_spawner`, needs only `unlock_slime_spawner`.
 
 ### Mixed and the Elites
 
@@ -129,19 +147,21 @@ The intent of these exponents: bigger spawners make **fewer, tougher, slower, mo
 **Intent.** A rock-paper-scissors triangle — infantry beats artillery beats cavalry beats infantry, at double damage — so that scouting what the opponent produces is worth doing, and so no single spawner is correct.
 
 <!-- BEGIN GENERATED: units.counters -->
-| Attacker ↓ / Defender → | Infantry | Artillery | Cavalry | Mixed | Elite Infantry | Elite Artillery | Elite Cavalry | Iron Guard | Crystal Sentinel | Aether Phantom | Wrench |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| **Infantry** | · | 2× | 0.5× | · | · | 2× | 0.5× | · | 1.2× | 1.5× | · |
-| **Artillery** | 0.5× | · | 2× | · | 0.5× | · | 2× | 1.5× | 0.8× | · | · |
-| **Cavalry** | 2× | 0.5× | · | · | 2× | 0.5× | · | 0.5× | · | 2× | 2× |
-| **Mixed** | · | · | · | · | · | · | · | · | · | · | · |
-| **Elite Infantry** | 1.5× | 3× | 0.5× | 1.2× | · | 3× | 0.5× | 1.2× | 1.5× | 2× | 1.5× |
-| **Elite Artillery** | 0.5× | 1.5× | 3× | 1.2× | 0.5× | · | 3× | 2× | 0.8× | 1.2× | · |
-| **Elite Cavalry** | 3× | 0.5× | 1.5× | 1.2× | 3× | 0.5× | · | 0.5× | 1.2× | 2.5× | 3× |
-| **Iron Guard** | · | 0.8× | 2× | · | · | 0.8× | 2× | · | · | 1.5× | · |
-| **Crystal Sentinel** | 0.8× | · | 0.9× | 0.9× | 0.8× | · | 0.9× | · | · | · | · |
-| **Aether Phantom** | 0.6× | · | 0.5× | 0.8× | 0.6× | · | 0.5× | · | · | · | · |
-| **Wrench** | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | · |
+| Attacker ↓ / Defender → | Infantry | Artillery | Cavalry | Mixed | Elite Infantry | Elite Artillery | Elite Cavalry | Iron Guard | Crystal Sentinel | Aether Phantom | Crossbow | Sentry Unit | Slime |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **Infantry** | · | 2× | 0.5× | · | · | 2× | 0.5× | · | 1.2× | 1.5× | · | 1.2× | · |
+| **Artillery** | 0.5× | · | 2× | · | 0.5× | · | 2× | 1.5× | 0.8× | · | · | · | · |
+| **Cavalry** | 2× | 0.5× | · | · | 2× | 0.5× | · | 0.5× | · | 2× | 2× | 1.5× | 2× |
+| **Mixed** | · | · | · | · | · | · | · | · | · | · | · | · | · |
+| **Elite Infantry** | 1.5× | 3× | 0.5× | 1.2× | · | 3× | 0.5× | 1.2× | 1.5× | 2× | 1.5× | 1.5× | 1.5× |
+| **Elite Artillery** | 0.5× | 1.5× | 3× | 1.2× | 0.5× | · | 3× | 2× | 0.8× | 1.2× | 1.2× | · | · |
+| **Elite Cavalry** | 3× | 0.5× | 1.5× | 1.2× | 3× | 0.5× | · | 0.5× | 1.2× | 2.5× | 3× | 2× | 3× |
+| **Iron Guard** | · | 0.8× | 2× | · | · | 0.8× | 2× | · | · | 1.5× | 1.5× | · | · |
+| **Crystal Sentinel** | 0.8× | · | 0.9× | 0.9× | 0.8× | · | 0.9× | · | · | · | 0.9× | · | · |
+| **Aether Phantom** | 0.6× | · | 0.5× | 0.8× | 0.6× | · | 0.5× | · | · | · | 0.6× | · | · |
+| **Crossbow** | · | 1.2× | 0.5× | · | · | 1.2× | 0.5× | 0.6× | · | 2× | · | 1.2× | · |
+| **Sentry Unit** | · | · | · | · | · | · | · | · | · | · | · | · | · |
+| **Slime** | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | · |
 <!-- END GENERATED: units.counters -->
 
 `·` means no modifier. Elites hit their favoured matchup harder than the base units do.

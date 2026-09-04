@@ -4,6 +4,7 @@ import { gearRadius } from '../constants/gear.constants';
 import { REPOSITION_COOLDOWN_MS } from '../constants/balance.constants';
 import { RESOURCE_COLORS } from '../types/resource.types';
 import { GEAR_VISUALS } from '../constants/visuals.constants';
+import { jamSeverity } from '../constants/balance.constants';
 
 const GEAR_COLORS: Record<GearType, number> = {
   motor: 0x22cc55,
@@ -18,7 +19,7 @@ const GEAR_COLORS: Record<GearType, number> = {
   infantry_spawner: 0x44ff88,
   artillery_spawner: 0x4488ff,
   cavalry_spawner: 0xff8800,
-  wrench_spawner: 0x999999,
+  slime_spawner: 0x999999,
   iron_guard_spawner: RESOURCE_COLORS.iron,
   crystal_sentinel_spawner: RESOURCE_COLORS.crystal,
   aether_phantom_spawner: RESOURCE_COLORS.aether,
@@ -30,6 +31,10 @@ const GEAR_COLORS: Record<GearType, number> = {
   artillery_turret: 0xff6600,
   minelayer: 0xaa3355,
   healer: 0x44ff88,
+  crossbow_spawner: 0xffcc44,
+  sentry_spawner: 0x66ffcc,
+  sentry_gear: 0x66ffcc,
+  relief_valve: 0xffaa22,
 };
 
 const GEAR_LABELS: Record<GearType, string> = {
@@ -45,7 +50,7 @@ const GEAR_LABELS: Record<GearType, string> = {
   infantry_spawner: 'INF',
   artillery_spawner: 'ART',
   cavalry_spawner: 'CAV',
-  wrench_spawner: 'WRN',
+  slime_spawner: 'SLM',
   iron_guard_spawner: 'IG',
   crystal_sentinel_spawner: 'CS',
   aether_phantom_spawner: 'AP',
@@ -57,6 +62,10 @@ const GEAR_LABELS: Record<GearType, string> = {
   artillery_turret: 'ATur',
   minelayer: 'Mine',
   healer: 'HEAL',
+  crossbow_spawner: 'XBW',
+  sentry_spawner: 'SNTS',
+  sentry_gear: 'SNT',
+  relief_valve: 'RLF',
 };
 
 /**
@@ -386,23 +395,31 @@ export class GearEntity extends Phaser.GameObjects.Container {
 
     const radius = gearRadius(state.teeth);
     const alpha = this.jamRingAlpha;
+    const severity = jamSeverity(state.jamStress);
+    const width = 3 + severity * 4; // 3px light grind -> 7px severe crush
 
     // Outer red ring
-    g.lineStyle(4, 0xff2200, alpha);
+    g.lineStyle(width, 0xff2200, alpha);
     g.strokeCircle(0, 0, radius + 6);
 
     // Inner orange ring
-    g.lineStyle(2, 0xff6600, alpha);
+    g.lineStyle(width * 0.5, 0xff6600, alpha);
     g.strokeCircle(0, 0, radius + 4);
   }
 
-  private startJamTween(): void {
+  /**
+   * severity (0-1, from jamSeverity(jamStress)) reads as the crush force
+   * behind the jam -- a light grind pulses slow and dim, a severe crush
+   * pulses fast and bright, so the visual answers "how hard is this jam"
+   * at a glance instead of a flat on/off ring.
+   */
+  private startJamTween(severity: number = 0.5): void {
     if (this.jamTween) return;
     this.jamRingAlpha = 0.6;
     this.jamTween = this.scene.tweens.add({
       targets: this,
-      jamRingAlpha: { from: 0.2, to: 1.0 },
-      duration: 400,
+      jamRingAlpha: { from: 0.15 + severity * 0.25, to: 0.55 + severity * 0.45 },
+      duration: 500 - severity * 300, // 500ms light grind -> 200ms severe crush
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut',
@@ -437,7 +454,7 @@ export class GearEntity extends Phaser.GameObjects.Container {
     // Handle friction and jam indicators
     if (state.isJammed !== prevIsJammed) {
       if (state.isJammed) {
-        this.startJamTween();
+        this.startJamTween(jamSeverity(state.jamStress));
         this.drawJamIndicator(state);
       } else {
         this.stopJamTween();

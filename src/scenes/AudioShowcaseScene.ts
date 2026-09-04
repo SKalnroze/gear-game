@@ -118,7 +118,7 @@ export class AudioShowcaseScene extends NeonSceneBase {
     ]);
     row([
       { label: 'CAPACITOR', color: NEON.cyan,    colorStr: NEON_STR.cyan,    play: () => soundManager.playCapacitorBurst() },
-      { label: 'WRN LATCH', color: NEON.magenta, colorStr: NEON_STR.magenta, play: () => soundManager.playWrenchLatch() },
+      { label: 'SLIME POP', color: NEON.magenta, colorStr: NEON_STR.magenta, play: () => soundManager.playSlimePop() },
       { label: 'HEALER',    color: NEON.blue,    colorStr: NEON_STR.blue,    play: () => soundManager.playHealerPulse() },
     ]);
 
@@ -138,7 +138,7 @@ export class AudioShowcaseScene extends NeonSceneBase {
     ]);
     row([
       { label: 'PHANTOM',   color: NEON.magenta, colorStr: NEON_STR.magenta, play: () => soundManager.playUnitSpawn('aether_phantom') },
-      { label: 'WRENCH',    color: NEON.green,   colorStr: NEON_STR.green,   play: () => soundManager.playUnitSpawn('wrench') },
+      { label: 'SLIME',    color: NEON.green,   colorStr: NEON_STR.green,   play: () => soundManager.playUnitSpawn('slime') },
     ]);
 
     // ── Unit deaths ───────────────────────────────────────────────────────
@@ -157,7 +157,7 @@ export class AudioShowcaseScene extends NeonSceneBase {
     ]);
     row([
       { label: 'PHANTOM',   color: NEON.magenta, colorStr: NEON_STR.magenta, play: () => soundManager.playUnitDie('aether_phantom') },
-      { label: 'WRENCH',    color: NEON.green,   colorStr: NEON_STR.green,   play: () => soundManager.playUnitDie('wrench') },
+      { label: 'SLIME',    color: NEON.green,   colorStr: NEON_STR.green,   play: () => soundManager.playUnitDie('slime') },
     ]);
 
     // ── Unit attacks ──────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ export class AudioShowcaseScene extends NeonSceneBase {
       { label: 'PHANTOM',   color: NEON.magenta, colorStr: NEON_STR.magenta, play: () => soundManager.playUnitAttack('aether_phantom') },
     ]);
     row([
-      { label: 'WRENCH',    color: NEON.green,   colorStr: NEON_STR.green,   play: () => soundManager.playUnitAttack('wrench') },
+      { label: 'SLIME',    color: NEON.green,   colorStr: NEON_STR.green,   play: () => soundManager.playUnitAttack('slime') },
     ]);
 
     // ── Projectiles ───────────────────────────────────────────────────────

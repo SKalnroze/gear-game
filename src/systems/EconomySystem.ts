@@ -152,6 +152,13 @@ export class EconomySystem {
       this.eventBus.emit('gear:rotation_result', { gearId, owner, text: `+${healAmt.toFixed(1)} heal`, color: 0x44ff88 });
       this.eventBus.emit('gear:healer_pulse', { gearId, x: gear.x, y: gear.y, radius, owner });
 
+    } else if (gear.type === 'sentry_gear') {
+      // Stationary true-sight pulse -- same signal the mobile Sentry unit
+      // emits, so MinelayerSystem's reveal logic only needs to listen once.
+      const radius = healerRadius(gear.teeth); // reuse the same radius-3x-gear-radius scaling
+      this.eventBus.emit('sentry:pulse', { owner, x: gear.x, y: gear.y, radius });
+      this.eventBus.emit('gear:rotation_result', { gearId, owner, text: 'PULSE', color: 0x66ffcc });
+
     } else if (gear.type === 'crossbow_turret') {
       // Buy 1 ammo (2 gold)
       const ammoCost = 2;

@@ -3,7 +3,6 @@ import { UnitState } from '../types/unit.types';
 import { World } from '../world/World';
 import { EventBus } from './EventBus';
 import { gearRadius, spikeDamage, MAX_TEETH, GEAR_MODULE, crackLevelFor } from '../constants/gear.constants';
-import { UNIT_DEFINITIONS } from '../constants/unit.constants';
 import { ARMORED_DAMAGE_RATE, UNIT_COLLISION_RADIUS, UNIT_GEAR_DAMAGE_RATE } from '../constants/balance.constants';
 import { distance } from '../utils/MathUtils';
 import { SpatialGrid } from '../utils/SpatialGrid';
@@ -16,7 +15,7 @@ const GRID_CELL_SIZE = MAX_TEETH * GEAR_MODULE * 2;
  *
  * Spiked gear: damages units on contact; damage = |omega| * spikeCoeff * delta
  * Armored gear: physically pushes units out (collision resolution)
- * Wrench unit: seeks nearest enemy gear, latches on, adds friction load
+ * Slime unit: deals no damage to gears, just a soft physical push (it clogs the lane via unit-unit collision, not gear interaction)
  */
 export class GearUnitInteractionSystem {
   private world: World;
@@ -112,25 +111,23 @@ export class GearUnitInteractionSystem {
           case 'infantry_spawner':
           case 'artillery_spawner':
           case 'cavalry_spawner':
-          case 'wrench_spawner':
+          case 'slime_spawner':
           case 'iron_guard_spawner':
           case 'crystal_sentinel_spawner':
           case 'aether_phantom_spawner':
           default:
-            // Wrench units latch; combat units damage all enemy gear types
-            if (unit.type === 'wrench' && unit.owner !== gear.owner && !unit.attachedGearId) {
-              this.attachWrench(unit, gear, allUnits, allGears);
-            } else if (unit.type !== 'wrench' && unit.owner !== gear.owner) {
+            if (unit.owner === gear.owner) break;
+            if (unit.type === 'slime') {
+              // Slime deals no damage to gears either -- just a soft
+              // physical push so a pile of them doesn't visibly clip through.
+              this.resolveCircleCollision(unit, gear, d, contactDist, 0.3);
+              this.world.updateUnit(unit);
+            } else {
               // Combat units attack all enemy gear types at melee range
               this.handleCombatUnitGearContact(unit, gear, d, contactDist, deltaSec);
             }
             break;
         }
-      }
-
-      // Detach wrench units whose gear has been removed
-      if (unit.attachedGearId && !allGears.has(unit.attachedGearId)) {
-        this.detachWrench(unit, null, allUnits, allGears);
       }
     }
 
@@ -209,7 +206,7 @@ export class GearUnitInteractionSystem {
     this.resolveCircleCollision(unit, gear, d, contactDist, 1.0);
 
     // Combat units always damage armored gears on contact
-    if (unit.type !== 'wrench') {
+    if (unit.type !== 'slime') {
       // Bug 1.2 fix: rate-based damage (not per-frame), normalised to 1 second
       const damage = unit.baseDamage * ARMORED_DAMAGE_RATE * deltaSec;
       const wasAlive = gear.hp > 0;
@@ -271,64 +268,6 @@ export class GearUnitInteractionSystem {
     // Soft push-back: slows unit movement through gear
     this.resolveCircleCollision(unit, gear, d, contactDist, 0.4);
     this.world.updateUnit(unit);
-  }
-
-  private attachWrench(
-    unit: UnitState,
-    gear: GearState,
-    _allUnits: Map<string, UnitState>,
-    _allGears: Map<string, GearState>,
-  ): void {
-    const def = UNIT_DEFINITIONS[unit.type];
-    const frictionAdded = def.frictionValue ?? unit.frictionValue;
-
-    unit.attachedGearId = gear.id;
-    unit.inCombat = true;
-
-    gear.frictionLoad += frictionAdded ?? 0;
-    this.world.updateGear(gear);
-    this.world.updateUnit(unit);
-
-    this.eventBus.emit('gear:unit_attached', {
-      gearId: gear.id,
-      unitId: unit.id,
-      frictionAdded,
-    });
-  }
-
-  detachWrench(
-    unit: UnitState,
-    gear: GearState | null,
-    _allUnits: Map<string, UnitState>,
-    allGears: Map<string, GearState>,
-  ): void {
-    const frictionRemoved = unit.frictionValue;
-
-    // Bug 1.1 fix: capture gearId BEFORE clearing the field
-    const gearId = unit.attachedGearId;
-
-    if (gear && gear.frictionLoad !== undefined) {
-      gear.frictionLoad = Math.max(0, gear.frictionLoad - (frictionRemoved ?? 0));
-      this.world.updateGear(gear);
-    } else if (gearId) {
-      const g = allGears.get(gearId);
-      if (g) {
-        g.frictionLoad = Math.max(0, g.frictionLoad - (frictionRemoved ?? 0));
-        this.world.updateGear(g);
-      }
-    }
-
-    unit.attachedGearId = undefined;
-    unit.inCombat = false;
-    this.world.updateUnit(unit);
-
-    // Bug 1.1 fix: use the captured gearId (not the now-cleared field)
-    if (gearId) {
-      this.eventBus.emit('gear:unit_detached', {
-        gearId,
-        unitId: unit.id,
-      });
-    }
   }
 
   /**

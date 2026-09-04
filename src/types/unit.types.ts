@@ -11,8 +11,12 @@ export type UnitType =
   | 'crystal_sentinel'
   // Aether-based (from aether_miner)
   | 'aether_phantom'
-  // Special
-  | 'wrench';
+  // Ranged skirmisher, gold-based
+  | 'crossbow'
+  // Mobile true-sight pulse, counters hidden mines
+  | 'sentry_unit'
+  // Special -- the clog unit: no damage, explodes into a slowing puddle on death
+  | 'slime';
 
 export interface UnitDefinition {
   type: UnitType;
@@ -23,7 +27,14 @@ export interface UnitDefinition {
   costResource: 'gold' | 'iron' | 'crystal' | 'aether' | 'none';  // resource used to spawn this unit
   costAmount: number;      // amount of resource required
   description: string;
-  frictionValue?: number;  // friction added to a gear when this unit latches (wrench type)
+  frictionValue?: number;  // friction the slime's death puddle adds to gears standing in it
+  /** Slime only: radius/duration/slow of the puddle left on death. */
+  puddleRadius?: number;
+  puddleDuration?: number;   // seconds
+  puddleSlowFactor?: number; // speed multiplier while standing in the puddle
+  /** Sentry unit only: radius and interval of its true-sight pulse. */
+  sightRadius?: number;
+  sightPulseIntervalMs?: number;
 }
 
 export type CounterTable = {
@@ -46,8 +57,8 @@ export interface UnitState {
   combatTarget?: string;   // id of unit being fought
   reachedBase: boolean;
   damage: number;          // base damage on arrival
-  attachedGearId?: string; // id of gear this unit is latched onto (wrench type)
-  frictionValue: number;   // friction contributed when attached to a gear
+  attachedGearId?: string; // unused (no unit type latches any more) -- kept for the collision-filter guard
+  frictionValue: number;   // scaled puddle-friction value (slime), seeded onto its death puddle
 
   /** Visual radius in px — derived from spawner gear teeth */
   size: number;

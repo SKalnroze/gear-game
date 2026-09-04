@@ -53,7 +53,7 @@ export const UNIT_COLLISION_RADIUS = 10;   // approximate circle radius for a un
 // Gear-unit interaction
 export const ARMORED_DAMAGE_RATE = 0.08;   // baseDamage fraction per second (~8%/sec)
 export const UNIT_GEAR_DAMAGE_RATE = 1.0;  // HP/sec per baseDamage point (combat units vs non-armored gears)
-export const WRENCH_FRICTION_VALUE = 30;   // matches unit.constants wrench frictionValue
+export const SLIME_FRICTION_VALUE = 30;   // matches unit.constants slime frictionValue
 
 // AI timing
 export const AI_INITIAL_DECISION_DELAY = 2000;  // ms before first AI action
@@ -80,4 +80,15 @@ export const REPOSITION_COOLDOWN_MS = 3000;  // 3s cooldown after moving a gear
 // Gear jam and health
 export const JAM_DAMAGE_RATE = 8;          // HP/sec base rate when jammed
 export const JAM_STRESS_MULTIPLIER = 0.1;  // torque → stress multiplier
+/** Stress value treated as a fully "severe" jam for VFX/audio scaling (0-1 severity). */
+export const JAM_SEVERE_STRESS = 30;
+/** Relief valve gear: damage multiplier for itself while jammed. */
+export const RELIEF_VALVE_SELF_DAMAGE_MULT = 0.15;
+/** Relief valve gear: damage multiplier for a jammed neighbour it's meshed to. */
+export const RELIEF_VALVE_NEIGHBOR_DAMAGE_MULT = 0.6;
+
+/** 0-1 read of how severe a jam is, for VFX/audio intensity -- not a damage input. */
+export function jamSeverity(stress: number): number {
+  return Math.max(0, Math.min(1, stress / JAM_SEVERE_STRESS));
+}
 

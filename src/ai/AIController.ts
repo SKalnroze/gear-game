@@ -398,6 +398,8 @@ export class AIController {
       chosen = 'cavalry_spawner'; reason = `counter ${dom}`;
     } else if ((dom === 'cavalry' || dom === 'elite_cavalry') && this.aiResearched.has('unlock_artillery_spawner')) {
       chosen = 'artillery_spawner'; reason = `counter ${dom}`;
+    } else if (dom === 'aether_phantom' && this.aiResearched.has('unlock_crossbow_spawner')) {
+      chosen = 'crossbow_spawner'; reason = `counter ${dom}`;
     } else if (this.strategyProfile === 'hard' && this.aiResearched.has('unlock_cavalry_spawner')) {
       chosen = 'cavalry_spawner'; reason = 'hard default';
     }
@@ -1114,6 +1116,7 @@ export class AIController {
       'gear_precision_1':             720,  // unlocks 15t gears (bigger motors)
       'unlock_artillery_spawner':     700,  // counter-pick tool
       'unlock_cavalry_spawner':       690,  // counter-pick tool
+      'unlock_crossbow_spawner':      520,  // counter-pick tool (aether phantom)
       'gold_mining_3':                650,  // +3 g/s
       'gear_precision_2':             600,  // 20/25t gears
       'power_efficiency_2':           580,  // +15% stacks
@@ -1170,6 +1173,7 @@ export class AIController {
                          :                                    950;  // balanced / default
       if (dominant.includes('infantry') && nodeId === 'unlock_cavalry_spawner')   score = Math.max(score, counterBoost);
       if (dominant.includes('cavalry')  && nodeId === 'unlock_artillery_spawner') score = Math.max(score, counterBoost);
+      if (dominant.includes('aether_phantom') && nodeId === 'unlock_crossbow_spawner') score = Math.max(score, counterBoost);
     }
 
     // Natural unit-tech progression: once cavalry spawner is researched, artillery is the

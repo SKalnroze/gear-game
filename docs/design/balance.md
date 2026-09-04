@@ -118,6 +118,19 @@ Rather than build a fifth resource to justify that language, the language was re
 
 ---
 
+## Jamming
+
+A jam (two meshed gears required to turn in opposing directions — see [the vocabulary](../GAME_DESIGN.md#vocabulary)) now reads its severity, not just its presence. `jamSeverity(stress)` (`balance.constants.ts`) normalizes a jam's stress value to 0-1 against `JAM_SEVERE_STRESS`, and that number drives:
+
+- **The jam ring's pulse.** Faster and brighter for a severe jam, slower and dimmer for a light one, instead of a flat on/off ring (`GearEntity.startJamTween`).
+- **The jam sound's volume and pitch.** `SoundManager.playGearJam(severity)` grinds louder and lower for a harder crush.
+
+**Relief Valve** (see [Gears](gears.md#relief-valve)) is the strategic answer to a jam-prone layout: it reduces jam damage sharply for itself, and softens it for a directly-meshed jammed neighbour, so a chokepoint can be reinforced instead of just accepting the eventual break.
+
+This is deliberately a lighter-weight pass on top of the existing analytical jam model (odd-cycle detection in `RotationPhysicsSystem`), not the full torque-servo rigidbody rework researched alongside it — reading real coupling-force-driven damage (the motor straining against a physical obstruction, not just an odd-cycle contradiction) needs actual Matter.js rigidbodies to be honest about what's being measured, which is still future work (see the [physics migration](gears.md#meshing)).
+
+---
+
 ## Tuning levers
 
 Reach for these first, in roughly this order of impact.
@@ -152,7 +165,7 @@ Reach for these first, in roughly this order of impact.
 | `ENGAGE_DISTANCE` | 36 | default melee range, px |
 | `ARMORED_DAMAGE_RATE` | 0.08 | unit damage to armored gears |
 | `UNIT_GEAR_DAMAGE_RATE` | 1 | unit damage to ordinary gears |
-| `WRENCH_FRICTION_VALUE` | 30 | friction a wrench adds |
+| `SLIME_FRICTION_VALUE` | 30 | friction a slime puddle adds to gears standing in it |
 | `AI_POLL_INTERVAL` | 500 | how often the AI re-evaluates the board, ms (actual action rate is throttled by its APM budget, not this) |
 | `AI_ACTION_BUDGET_CAPACITY` | 4 | AI action-budget burst allowance, actions |
 | `GEAR_PLACEMENT_COST_BASE` | 10 | flat gold per gear |

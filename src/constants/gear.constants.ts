@@ -188,11 +188,25 @@ export const GEAR_DEFINITIONS: Record<GearType, GearDefinition> = {
     unlockNode: 'unlock_cavalry_spawner',
   },
 
-  wrench_spawner: {
-    type: 'wrench_spawner',
+  slime_spawner: {
+    type: 'slime_spawner',
     goldCost: 5,
-    description: 'Spawns a Wrench unit per full rotation (free). Wrenches latch onto enemy gears and add friction -- the anti-machine unit.',
-    unlockNode: 'unlock_wrench_spawner',
+    description: 'Spawns a Slime unit per full rotation (2 gold cost -- cheap and spammable). Slimes deal no damage and never stop to fight; they pile up and physically clog the lane, then burst into a slowing puddle on death.',
+    unlockNode: 'unlock_slime_spawner',
+  },
+
+  crossbow_spawner: {
+    type: 'crossbow_spawner',
+    goldCost: 6,
+    description: 'Spawns a Crossbow unit per full rotation (6 gold cost). Ranged skirmisher: same per-hit damage as Infantry, lower DPS, stops and shoots instead of closing to melee.',
+    unlockNode: 'unlock_crossbow_spawner',
+  },
+
+  sentry_spawner: {
+    type: 'sentry_spawner',
+    goldCost: 8,
+    description: 'Spawns a Sentry unit per full rotation (10 gold cost). Pulses true-sight as it marches, revealing hidden enemy mines early.',
+    unlockNode: 'unlock_sentry',
   },
 
   iron_guard_spawner: {
@@ -269,5 +283,19 @@ export const GEAR_DEFINITIONS: Record<GearType, GearDefinition> = {
     goldCost: 0,
     description: 'Emits a healing aura on each full rotation. Heals nearby friendly gears and units. Aura size and healing scale with gear size.',
     unlockNode: 'healer_gear_tech',
+  },
+
+  sentry_gear: {
+    type: 'sentry_gear',
+    goldCost: 6,
+    description: 'Pulses true-sight on each full rotation, revealing hidden enemy mines within its radius early. Stationary counter to the Minelayer.',
+    unlockNode: 'unlock_sentry',
+  },
+
+  relief_valve: {
+    type: 'relief_valve',
+    goldCost: 8,
+    description: 'A clutch built to take a jam for the chain instead of breaking. Sharply reduces its own jam damage, and softens jam damage on a meshed neighbour too.',
+    unlockNode: 'unlock_relief_valve',
   },
 };

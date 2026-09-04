@@ -27,7 +27,7 @@ const TYPE_COLORS: Record<GearType, number> = {
   infantry_spawner: NEON.green,
   artillery_spawner: NEON.blue,
   cavalry_spawner: NEON.orange,
-  wrench_spawner: 0x999999,
+  slime_spawner: 0x999999,
   iron_guard_spawner: 0xcc9966,
   crystal_sentinel_spawner: 0x66ccff,
   aether_phantom_spawner: 0xcc66ff,
@@ -39,6 +39,10 @@ const TYPE_COLORS: Record<GearType, number> = {
   artillery_turret: 0xff6600,
   minelayer: 0xaa3355,
   healer: 0x44ff88,
+  crossbow_spawner: 0xffcc44,
+  sentry_spawner: 0x66ffcc,
+  sentry_gear: 0x66ffcc,
+  relief_valve: 0xffaa22,
 };
 
 /** Short display name for gear types that are too long */
@@ -53,6 +57,8 @@ function gearDisplayName(type: GearType): string {
     iron_guard_spawner: 'IRON GUARD',
     crystal_sentinel_spawner: 'CRYS SENT.',
     aether_phantom_spawner: 'AETHER PH.',
+    crossbow_spawner: 'XBOW SPAWNER',
+    sentry_spawner: 'SENTRY SPWN',
   };
   return map[type] ?? type.replace(/_/g, ' ').toUpperCase();
 }

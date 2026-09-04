@@ -80,6 +80,14 @@ export const TECH_NODES: Record<string, TechNode> = {
     effects: [{ kind: 'overclock_duration_bonus', value: 5000 }],
     column: 0,
   },
+  unlock_relief_valve: {
+    id: 'unlock_relief_valve', name: 'Relief Valve',
+    description: 'Unlocks the Relief Valve gear -- a clutch built to take a jam for the chain instead of breaking. Sharply reduces its own jam damage, and softens jam damage on a meshed neighbour too.',
+    tier: 2, goldCost: 50, researchTime: 30000,
+    prereqs: ['gear_precision_1'],
+    effects: [{ kind: 'unlock_gear', gearType: 'relief_valve' }],
+    column: 0,
+  },
 
   // T3
   gear_precision_4: {
@@ -171,14 +179,25 @@ export const TECH_NODES: Record<string, TechNode> = {
     ],
     column: 1,
   },
-  unlock_wrench_spawner: {
-    id: 'unlock_wrench_spawner', name: 'Wrench Spawner',
-    description: 'Unlocks the Wrench Spawner gear. Each rotation spawns a Wrench, which latches onto an enemy gear and adds friction.',
+  unlock_slime_spawner: {
+    id: 'unlock_slime_spawner', name: 'Slime Spawner',
+    description: 'Unlocks the Slime Spawner gear. Cheap, spammable, no-damage units that pile up and clog the lane, then burst into a slowing puddle on death.',
     tier: 1, goldCost: 20, researchTime: 30000,
     prereqs: [],
     effects: [
-      { kind: 'unlock_gear', gearType: 'wrench_spawner' },
-      { kind: 'unlock_unit', unitType: 'wrench' },
+      { kind: 'unlock_gear', gearType: 'slime_spawner' },
+      { kind: 'unlock_unit', unitType: 'slime' },
+    ],
+    column: 1,
+  },
+  unlock_crossbow_spawner: {
+    id: 'unlock_crossbow_spawner', name: 'Crossbow Spawner',
+    description: 'Unlocks the Crossbow Spawner gear. Ranged skirmisher: same per-hit damage as Infantry, lower DPS, stops and shoots instead of closing to melee.',
+    tier: 1, goldCost: 25, researchTime: 36000,
+    prereqs: [],
+    effects: [
+      { kind: 'unlock_gear', gearType: 'crossbow_spawner' },
+      { kind: 'unlock_unit', unitType: 'crossbow' },
     ],
     column: 1,
   },
@@ -468,6 +487,18 @@ export const TECH_NODES: Record<string, TechNode> = {
     tier: 2, goldCost: 60, researchTime: 42000,
     prereqs: ['armored_gears'],
     effects: [{ kind: 'unlock_gear', gearType: 'healer' }],
+    column: 4,
+  },
+  unlock_sentry: {
+    id: 'unlock_sentry', name: 'Sentry',
+    description: 'Unlocks the Sentry gear and Sentry Spawner. Both pulse true-sight in a radius, revealing hidden enemy mines early -- the counter to a Minelayer.',
+    tier: 2, goldCost: 50, researchTime: 33000,
+    prereqs: ['spiked_gears'],
+    effects: [
+      { kind: 'unlock_gear', gearType: 'sentry_gear' },
+      { kind: 'unlock_gear', gearType: 'sentry_spawner' },
+      { kind: 'unlock_unit', unitType: 'sentry_unit' },
+    ],
     column: 4,
   },
 

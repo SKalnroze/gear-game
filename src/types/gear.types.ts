@@ -1,12 +1,12 @@
 export type GearType =
   'motor' | 'amplifier' | 'capacitor' | 'overclock' |
-  'spiked' | 'armored' |
+  'spiked' | 'armored' | 'relief_valve' |
   'iron_miner' | 'crystal_miner' | 'aether_miner' |
-  'infantry_spawner' | 'artillery_spawner' | 'cavalry_spawner' | 'wrench_spawner' |
-  'iron_guard_spawner' | 'crystal_sentinel_spawner' | 'aether_phantom_spawner' |
+  'infantry_spawner' | 'artillery_spawner' | 'cavalry_spawner' | 'slime_spawner' | 'crossbow_spawner' |
+  'iron_guard_spawner' | 'crystal_sentinel_spawner' | 'aether_phantom_spawner' | 'sentry_spawner' |
   'researcher' |
   'iron_converter' | 'crystal_converter' | 'aether_converter' |
-  'crossbow_turret' | 'artillery_turret' | 'minelayer' |
+  'crossbow_turret' | 'artillery_turret' | 'minelayer' | 'sentry_gear' |
   'healer';
 
 export interface GearDefinition {

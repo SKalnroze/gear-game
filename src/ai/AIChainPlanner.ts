@@ -74,8 +74,8 @@ export interface AIPlacementContext {
 // ─── Gear-type sets ───────────────────────────────────────────────────────────
 
 const SPAWNER_TYPES: GearType[] = [
-  'infantry_spawner', 'cavalry_spawner', 'artillery_spawner', 'wrench_spawner',
-  'iron_guard_spawner', 'crystal_sentinel_spawner', 'aether_phantom_spawner',
+  'infantry_spawner', 'cavalry_spawner', 'artillery_spawner', 'slime_spawner', 'crossbow_spawner',
+  'iron_guard_spawner', 'crystal_sentinel_spawner', 'aether_phantom_spawner', 'sentry_spawner',
 ];
 const MINER_TYPES: GearType[] = ['iron_miner', 'crystal_miner', 'aether_miner'];
 const CONVERTER_TYPES: GearType[] = ['iron_converter', 'crystal_converter', 'aether_converter'];
@@ -88,7 +88,8 @@ function requiredTechForSpawner(spawnerType: GearType): string {
   switch (spawnerType) {
     case 'cavalry_spawner':          return 'unlock_cavalry_spawner';
     case 'artillery_spawner':        return 'unlock_artillery_spawner';
-    case 'wrench_spawner':           return 'unlock_wrench_spawner';
+    case 'slime_spawner':           return 'unlock_slime_spawner';
+    case 'crossbow_spawner':        return 'unlock_crossbow_spawner';
     case 'iron_guard_spawner':       return 'unlock_iron_guard_spawner';
     case 'crystal_sentinel_spawner': return 'unlock_crystal_sentinel_spawner';
     case 'aether_phantom_spawner':   return 'unlock_aether_phantom_spawner';

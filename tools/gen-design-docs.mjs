@@ -255,7 +255,7 @@ function buildBlocks(m) {
       bal('ENGAGE_DISTANCE', 'default melee range, px'),
       bal('ARMORED_DAMAGE_RATE', 'unit damage to armored gears'),
       bal('UNIT_GEAR_DAMAGE_RATE', 'unit damage to ordinary gears'),
-      bal('WRENCH_FRICTION_VALUE', 'friction a wrench adds'),
+      bal('SLIME_FRICTION_VALUE', 'friction a slime puddle adds to gears standing in it'),
       bal('AI_POLL_INTERVAL', 'how often the AI re-evaluates the board, ms (actual action rate is throttled by its APM budget, not this)'),
       bal('AI_ACTION_BUDGET_CAPACITY', 'AI action-budget burst allowance, actions'),
       bal('GEAR_PLACEMENT_COST_BASE', 'flat gold per gear'),

@@ -81,14 +81,3 @@ export const REPOSITION_COOLDOWN_MS = 3000;  // 3s cooldown after moving a gear
 export const JAM_DAMAGE_RATE = 8;          // HP/sec base rate when jammed
 export const JAM_STRESS_MULTIPLIER = 0.1;  // torque → stress multiplier
 
-// Unit spawning
-
-// Gold cost per unit spawn (used by AI to reserve gold before placing spawners)
-export const UNIT_SPAWN_COST: Record<string, number> = {
-  infantry: 5,
-  cavalry: 12,
-  artillery: 8,
-  elite_infantry: 10,
-  elite_cavalry: 20,
-  elite_artillery: 15,
-};

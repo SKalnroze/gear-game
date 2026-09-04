@@ -17,10 +17,15 @@ import {
 export const TYPE_MASS_MULT: Partial<Record<UnitType, number>> = {
   iron_guard: 3,
   cavalry: 0.8,
+  elite_cavalry: 0.8,
   aether_phantom: 0.5,
   artillery: 1.5,
+  elite_artillery: 1.5,
   crystal_sentinel: 1.0,
   infantry: 1.0,
+  elite_infantry: 1.0,
+  mixed: 1.0,
+  wrench: 1.0,
 };
 
 // ─── Stat scaling ─────────────────────────────────────────────────────────────

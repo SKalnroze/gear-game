@@ -63,16 +63,22 @@ export class MinelayerSystem {
     }
   };
 
+  private readonly onGearRemoved = ({ gearId }: { gearId: string }): void => {
+    this.lastFireTime.delete(gearId);
+  };
+
   constructor(world: World, eventBus: EventBus) {
     this.world = world;
     this.eventBus = eventBus;
     this.eventBus.on('mine:landed', this.onMineLanded);
     this.eventBus.on('aoe:explosion', this.onAoeExplosion);
+    this.eventBus.on('gear:removed', this.onGearRemoved);
   }
 
   destroy(): void {
     this.eventBus.off('mine:landed', this.onMineLanded);
     this.eventBus.off('aoe:explosion', this.onAoeExplosion);
+    this.eventBus.off('gear:removed', this.onGearRemoved);
     this.mines.clear();
     this.lastFireTime.clear();
   }

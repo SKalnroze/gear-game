@@ -17,11 +17,16 @@ export class TurretSystem {
   private unitSystem: UnitSystem;
   private cooldowns: Map<string, TurretCooldownState> = new Map();
 
+  private readonly handleGearRemoved = ({ gearId }: { gearId: string }): void => {
+    this.cooldowns.delete(gearId);
+  };
+
   constructor(world: World, eventBus: EventBus, projectileSystem: ProjectileSystem, unitSystem: UnitSystem) {
     this.world = world;
     this.eventBus = eventBus;
     this.projectileSystem = projectileSystem;
     this.unitSystem = unitSystem;
+    this.eventBus.on('gear:removed', this.handleGearRemoved);
   }
 
   update(_deltaSec: number, now: number): void {
@@ -92,6 +97,7 @@ export class TurretSystem {
   }
 
   destroy(): void {
+    this.eventBus.off('gear:removed', this.handleGearRemoved);
     this.cooldowns.clear();
   }
 }

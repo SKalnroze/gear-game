@@ -151,6 +151,7 @@ export class AIController {
   ) {
     this.eventBus = eventBus;
     this.clock = clock ?? new GameClock();
+    this.startTime = this.clock.now;
     this.gearSystem = gearSystem;
     this.economySystem = economySystem;
     this.winSystem = winSystem;

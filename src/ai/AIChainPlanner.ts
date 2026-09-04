@@ -5,7 +5,9 @@ import { GearMeshGraph } from '../world/GearMeshGraph';
 import { EconomySystem } from '../systems/EconomySystem';
 import { RotationPhysicsSystem } from '../systems/RotationPhysicsSystem';
 import { gearRadius, motorOutput, GEAR_MESH_TOLERANCE } from '../constants/gear.constants';
-import { AMPLIFIER_CHAIN_MULTIPLIER, gearPlacementCost as placementCost, UNIT_SPAWN_COST } from '../constants/balance.constants';
+import { AMPLIFIER_CHAIN_MULTIPLIER, gearPlacementCost as placementCost } from '../constants/balance.constants';
+import { UNIT_DEFINITIONS } from '../constants/unit.constants';
+import { UnitType } from '../types/unit.types';
 import { LANE_Y_MIN, LANE_Y_MAX } from '../constants/world.constants';
 
 const LANE_CENTER_Y = (LANE_Y_MIN + LANE_Y_MAX) / 2;
@@ -323,17 +325,20 @@ export class AIChainPlanner {
         // Amplifier first: it multiplies the spawner's output by 1.4× from the start
         if (plan.stats.amplifierCount === 0 && aiResearched.has('basic_amplifier')) return 'amplifier';
 
-        // Wait for a gold reserve before committing — spawning costs gold each cycle.
+        // Wait for a reserve of the unit's actual cost resource before committing.
         // Derive unit name from spawner type (e.g. 'cavalry_spawner' → 'cavalry').
-        const unitName = spawner.replace('_spawner', '');
-        const unitCostPerSpawn = UNIT_SPAWN_COST[unitName] ?? UNIT_SPAWN_COST['infantry'];
+        const unitName = spawner.replace('_spawner', '') as UnitType;
+        const unitDef = UNIT_DEFINITIONS[unitName];
         // Hard AI hoards less — it gets spawners out faster and relies on aggression.
         // Medium/easy accumulate a larger buffer before committing.
         const reserveMult = profile === 'hard'
           ? (threatLevel === 'danger' ? 3 : 6)
           : (threatLevel === 'danger' ? 5 : 10);
         const personalityMult = context.spawnReserveMult ?? 1.0;
-        if (economySystem.getResources(owner).gold < unitCostPerSpawn * reserveMult * personalityMult) return null;
+        if (unitDef.costResource !== 'none') {
+          const reserve = economySystem.getResources(owner)[unitDef.costResource];
+          if (reserve < unitDef.costAmount * reserveMult * personalityMult) return null;
+        }
 
         return spawner;
       }

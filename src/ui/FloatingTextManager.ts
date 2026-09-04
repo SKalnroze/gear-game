@@ -21,6 +21,7 @@ import { NEON } from '../constants/ui.constants';
 export class FloatingTextManager {
   private scene: Phaser.Scene;
   private world: World;
+  private eventBus: EventBus;
 
   // Spacing: if a gear fires multiple labels quickly, stagger vertically
   private lastYOffset: Map<string, number> = new Map();
@@ -31,23 +32,40 @@ export class FloatingTextManager {
   private static readonly STAGGER_PX = 16;
   private static readonly STAGGER_WINDOW_MS = 400;
 
+  private readonly handleRotationResult = ({ gearId, owner, text, color }: {
+    gearId: string; owner: 'player' | 'ai'; text: string; color: number;
+  }): void => {
+    if (owner !== 'player') return;
+    this.spawn(gearId, text, color);
+  };
+
+  private readonly handleCapacitorBurst = ({ gearId, owner, goldEarned }: {
+    gearId: string; owner: 'player' | 'ai'; goldEarned: number;
+  }): void => {
+    if (owner !== 'player') return;
+    this.spawn(gearId, `⚡ +${goldEarned.toFixed(1)}g`, NEON.cyan);
+  };
+
+  private readonly handleUnitDamaged = ({ damage, x, y }: {
+    damage: number; x: number; y: number;
+  }): void => {
+    this.spawnAt(x, y, `-${Math.ceil(damage)}`, 0xff4444);
+  };
+
   constructor(scene: Phaser.Scene, eventBus: EventBus, world: World) {
     this.scene = scene;
     this.world = world;
+    this.eventBus = eventBus;
 
-    eventBus.on('gear:rotation_result', ({ gearId, owner, text, color }) => {
-      if (owner !== 'player') return;
-      this.spawn(gearId, text, color);
-    });
+    eventBus.on('gear:rotation_result', this.handleRotationResult);
+    eventBus.on('power:capacitor_burst', this.handleCapacitorBurst);
+    eventBus.on('unit:damaged', this.handleUnitDamaged);
+  }
 
-    eventBus.on('power:capacitor_burst', ({ gearId, owner, goldEarned }) => {
-      if (owner !== 'player') return;
-      this.spawn(gearId, `⚡ +${goldEarned.toFixed(1)}g`, NEON.cyan);
-    });
-
-    eventBus.on('unit:damaged', ({ damage, x, y }) => {
-      this.spawnAt(x, y, `-${Math.ceil(damage)}`, 0xff4444);
-    });
+  destroy(): void {
+    this.eventBus.off('gear:rotation_result', this.handleRotationResult);
+    this.eventBus.off('power:capacitor_burst', this.handleCapacitorBurst);
+    this.eventBus.off('unit:damaged', this.handleUnitDamaged);
   }
 
   private spawn(gearId: string, text: string, color: number): void {

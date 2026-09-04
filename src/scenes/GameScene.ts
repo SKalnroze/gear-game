@@ -19,7 +19,9 @@ import { GearEntity } from '../entities/Gear';
 import { panelState } from '../ui/SlidingPanel';
 import { UnitEntity } from '../entities/Unit';
 import { GearType, GearState } from '../types/gear.types';
-import { UnitState } from '../types/unit.types';
+import { UnitState, UnitType } from '../types/unit.types';
+import { UNIT_DEFINITIONS } from '../constants/unit.constants';
+import { computeScaledStats } from '../systems/unit.utils';
 import { TechState } from '../types/tech.types';
 import { AIStrategyProfile } from '../types/ai.types';
 import {
@@ -535,6 +537,7 @@ export class GameScene extends Phaser.Scene {
     this.gameEventLogger.destroy();
     this.gearUnitInteraction.destroy();
     this.particleManager.destroy();
+    this.floatingTextManager.destroy();
     // Clean up cold zone graphics
     for (const [, zg] of this.coldZoneGraphics) {
       const tw = (zg as any)._pulseTween;
@@ -1152,8 +1155,14 @@ export class GameScene extends Phaser.Scene {
       lines.push(`Range: ${range}px  |  Fire rate: slow  |  Damage: high AoE`);
       lines.push('Each rotation buys 1 ammo shell (6 gold)');
     } else if (gear.type.includes('spawner')) {
-      const def = GEAR_DEFINITIONS[gear.type];
-      lines.push(`Spawns a unit per rotation (${def?.goldCost ?? '?'} gold cost)`);
+      const unitType = gear.type.replace('_spawner', '') as UnitType;
+      const unitDef = UNIT_DEFINITIONS[unitType];
+      if (unitDef && unitDef.costResource !== 'none') {
+        const cost = computeScaledStats(unitDef, gear.teeth, unitType).costAmount;
+        lines.push(`Spawns a unit per rotation (${cost} ${unitDef.costResource} cost)`);
+      } else {
+        lines.push('Spawns a unit per rotation (no cost)');
+      }
     }
 
     lines.push(`ω: ${gear.angularVelocity.toFixed(2)} rad/s  |  Status: ${gear.isBurntOut ? 'Burnt out' : gear.isSpinning ? 'Spinning' : 'Idle'}`);

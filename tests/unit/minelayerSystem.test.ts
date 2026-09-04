@@ -32,7 +32,7 @@ function makeBus() {
 
 function makeMinelayerGear(id: string, x: number, y: number, teeth: number, owner: 'player' | 'ai'): GearState {
   return {
-    id, definitionKey: 'minelayer', type: 'minelayer', teeth, x, y, owner,
+    id, type: 'minelayer', teeth, x, y, owner,
     angularVelocity: 0, currentAngle: 0, accumulatedAngle: 0,
     frictionLoad: 0, torqueOutput: 0, isSpinning: true, isBurntOut: false,
     hp: 100, maxHp: 100, isJammed: false, crackLevel: 0, jamStress: 0,

@@ -1,6 +1,4 @@
 import { GearType } from './gear.types';
-import { UnitType } from './unit.types';
-import { ResourceState } from './economy.types';
 
 export type AIStrategyProfile = 'easy' | 'medium' | 'hard' | 'practice';
 
@@ -91,18 +89,3 @@ export interface AIDebugState {
   personality: AIPersonality;
 }
 
-export interface AIGameState {
-  playerUnitHistory: UnitType[];  // last N unit types sent by opponent
-  playerGearCount: number;
-  aiGearCount: number;
-  aiGold: number;
-  aiBaseHp: number;
-  playerBaseHp: number;
-  tickNumber: number;
-  aiResources: ResourceState;
-  playerResources: ResourceState;
-  aiUnitCount: number;
-  playerUnitCount: number;
-  aiResearched: Set<string>;
-  chainCount: number;
-}

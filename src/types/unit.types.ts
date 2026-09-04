@@ -59,6 +59,8 @@ export interface UnitState {
   // Physics-based movement
   vx: number;            // velocity x (px/s)
   vy: number;            // velocity y (px/s)
+  knockbackVx: number;   // pending impulse from this frame's combat, applied after all units' behavior updates
+  knockbackVy: number;
   behaviorState: UnitBehaviorState;   // current AI state machine state
   lastAttackTime: number;             // ms timestamp of last attack
   chargeAccum: number;                // cavalry: px/s accumulated during charge (reset on retreat)

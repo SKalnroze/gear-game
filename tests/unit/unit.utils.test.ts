@@ -25,7 +25,7 @@ function makeUnit(owner: 'player' | 'ai', x: number): UnitState {
     hp: 30, maxHp: 30, speed: 60, baseDamage: 5, damage: 3,
     size: 12, attackRange: 36, mass: 10, costAmount: 5,
     inCombat: false, reachedBase: false,
-    vx: 0, vy: 0,
+    vx: 0, vy: 0, knockbackVx: 0, knockbackVy: 0,
     frictionValue: 0,
     behaviorState: 'marching',
     lastAttackTime: 0,

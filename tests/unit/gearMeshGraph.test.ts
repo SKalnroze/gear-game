@@ -6,7 +6,6 @@ import { gearRadius, GEAR_MESH_TOLERANCE } from '../../src/constants/gear.consta
 function makeGear(id: string, x: number, y: number, teeth: number, type: GearType = 'motor'): GearState {
   return {
     id,
-    definitionKey: type,
     type,
     teeth,
     x,

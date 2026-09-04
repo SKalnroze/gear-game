@@ -36,6 +36,7 @@ export class CombatSystem {
   private readonly BEHAVIOR_MANAGED_TYPES = new Set([
     'cavalry', 'artillery', 'crystal_sentinel', 'aether_phantom',
     'elite_cavalry', 'elite_artillery',
+    'infantry', 'iron_guard', 'mixed', 'elite_infantry',
   ]);
 
   /**

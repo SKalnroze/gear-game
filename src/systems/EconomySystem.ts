@@ -5,7 +5,6 @@ import {
   GOLD_TICK_INTERVAL,
 } from '../constants/balance.constants';
 import { World } from '../world/World';
-import { RotationPhysicsSystem } from './RotationPhysicsSystem';
 import {
   miningOutput,
   researcherOutput,
@@ -26,7 +25,6 @@ import { distance } from '../utils/MathUtils';
 export class EconomySystem {
   private eventBus: EventBus;
   private world: World;
-  private rotationPhysics!: RotationPhysicsSystem;
   private unitSystem: UnitSystem | null = null;
 
   private playerResources: ResourceState = {
@@ -194,9 +192,6 @@ export class EconomySystem {
     this.eventBus.on('economy:spend_gold', this.onEconomySpendGold);
   }
 
-  setRotationPhysics(rps: RotationPhysicsSystem): void {
-    this.rotationPhysics = rps;
-  }
 
   setUnitSystem(us: UnitSystem): void {
     this.unitSystem = us;

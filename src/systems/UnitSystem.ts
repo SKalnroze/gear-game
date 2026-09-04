@@ -73,13 +73,15 @@ const SHIELD_AURA_TIMER = 1.2;
 
 /** Build initial UnitState fields for new fields. */
 function newPhysicsFields(unitType: UnitType): {
-  vx: number; vy: number; behaviorState: UnitState['behaviorState'];
+  vx: number; vy: number; knockbackVx: number; knockbackVy: number; behaviorState: UnitState['behaviorState'];
   lastAttackTime: number; chargeAccum: number; retreatTimer: number;
   slowTimer: number; slowFactor: number; shieldTimer: number; shieldFactor: number;
 } {
   return {
     vx: 0,
     vy: 0,
+    knockbackVx: 0,
+    knockbackVy: 0,
     behaviorState: unitType === 'cavalry' ? 'charging' : 'marching',
     lastAttackTime: 0,
     chargeAccum: 0,
@@ -291,6 +293,18 @@ export class UnitSystem {
 
     // 1b. Update cold zones (crystal sentinel icy areas)
     this.updateColdZones(now, allUnits, allGears);
+
+    // 1c. Apply this frame's pending knockback -- done after every unit's own
+    // behavior update so it can't be clobbered by a not-yet-visited unit
+    // overwriting its own vx/vy later in the same Map iteration.
+    for (const [, unit] of allUnits) {
+      if (unit.knockbackVx !== 0 || unit.knockbackVy !== 0) {
+        unit.vx += unit.knockbackVx;
+        unit.vy += unit.knockbackVy;
+        unit.knockbackVx = 0;
+        unit.knockbackVy = 0;
+      }
+    }
 
     // 2. Integrate physics (vx/vy -> position)
     for (const [, unit] of allUnits) {
@@ -543,7 +557,7 @@ export class UnitSystem {
         // Physics impulse: transfer momentum based on mass ratio
         const totalMass = unit.mass + other.mass;
         const impulse = unit.mass * chargeSpeed / totalMass;
-        other.vx += direction * impulse;
+        other.knockbackVx += direction * impulse;
 
         // Start retreat
         unit.retreatTimer = CAVALRY_RETREAT_DURATION;
@@ -742,9 +756,9 @@ export class UnitSystem {
           });
           // High impulse: push target back in the attack direction
           const pushImpulse = unit.speed * 4 * direction;
-          nearestUnitTarget.vx += pushImpulse;
+          nearestUnitTarget.knockbackVx += pushImpulse;
           // Small perpendicular scatter
-          nearestUnitTarget.vy += (Math.random() - 0.5) * unit.speed * 1.5;
+          nearestUnitTarget.knockbackVy += (Math.random() - 0.5) * unit.speed * 1.5;
 
           if (nearestUnitTarget.hp <= 0) {
             nearestUnitTarget.hp = 0;

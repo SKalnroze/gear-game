@@ -8,7 +8,6 @@ import { PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X, LANE_Y_MIN, LANE_Y_MAX } from '../../
 function makeGear(id: string, x: number, y: number, teeth: number, owner: 'player' | 'ai'): GearState {
   return {
     id,
-    definitionKey: 'motor',
     type: 'motor',
     teeth,
     x,

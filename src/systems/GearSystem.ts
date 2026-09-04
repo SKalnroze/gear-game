@@ -136,7 +136,6 @@ export class GearSystem {
     const maxHp = gearMaxHp(teeth, type);
     const gear: GearState = {
       id: nextGearId(),
-      definitionKey: type,
       type,
       teeth,
       x,

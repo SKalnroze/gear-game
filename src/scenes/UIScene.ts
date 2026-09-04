@@ -45,6 +45,7 @@ export class UIScene extends Phaser.Scene {
   // Stored for rebuild
   private techSystem!: import('../systems/TechSystem').TechSystem;
   private abilitySystem!: import('../systems/AbilitySystem').AbilitySystem;
+  private aiAbilitySystem!: import('../systems/AbilitySystem').AbilitySystem;
   private playerTech!: TechState;
   private aiTech!: TechState;
   private world!: import('../world/World').World;
@@ -72,6 +73,7 @@ export class UIScene extends Phaser.Scene {
       unitSystem: import('../systems/UnitSystem').UnitSystem;
       winSystem: import('../systems/WinConditionSystem').WinConditionSystem;
       abilitySystem: import('../systems/AbilitySystem').AbilitySystem;
+      aiAbilitySystem: import('../systems/AbilitySystem').AbilitySystem;
       world: import('../world/World').World;
       camera: Phaser.Cameras.Scene2D.Camera;
       isPractice: boolean;
@@ -81,6 +83,7 @@ export class UIScene extends Phaser.Scene {
     }) => {
       this.techSystem = data.techSystem;
       this.abilitySystem = data.abilitySystem;
+      this.aiAbilitySystem = data.aiAbilitySystem;
       this.playerTech = data.playerTech;
       this.aiTech = data.aiTech ?? data.playerTech;
       this.world = data.world;
@@ -105,6 +108,7 @@ export class UIScene extends Phaser.Scene {
     unitSystem: import('../systems/UnitSystem').UnitSystem;
     winSystem: import('../systems/WinConditionSystem').WinConditionSystem;
     abilitySystem: import('../systems/AbilitySystem').AbilitySystem;
+    aiAbilitySystem: import('../systems/AbilitySystem').AbilitySystem;
     world: import('../world/World').World;
     camera: Phaser.Cameras.Scene2D.Camera;
     isPractice: boolean;
@@ -151,7 +155,10 @@ export class UIScene extends Phaser.Scene {
     this.radialTechSection = new RadialTechSection(this, this.techSystem, viewTech, this.scale.width, this.spectateOwner, readonly);
     this.slidingPanel.registerTabBody('tech', this.radialTechSection.getContainer());
 
-    this.actionsSection = new ActionsSection(this, abilitySystem, viewTech, readonly);
+    const viewAbilitySystem = this.isSpectate && this.spectateOwner === 'ai'
+      ? this.aiAbilitySystem
+      : abilitySystem;
+    this.actionsSection = new ActionsSection(this, viewAbilitySystem, viewTech, readonly);
     this.slidingPanel.registerTabBody('actions', this.actionsSection.getContainer());
 
     // ── Minimap ────────────────────────────────────────────────────────────
@@ -277,7 +284,9 @@ export class UIScene extends Phaser.Scene {
     const viewTech = owner === 'ai' ? this.aiTech : this.playerTech;
 
     this.actionsSection.destroy();
+    this.gearGridSection.destroy();
     this.gearGridSection.getContainer().destroy();
+    this.radialTechSection.destroy();
     this.radialTechSection.getContainer().destroy();
 
     this.gearGridSection = new GearGridSection(this, viewTech, true);
@@ -286,7 +295,8 @@ export class UIScene extends Phaser.Scene {
     this.radialTechSection = new RadialTechSection(this, this.techSystem, viewTech, this.scale.width, owner, true);
     this.slidingPanel.registerTabBody('tech', this.radialTechSection.getContainer());
 
-    this.actionsSection = new ActionsSection(this, this.abilitySystem, viewTech, true);
+    const viewAbilitySystem = owner === 'ai' ? this.aiAbilitySystem : this.abilitySystem;
+    this.actionsSection = new ActionsSection(this, viewAbilitySystem, viewTech, true);
     this.slidingPanel.registerTabBody('actions', this.actionsSection.getContainer());
   }
 
@@ -299,6 +309,9 @@ export class UIScene extends Phaser.Scene {
     this.toastManager?.destroy();
     this.healthBars?.destroy();
     this.actionsSection?.destroy();
+    this.gearGridSection?.destroy();
+    this.radialTechSection?.destroy();
+    this.layout?.destroy();
     if (this.isSpectate) {
       eventBus.removeAllListeners('spectate:switch_view');
     }

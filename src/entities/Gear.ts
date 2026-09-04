@@ -80,11 +80,14 @@ export class GearEntity extends Phaser.GameObjects.Container {
   // Jam ring tween alpha (driven by Phaser tween)
   private jamRingAlpha: number = 0.6;
   private jamTween: Phaser.Tweens.Tween | null = null;
+  /** The same GameClock GearSystem stamps lastRepositionedAt from -- Date.now() would compare an epoch timestamp against a match-relative one. */
+  private clock: { now: number };
 
-  constructor(scene: Phaser.Scene, state: GearState) {
+  constructor(scene: Phaser.Scene, state: GearState, clock: { now: number }) {
     super(scene, state.x, state.y);
 
     this.gearState = state;
+    this.clock = clock;
 
     this.gearGraphics = scene.add.graphics();
     this.add(this.gearGraphics);
@@ -517,7 +520,7 @@ export class GearEntity extends Phaser.GameObjects.Container {
       }
       return;
     }
-    const now = Date.now();
+    const now = this.clock.now;
     const elapsed = now - state.lastRepositionedAt;
     if (elapsed >= REPOSITION_COOLDOWN_MS) {
       if (this.lastCooldownDrawTime !== 0) {

@@ -223,7 +223,6 @@ export class GameScene extends Phaser.Scene {
     this.gearSystem = new GearSystem(this.world, this.meshGraph, eventBus, this.playerTech, this.aiTech, this.gameClock);
     this.rotationPhysics = new RotationPhysicsSystem(this.world, this.meshGraph, eventBus, this.gameClock);
     this.economySystem = new EconomySystem(eventBus, this.world);
-    this.economySystem.setRotationPhysics(this.rotationPhysics);
     this.rotationPhysics.setEconomySystem(this.economySystem);
     if (isPractice) this.economySystem.setPracticeMode(true);
     this.unitSystem = new UnitSystem(eventBus);
@@ -492,6 +491,7 @@ export class GameScene extends Phaser.Scene {
         unitSystem: this.unitSystem,
         winSystem: this.winSystem,
         abilitySystem: this.abilitySystem,
+        aiAbilitySystem: this.aiAbilitySystem,
         world: this.world,
         camera: this.cameras.main,
         isPractice,
@@ -1173,7 +1173,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createGearEntity(gear: GearState): void {
-    const entity = new GearEntity(this, gear);
+    const entity = new GearEntity(this, gear, this.gameClock);
     this.gearEntities.set(gear.id, entity);
   }
 

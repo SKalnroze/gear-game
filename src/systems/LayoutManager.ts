@@ -42,15 +42,21 @@ export class LayoutManager {
   private scene: Phaser.Scene;
   private _state!: LayoutState;
   private _onResize: ((state: LayoutState) => void) | null = null;
+  private readonly handleResize = (): void => {
+    this.compute();
+    if (this._onResize) this._onResize(this._state);
+  };
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.compute();
 
-    scene.scale.on('resize', () => {
-      this.compute();
-      if (this._onResize) this._onResize(this._state);
-    });
+    scene.scale.on('resize', this.handleResize);
+  }
+
+  destroy(): void {
+    this.scene.scale.off('resize', this.handleResize);
+    this._onResize = null;
   }
 
   get state(): LayoutState {

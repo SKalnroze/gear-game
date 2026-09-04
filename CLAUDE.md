@@ -40,4 +40,4 @@ See `docs/UI_GUIDELINES.md` for the component library and layout system.
 
 After making changes, run `npm run typecheck` before reporting completion, and fix any type errors first. This covers `src/` **and** `tests/`/`tools/` (two tsconfig projects) — plain `npx tsc --noEmit` alone only checks `src/`.
 
-Also run `npm test` (196 unit tests). For anything touching scenes or UI, run `npm run test:e2e`.
+Also run `npm test` (the unit suite). For anything touching scenes or UI, run `npm run test:e2e`.

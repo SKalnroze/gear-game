@@ -41,7 +41,7 @@ function makeBus(world: World) {
 
 function makeGear(id: string, hp: number): GearState {
   return {
-    id, definitionKey: 'motor', type: 'motor', teeth: 10, x: 0, y: 0, owner: 'ai',
+    id, type: 'motor', teeth: 10, x: 0, y: 0, owner: 'ai',
     angularVelocity: 0, currentAngle: 0, accumulatedAngle: 0,
     frictionLoad: 0, torqueOutput: 0, isSpinning: false, isBurntOut: false,
     hp, maxHp: 100, isJammed: false, crackLevel: 0, jamStress: 0,

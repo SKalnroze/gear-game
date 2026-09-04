@@ -18,7 +18,6 @@ export interface GearDefinition {
 
 export interface GearState {
   id: string;
-  definitionKey: GearType;   // key into GEAR_DEFINITIONS (now just the type)
   type: GearType;
   teeth: number;              // replaces GearSize; radius = teeth * GEAR_MODULE
   x: number;                  // pixel x position (center)

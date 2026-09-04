@@ -123,6 +123,9 @@ export class RotationPhysicsSystem {
       const hasMotor = gears.some(g => g.type === 'motor' && !g.isBurntOut);
       const hasAmplifier = gears.some(g => g.type === 'amplifier' && !g.isBurntOut);
       const hasCapacitor = gears.some(g => g.type === 'capacitor' && !g.isBurntOut);
+      const hasConverter = gears.some(g =>
+        (g.type === 'iron_converter' || g.type === 'crystal_converter' || g.type === 'aether_converter') && !g.isBurntOut,
+      );
       const owner = gears[0]?.owner ?? 'player';
 
       this.chains.set(chainId, {
@@ -131,7 +134,7 @@ export class RotationPhysicsSystem {
         owner,
         hasMotor,
         hasAmplifier,
-        hasConverter: false,
+        hasConverter,
         hasCapacitor,
       });
     }

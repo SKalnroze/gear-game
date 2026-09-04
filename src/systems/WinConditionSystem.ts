@@ -3,7 +3,8 @@ import { BASE_MAX_HP } from '../constants/balance.constants';
 
 /**
  * Tracks base HP and emits game:over when a base reaches 0.
- * In practice mode, AI base HP is never decremented.
+ * In practice mode, neither base's HP is ever decremented -- it's a
+ * sandbox for building, not a match either side can actually lose.
  */
 export class WinConditionSystem {
   private eventBus: EventBus;

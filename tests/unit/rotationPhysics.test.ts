@@ -53,7 +53,6 @@ function makeGear(
 ): GearState {
   return {
     id,
-    definitionKey: type,
     type,
     teeth,
     x,
@@ -840,6 +839,32 @@ describe('RotationPhysicsSystem', () => {
       expect(chain.hasAmplifier).toBe(true);
       expect(chain.hasCapacitor).toBe(true);
       expect(chain.owner).toBe('player');
+    });
+
+    it('flags hasConverter when any of the three converter types is present -- this is what makes "mixed" units reachable', () => {
+      for (const converterType of ['iron_converter', 'crystal_converter', 'aether_converter'] as const) {
+        const r = rig([
+          makeGear('m', 0, 0, 10, 'motor'),
+          makeGear('conv', 50, 0, 10, converterType),
+        ]);
+        const chain = [...r.physics.getChains().values()][0];
+        expect(chain.hasConverter).toBe(true);
+      }
+    });
+
+    it('a chain with no converter reports hasConverter false', () => {
+      const r = rig([makeGear('m', 0, 0, 10, 'motor')]);
+      const chain = [...r.physics.getChains().values()][0];
+      expect(chain.hasConverter).toBe(false);
+    });
+
+    it('a burnt-out converter does not count -- matches how hasMotor/hasAmplifier already treat burnout', () => {
+      const r = rig([
+        makeGear('m', 0, 0, 10, 'motor'),
+        makeGear('conv', 50, 0, 10, 'iron_converter', { isBurntOut: true }),
+      ]);
+      const chain = [...r.physics.getChains().values()][0];
+      expect(chain.hasConverter).toBe(false);
     });
 
     it('separates gears that are not meshed into distinct chains', () => {

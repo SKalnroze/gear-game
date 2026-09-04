@@ -295,7 +295,7 @@ describe('UnitSystem', () => {
     /** Minimal GearState for an infantry_spawner sitting in the world. */
     function makeSpawnerGear(): any {
       return {
-        id: 'spawner1', definitionKey: 'infantry_spawner', type: 'infantry_spawner',
+        id: 'spawner1', type: 'infantry_spawner',
         teeth: 10, x: 0, y: 0, owner: 'player',
         angularVelocity: 0, currentAngle: 0, accumulatedAngle: 0,
         frictionLoad: 0, torqueOutput: 0, isSpinning: true, isBurntOut: false,
@@ -370,7 +370,7 @@ describe('UnitSystem', () => {
   describe('melee gear-targeting ignores dead/burnt-out gears', () => {
     function makeGear(id: string, x: number, y: number, opts: Partial<GearState>): GearState {
       return {
-        id, definitionKey: 'motor', type: 'motor', teeth: 10, x, y, owner: 'ai',
+        id, type: 'motor', teeth: 10, x, y, owner: 'ai',
         angularVelocity: 0, currentAngle: 0, accumulatedAngle: 0,
         frictionLoad: 0, torqueOutput: 0, isSpinning: false, isBurntOut: false,
         hp: 100, maxHp: 100, isJammed: false, crackLevel: 0, jamStress: 0,

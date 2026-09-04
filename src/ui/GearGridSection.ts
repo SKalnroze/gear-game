@@ -350,10 +350,12 @@ export class GearGridSection {
     }
   }
 
+  private readonly handleResearchComplete = (): void => {
+    this.rebuildGrid();
+  };
+
   private setupInputHandlers(): void {
-    eventBus.on('tech:research_complete', () => {
-      this.rebuildGrid();
-    });
+    eventBus.on('tech:research_complete', this.handleResearchComplete);
   }
 
   private rebuildGrid(): void {
@@ -375,6 +377,10 @@ export class GearGridSection {
 
   public getContainer(): Phaser.GameObjects.Container {
     return this.container;
+  }
+
+  public destroy(): void {
+    eventBus.off('tech:research_complete', this.handleResearchComplete);
   }
 
   public reposition(x: number, y: number): void {

@@ -1,4 +1,4 @@
-import { AIDecision, AIDebugState, AIGameState, AIStrategyProfile, AIPersonality, ThreatLevel } from '../types/ai.types';
+import { AIDecision, AIDebugState, AIStrategyProfile, AIPersonality, ThreatLevel } from '../types/ai.types';
 import { UnitState, UnitType } from '../types/unit.types';
 import { GearState, GearType } from '../types/gear.types';
 import { EventBus } from '../systems/EventBus';
@@ -1248,22 +1248,4 @@ export class AIController {
     }
   }
 
-  // Kept for external consumers (UI/debug)
-  buildGameState(): AIGameState {
-    return {
-      playerUnitHistory: [],
-      playerGearCount: this.world.getGearsOwnedBy(this.opponent).length,
-      aiGearCount: this.world.getGearsOwnedBy(this.owner).length,
-      aiGold: this.economySystem.getResources(this.owner).gold,
-      aiBaseHp: this.winSystem.getHp(this.owner),
-      playerBaseHp: this.winSystem.getHp(this.opponent),
-      tickNumber: this.tickNumber,
-      aiResources: this.economySystem.getResources(this.owner),
-      playerResources: this.economySystem.getResources(this.opponent),
-      aiUnitCount: 0,
-      playerUnitCount: 0,
-      aiResearched: this.aiResearched,
-      chainCount: this.chainPlans.length,
-    };
-  }
 }

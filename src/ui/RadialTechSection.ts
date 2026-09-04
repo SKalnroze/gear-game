@@ -111,11 +111,16 @@ export class RadialTechSection {
     this.buildTooltip();
     this.setupInput();
 
-    eventBus.on('tech:research_complete', () => { this.refreshCards(); this.refreshQueuePanel(); });
-    eventBus.on('tech:queued',            () => { this.refreshCards(); this.refreshQueuePanel(); });
-    eventBus.on('tech:research_started',  () => { this.refreshCards(); this.refreshQueuePanel(); });
-    eventBus.on('tech:cancelled',         () => { this.refreshCards(); this.refreshQueuePanel(); });
+    eventBus.on('tech:research_complete', this.handleTechEvent);
+    eventBus.on('tech:queued',            this.handleTechEvent);
+    eventBus.on('tech:research_started',  this.handleTechEvent);
+    eventBus.on('tech:cancelled',         this.handleTechEvent);
   }
+
+  private readonly handleTechEvent = (): void => {
+    this.refreshCards();
+    this.refreshQueuePanel();
+  };
 
   // ── Build layout ─────────────────────────────────────────────────────────
 
@@ -663,6 +668,13 @@ export class RadialTechSection {
 
   public getContainer(): Phaser.GameObjects.Container {
     return this.container;
+  }
+
+  public destroy(): void {
+    eventBus.off('tech:research_complete', this.handleTechEvent);
+    eventBus.off('tech:queued',            this.handleTechEvent);
+    eventBus.off('tech:research_started',  this.handleTechEvent);
+    eventBus.off('tech:cancelled',         this.handleTechEvent);
   }
 
   public reposition(x: number, y: number): void {

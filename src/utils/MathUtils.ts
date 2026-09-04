@@ -10,6 +10,23 @@ export function distance(x1: number, y1: number, x2: number, y2: number): number
 }
 
 /**
+ * Where a moving target will be after `travelTime` seconds, given its
+ * current velocity -- a simple linear lead prediction (no acceleration
+ * term). Used to aim a projectile at where the target will be when the
+ * shot arrives instead of where it was standing at the instant of firing.
+ * Real per-unit velocity (from UnitPhysicsWorld) is what makes this a
+ * genuine prediction rather than a guess -- a unit's vx/vy now reflects
+ * actual momentum, not just a per-frame steering intent.
+ */
+export function leadPosition(
+  targetX: number, targetY: number,
+  targetVx: number, targetVy: number,
+  travelTime: number,
+): { x: number; y: number } {
+  return { x: targetX + targetVx * travelTime, y: targetY + targetVy * travelTime };
+}
+
+/**
  * Whether two circles (gears) are meshing.
  * They mesh if distance between centers ≈ r1 + r2 (within tolerance px).
  */

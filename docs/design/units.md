@@ -176,6 +176,20 @@ Units walk along the **lane band**, the horizontal strip through the middle of t
 
 Direction is derived from which half of the map a side occupies, never from its owner label — the lobby can seat a human on either side, and every directional decision (march, targeting, base arrival) must agree. A unit reaching the enemy base deals its base damage and is consumed.
 
+### Real rigidbody movement
+
+Every unit is a real Matter.js body (`UnitPhysicsWorld`, real mass from the same size/type formula as before), not a position updated directly from a velocity number each frame. A behavior method (`updateInfantry`, `updateCavalry`, ...) is unchanged in what it *decides* — it still writes the velocity it wants onto `unit.vx`/`unit.vy` each tick — but that number is now a **target** a steering force pulls the body toward, rather than an instant swap. Three consequences:
+
+- **Real acceleration.** A unit takes a beat to ramp up to speed instead of teleporting to its target velocity the instant a behavior decides on one — the closest thing to "inertia" a top-down march has.
+- **Persistent knockback.** A hit that shoves a unit (cavalry charge, Iron Guard melee, an explosion) is a genuine velocity impulse now, decaying naturally over several frames as the steering force pulls the unit back toward what its behavior wants, instead of being overwritten completely by the very next frame's behavior update — previously knockback was visible for exactly one frame.
+- **Native collision.** Unit-unit overlap is resolved by Matter's own solver instead of a single-pass positional nudge, which is what lets a pile of units pushing into the same space actually hold together and press forward rather than each just getting shoved sideways independently. Aether Phantom's pass-through-enemies rule is expressed as a Matter collision-category exclusion (it still collides with its own side).
+
+**Explosions push back.** Every `aoe:explosion` event (artillery shells, mines, Iron Guard's death blast) now applies a real radial knockback impulse to units caught in the radius, falling off with distance from the blast centre — previously an explosion dealt damage only, with no pushback at all however close a survivor stood.
+
+**Turrets and artillery lead their shots.** `TurretSystem` (crossbow/artillery turrets) and Artillery's own shell (`UnitSystem.updateArtillery`) now aim at where a moving target *will be* when the projectile arrives, computed from the target's real current velocity, rather than where it was standing at the instant of firing (`leadPosition` in `MathUtils.ts`). This only became meaningful once unit velocity was a real physical quantity rather than a per-frame steering intent that could be zero the instant after a shot was aimed.
+
+Gears, by contrast, never translate — they're placed and stay put — so they don't need live simulated bodies the way units do. Their real-physics upgrade is different in kind: see [Gears § Meshing](gears.md#meshing).
+
 ---
 
 ## The AI opponent

@@ -17,7 +17,7 @@ Tooth counts are literal. A 10-tooth gear has ten teeth drawn on it and meshes a
 |---|---|---|
 | `GEAR_MODULE` | 2.5 | px of radius per tooth |
 | `GEAR_MESH_TOLERANCE` | 4 | px of slack when deciding two gears mesh |
-| `INERTIA_DENSITY` | 0.01 | mass per unit area, sets chain sluggishness |
+| `INERTIA_DENSITY` | 0.000008158 | density fed to Matter.js for real gear mass/inertia -- sets chain sluggishness |
 | `MIN_TEETH` / `MAX_TEETH` | 5 / 60 | tooth count bounds |
 | `DEFAULT_TEETH` | 10 | calibration point for every scaling formula |
 <!-- END GENERATED: gears.physics -->
@@ -34,15 +34,17 @@ Meshed gears transmit rotation with the direction reversed and the speed scaled 
 
 A small gear driving a large one turns it slowly; a large gear driving a small one spins it fast. The sign flip is what makes **jams** possible.
 
+**Each gear's mass and rotational inertia are computed by Matter.js from its actual geometry** (a solid disk of radius `gearRadius(teeth)`) rather than a hand-rolled formula — `gearInertia(teeth)` in `gear.constants.ts` builds a real Matter body once per tooth count (cached; gears never need to translate, so this is used purely as a physics-accurate mass/inertia calculator, not a live simulated body) and reads its `.inertia` back. The mesh-graph discovery, chain bookkeeping and jam detection below are unchanged from before this pass — what changed is that the *inertia* value feeding all of it now comes from a real rigidbody physics library instead of an approximated area formula, which is what makes tooth count a genuine trade-off (see "Chains" below).
+
 ### Chains, and why size costs speed
 
-A connected group of meshed gears is a **chain**, and physics is computed for the chain as a whole: total motor torque divided by total inertia, with each gear's inertia weighted by the square of its speed ratio relative to the motor.
+A connected group of meshed gears is a **chain**, and physics is computed for the chain as a whole: total motor torque divided by total inertia, with each gear's real inertia weighted by the square of its speed ratio relative to the motor.
 
-That weighting has a consequence worth internalising, because it drives the whole build:
+Real rotational inertia scales with the *fourth power* of radius (mass ∝ r², inertia ∝ mass·r² ∝ r⁴), not the square — and that's the fix for a divergence this document used to record here: the old hand-rolled "inertia" (mass reused as if it were rotational inertia, ∝ r²) scaled with exactly the same power as the ratio² weighting, so they cancelled *exactly* and tooth count was free. Real inertia doesn't cancel the same way:
 
-> Inertia grows with the square of radius, and the speed ratio shrinks with the inverse of teeth. The two cancel exactly. **Every gear in a chain contributes the same reflected inertia, no matter how big it is.**
+> **A bigger follower gear now costs genuinely more chain speed — quadratically more, not "the same regardless of size."** A 20-tooth gear meshed to a 10-tooth motor now drags the chain roughly 4× harder than a same-sized follower would, where it used to cost exactly the same as any other size.
 
-So a chain's speed is set by its *gear count*, not its gear sizes. Three gears turn at ⅔ the speed of two; four at ½. Adding a gear always slows everything already there, and making that gear larger costs nothing extra in speed — only in gold. See [Balance](balance.md#the-physics-result-that-governs-everything) for the arithmetic.
+Chain size (gear *count*) still taxes speed the way it always did — three gears turn slower than two, four slower still — but gear *size* is no longer free. Making a gear bigger buys output, HP and range at a real, escalating cost in chain speed, not just gold. See [Balance](balance.md#the-physics-result-that-governs-everything) for the worked numbers.
 
 ### Jams
 

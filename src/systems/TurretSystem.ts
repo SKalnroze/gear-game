@@ -3,8 +3,13 @@ import { EventBus } from './EventBus';
 import { ProjectileSystem } from './ProjectileSystem';
 import { UnitSystem } from './UnitSystem';
 import { UnitState } from '../types/unit.types';
-import { distance } from '../utils/MathUtils';
+import { distance, leadPosition } from '../utils/MathUtils';
 import { turretRange } from '../constants/gear.constants';
+
+/** Crystal shard flight speed, px/s -- must match ProjectileSystem.fireCrystalShard. */
+const CRYSTAL_SHARD_SPEED = 350;
+/** Artillery shell flight time, seconds -- must match ProjectileSystem.fireArtilleryShell (fixed arc time, not distance-based). */
+const ARTILLERY_SHELL_TRAVEL_TIME = 1.5;
 
 interface TurretCooldownState {
   lastFireTime: number;
@@ -42,8 +47,7 @@ export class TurretSystem {
       // Find nearest enemy unit in range
       const range = turretRange(gear.teeth, gear.type);
       let nearestDist = range;
-      let targetX = -1;
-      let targetY = -1;
+      let target: UnitState | null = null;
 
       for (const [, unit] of this.unitSystem.getAllUnits()) {
         if (unit.owner === gear.owner) continue;
@@ -51,12 +55,19 @@ export class TurretSystem {
         const d = distance(gear.x, gear.y, unit.x, unit.y);
         if (d < nearestDist) {
           nearestDist = d;
-          targetX = unit.x;
-          targetY = unit.y;
+          target = unit;
         }
       }
 
-      if (targetX < 0) continue; // no target
+      if (!target) continue; // no target
+
+      // Lead the shot at where the target will be when it arrives, using
+      // its real current velocity, instead of where it was standing at the
+      // instant of firing.
+      const travelTime = gear.type === 'crossbow_turret'
+        ? nearestDist / CRYSTAL_SHARD_SPEED
+        : ARTILLERY_SHELL_TRAVEL_TIME;
+      const { x: targetX, y: targetY } = leadPosition(target.x, target.y, target.vx, target.vy, travelTime);
 
       // Fire
       gear.ammo = Math.max(0, gear.ammo - 1);

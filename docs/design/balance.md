@@ -8,23 +8,13 @@ Why the numbers are what they are, and which ones to reach for when the game fee
 
 ## The physics result that governs everything
 
-A chain's speed is `total motor torque ÷ (total reflected inertia + friction)`. Each gear's inertia is weighted by the square of its speed ratio relative to the motor. Work that through:
+A chain's speed is `total motor torque ÷ (total reflected inertia + friction)`. Each gear's inertia is weighted by the square of its speed ratio relative to the motor. Each gear's inertia is now a **real Matter.js rigidbody value** (see [Gears § Meshing](gears.md#meshing)) — the mass and rotational inertia of an actual solid disk of that radius, not a hand-rolled area formula — and that changes the shape of the result.
+
+For a chain where every gear is the *same* size as the motor (the common case — most chains are built from one tooth count), the ratio is always 1 and the calibration below makes the numbers land exactly where they always did:
 
 ```
-inertia of gear i          = π × (teeth_i × 2.5)² × 0.01
-speed ratio of gear i      = teeth_motor / teeth_i
-reflected inertia          = inertia × ratio²
-                           = π × 6.25 × 0.01 × teeth_i² × (teeth_motor / teeth_i)²
-                           = π × 6.25 × 0.01 × teeth_motor²
+ω = 4.074 / n  rad/s     (n = gears in the chain, all the same size)
 ```
-
-The gear's own tooth count **cancels completely**. Every gear in a chain contributes exactly the motor's own inertia, whatever size it is. And since motor torque is also quadratic in teeth, the motor's size cancels too:
-
-```
-ω = (0.8 × teeth_m²) ÷ (n × 0.19635 × teeth_m²) = 4.074 / n  rad/s
-```
-
-> ### **Chain speed depends only on how many gears are in the chain. Not on their sizes. Not even on the motor's size.**
 
 | Gears in chain | ω (rad/s) | Rotations/sec | Seconds per rotation |
 |---|---|---|---|
@@ -35,12 +25,18 @@ The gear's own tooth count **cancels completely**. Every gear in a chain contrib
 | 5 | 0.815 | 0.130 | 7.71 |
 | 6 | 0.679 | 0.108 | 9.25 |
 
-Two consequences the design has to live with:
+That preserves the pacing players already learned — **every gear you add still taxes everything already there** (going from two gears to three still cuts production by a third; the central tension of the build, [pillar 2](../GAME_DESIGN.md#2-rotation-is-the-only-clock), is untouched).
 
-1. **Every gear you add taxes everything already there.** Going from two gears to three cuts production by a third. This is the central tension of the build and it is working as intended — [pillar 2](../GAME_DESIGN.md#2-rotation-is-the-only-clock).
-2. **Bigger gears are free speed-wise.** Tooth count buys output, HP, damage and range at no cost in rotation rate — its only cost is gold. That makes the **Gear Precision** research line strictly good, with no trade-off. If tooth count is meant to be a genuine decision rather than a straight upgrade, this is the lever to change: making reflected inertia scale with teeth even slightly would restore the trade.
+What's different is a **differently-sized gear in the chain.** Real rotational inertia scales with the fourth power of radius (mass ∝ r², inertia ∝ mass·r² ∝ r⁴), while the ratio² weighting only cancels a r² scaling — which is exactly what the old hand-rolled "inertia" (mass reused as rotational inertia, ∝ r² only) was, and exactly why it cancelled perfectly before. It no longer does:
 
-Adding a **second motor** is the only way to speed a chain up without removing gears: torque sums while inertia grows by one gear, so a second motor in a 3-gear chain takes it from 1.358 to 2.037 rad/s.
+```
+motor = 10 teeth, follower = 20 teeth (meshed 1:1 in the chain)
+ω = motorTorque(10) / (inertia(10) + inertia(20) × (10/20)²) ≈ 0.815 rad/s
+```
+
+Compare that to 2.037 rad/s for a same-sized (10+10) two-gear chain — **the bigger follower alone costs the chain more than half its speed.** This closes a divergence this document used to record here: tooth count used to buy output, HP, damage and range at zero cost in rotation rate, making the **Gear Precision** research line strictly good with no trade-off. It now has a real, escalating cost — bigger is still better on every other axis, but no longer free.
+
+Adding a **second motor** is still the only way to speed a chain up without removing gears: torque sums while inertia grows by one gear, so a second same-sized motor in a 3-gear chain takes it from 1.358 to 2.037 rad/s.
 
 ---
 
@@ -68,17 +64,15 @@ The resource row (`SlidingPanel`) shows each resource's raw total alongside a tr
 
 ## Where the economy still has rough edges
 
-Reading the numbers against the intent turns up two problems worth recording.
+Reading the numbers against the intent turns up one problem worth recording — deliberately kept, not a bug.
 
 ### Ore beats gold decisively once converters arrive
 
-A miner produces `teeth × 0.3` ore per rotation; a converter turns `teeth × 0.25` ore into gold at ×2 (iron), ×3 (crystal), ×6 (aether). At 10 teeth, an iron miner and iron converter on a 4-gear chain produce 0.162 rot/s × 2.5 ore = 0.41 ore/sec, converting to 0.81 gold/sec — worse than the 2/sec baseline. But at aether's ×6 the same pair yields 2.4 gold/sec, doubling passive income, and tooth count scales it linearly with no speed penalty.
+A miner produces `teeth × 0.3` ore per rotation; a converter turns `teeth × 0.25` ore into gold at ×2 (iron), ×3 (crystal), ×6 (aether). At 10 teeth, an iron miner and iron converter on a 4-gear chain produce 0.162 rot/s × 2.5 ore = 0.41 ore/sec, converting to 0.81 gold/sec — worse than the 2/sec baseline. But at aether's ×6 the same pair yields 2.4 gold/sec, doubling passive income, and tooth count scales it linearly with no speed penalty *as long as the miner and converter stay the same size as the rest of the chain* — a uniformly-sized chain still scales the way it always did (see [the physics result](#the-physics-result-that-governs-everything); the fourth-power inertia cost only bites when gears in the same chain differ in size).
 
-The intended shape — deeper resources pay better — holds. The risk is the **absence of an upper bound**: since bigger gears cost speed nothing, a large aether chain scales without limit.
+The intended shape — deeper resources pay better — holds. The risk is the **absence of an upper bound** on a uniformly-scaled chain: since matching every gear's size costs nothing extra in speed, a large same-size aether chain scales without limit. Confirmed as intentional, not left open by oversight: a late-game payoff for having pushed all the way to aether is the point, not a leak to plug.
 
-### Gear Precision has no trade-off
-
-Already noted [above](#the-physics-result-that-governs-everything): reflected inertia cancels teeth entirely, so Gear Precision buys output, HP and range with zero cost in chain speed. Restated here because it is the clearest single balance lever in the game — see [tuning levers](#tuning-levers) below.
+Gear Precision's cost-free tooth count — the OTHER historical rough edge recorded here — is fixed as of the rigidbody migration: see [the physics result](#the-physics-result-that-governs-everything) above.
 
 ---
 
@@ -137,8 +131,8 @@ Reach for these first, in roughly this order of impact.
 
 | Lever | Constant | Effect |
 |---|---|---|
-| Match pace | `INERTIA_DENSITY` | Scales every chain's speed inversely. The single strongest dial in the game — it moves production, income and match length together. |
-| Build tax | reflected-inertia weighting | Currently exactly `1/n` per gear. Changing the exponent changes how much a big machine is punished. |
+| Match pace | `INERTIA_DENSITY` | The density fed to Matter.js for every gear's real mass/inertia. Scales every chain's speed inversely. The single strongest dial in the game — it moves production, income and match length together. |
+| Build tax | reflected-inertia weighting | `1/n` per gear for a uniformly-sized chain; a differently-sized gear now costs more, roughly with the square of how much bigger it is than the rest of the chain (real r⁴ inertia vs the ratio² weighting). |
 | Opening | `BASE_GOLD_PER_SEC`, starting gold | Sets how long before the second decision. Starting gold is currently exactly the price of the minimum machine. |
 | Escalation | `GEAR_PLACEMENT_COST_MULTIPLIER` | Linear today; making it quadratic would price large gears against their quadratic benefits. |
 | Match length | `BASE_MAX_HP`, unit base damage | 100 HP ÷ 3 damage = 34 arrivals to win. |

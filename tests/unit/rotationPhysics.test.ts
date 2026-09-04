@@ -6,7 +6,7 @@ import type { EventBus } from '../../src/systems/EventBus';
 import type { EconomySystem } from '../../src/systems/EconomySystem';
 import { GameClock } from '../../src/systems/GameClock';
 import type { GearState, GearType } from '../../src/types/gear.types';
-import { gearRadius, motorTorque, motorOutput, INERTIA_DENSITY } from '../../src/constants/gear.constants';
+import { gearRadius, motorTorque, motorOutput, gearInertia } from '../../src/constants/gear.constants';
 import {
   AMPLIFIER_CHAIN_MULTIPLIER,
   OVERCLOCK_SPEED_BONUS,
@@ -74,10 +74,9 @@ function makeGear(
   };
 }
 
-/** Rotational inertia the system attributes to a gear, before ratio weighting. */
+/** Rotational inertia the system attributes to a gear, before ratio weighting -- real Matter.js physics now, not a hand formula. */
 function inertiaOf(teeth: number): number {
-  const r = gearRadius(teeth);
-  return Math.PI * r * r * INERTIA_DENSITY;
+  return gearInertia(teeth);
 }
 
 interface Rig {
@@ -165,9 +164,14 @@ describe('RotationPhysicsSystem', () => {
       const b = world.getGear('b')!.angularVelocity;
       expect(b).toBeCloseTo(-(m * 10 / 20), 6);
 
-      // Chain inertia is ratio-weighted: I_m + I_b * (10/20)^2
+      // Chain inertia is ratio-weighted: I_m + I_b * (10/20)^2. Real inertia
+      // (Matter.js, ∝ teeth^4) no longer cancels against the ratio^2
+      // weighting the way the old hand-formula (∝ teeth^2) did -- a bigger
+      // follower now genuinely costs more chain speed, not the same amount
+      // regardless of its size. This is the fix for the documented
+      // "Gear Precision has no trade-off" divergence.
       const expectedM = motorTorque(10) / (inertiaOf(10) + inertiaOf(20) * 0.25);
-      expect(expectedM).toBeCloseTo(2.037, 3);
+      expect(expectedM).toBeCloseTo(0.8148, 3);
       expect(m).toBeCloseTo(expectedM, 6);
     });
 

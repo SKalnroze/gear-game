@@ -8,7 +8,10 @@ import { randomInt } from '../utils/MathUtils';
 import { World } from '../world/World';
 import { EconomySystem } from './EconomySystem';
 import { ProjectileSystem } from './ProjectileSystem';
-import { distance, sqrDist } from '../utils/MathUtils';
+import { distance, sqrDist, leadPosition } from '../utils/MathUtils';
+
+/** Artillery shell flight time, seconds -- must match ProjectileSystem.fireArtilleryShell's fixed arc time. */
+const ARTILLERY_SHELL_TRAVEL_TIME = 1.5;
 import {
   computeScaledStats,
   isInFront,
@@ -20,6 +23,7 @@ import {
   computeChargeDamage,
 } from './unit.utils';
 import { computeDamage, getChainUnitType } from '../constants/unit.constants';
+import { UnitPhysicsWorld } from './UnitPhysicsWorld';
 import { COMBO_CHAIN_MIN_GEARS } from '../constants/balance.constants';
 import type { RotationPhysicsSystem } from './RotationPhysicsSystem';
 import type { TechSystem } from './TechSystem';
@@ -122,6 +126,7 @@ function newPhysicsFields(unitType: UnitType): {
 export class UnitSystem {
   private eventBus: EventBus;
   private units: Map<string, UnitState> = new Map();
+  private physicsWorld: UnitPhysicsWorld = new UnitPhysicsWorld();
   private world: World | null = null;
   private economySystem: EconomySystem | null = null;
   private rotationPhysics: RotationPhysicsSystem | null = null;
@@ -147,6 +152,28 @@ export class UnitSystem {
 
   private readonly onUnitDied = ({ unitId }: { unitId: string }) => {
     this.units.delete(unitId);
+    this.physicsWorld.removeUnit(unitId);
+  };
+
+  /**
+   * Real radial knockback for every AoE explosion in the game (artillery
+   * shells, mines -- ProjectileSystem/MinelayerSystem emit this; Iron
+   * Guard's own death blast applies its knockback directly alongside its
+   * damage pass instead, since it already walks the same per-unit loop).
+   * Damage for these sources is handled by whichever system emitted the
+   * event; this only adds the pushback that was previously missing.
+   */
+  private readonly onAoeExplosion = ({ x, y, radius }: { x: number; y: number; radius: number; owner: 'player' | 'ai' }) => {
+    const EXPLOSION_IMPULSE = 350;
+    for (const [id, unit] of this.units) {
+      if (unit.reachedBase) continue;
+      const dx = unit.x - x;
+      const dy = unit.y - y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > radius || d <= 0.01) continue;
+      const kb = EXPLOSION_IMPULSE * (1 - d / radius);
+      this.physicsWorld.applyImpulse(id, (dx / d) * kb, (dy / d) * kb);
+    }
   };
 
   constructor(eventBus: EventBus) {
@@ -154,6 +181,7 @@ export class UnitSystem {
 
     this.eventBus.on('gear:full_rotation', this.onGearFullRotation);
     this.eventBus.on('unit:died', this.onUnitDied);
+    this.eventBus.on('aoe:explosion', this.onAoeExplosion);
   }
 
   setWorld(world: World): void {
@@ -247,6 +275,7 @@ export class UnitSystem {
     };
 
     this.units.set(unit.id, unit);
+    this.physicsWorld.addUnit(unit);
     this.eventBus.emit('unit:spawned', { unit: { ...unit } });
   }
 
@@ -323,33 +352,27 @@ export class UnitSystem {
     this.updateColdZones(now, allUnits, allGears);
     this.updateSlimePuddles(now, allUnits, allGears);
 
-    // 1c. Apply this frame's pending knockback -- done after every unit's own
-    // behavior update so it can't be clobbered by a not-yet-visited unit
-    // overwriting its own vx/vy later in the same Map iteration.
-    for (const [, unit] of allUnits) {
+    // 1c. Apply this frame's pending knockback as a real impulse on the
+    // unit's rigidbody -- done after every unit's own behavior update so it
+    // can't be clobbered by a not-yet-visited unit overwriting its own
+    // vx/vy later in the same Map iteration. Unlike the pre-migration
+    // merge-into-vx approach (overwritten the very next tick by the next
+    // behavior update), a real impulse persists and decays over several
+    // frames as the steering force pulls the unit back toward its intended
+    // velocity -- genuine, visible pushback instead of a one-frame nudge.
+    for (const [id, unit] of allUnits) {
       if (unit.knockbackVx !== 0 || unit.knockbackVy !== 0) {
-        unit.vx += unit.knockbackVx;
-        unit.vy += unit.knockbackVy;
+        this.physicsWorld.applyImpulse(id, unit.knockbackVx, unit.knockbackVy);
         unit.knockbackVx = 0;
         unit.knockbackVy = 0;
       }
     }
 
-    // 2. Integrate physics (vx/vy -> position)
-    for (const [, unit] of allUnits) {
-      if (unit.reachedBase) continue;
-      if (unit.attachedGearId) continue;
-
-      unit.x += unit.vx * deltaSec;
-      unit.y += unit.vy * deltaSec;
-
-      // Clamp to world bounds
-      unit.x = Math.max(0, Math.min(WORLD_WIDTH, unit.x));
-      unit.y = Math.max(LANE_Y_MIN, Math.min(LANE_Y_MAX, unit.y));
-    }
-
-    // 3. Unit-unit collision resolution
-    this.resolveUnitCollisions(allUnits);
+    // 2-3. Real rigidbody step: steer every unit's body toward the velocity
+    // its behavior computed this tick, let Matter integrate real
+    // acceleration and resolve unit-unit collision natively, then sync the
+    // resulting position/velocity back onto UnitState.
+    this.physicsWorld.step(allUnits, deltaSec);
 
     // 4. Remove dead units (hp <= 0) with iron guard explosion
     const deadUnits: UnitState[] = [];
@@ -397,6 +420,7 @@ export class UnitSystem {
     for (const unit of arrivedUnits) {
       this.eventBus.emit('unit:reached_base', { unit: { ...unit } });
       this.units.delete(unit.id);
+      this.physicsWorld.removeUnit(unit.id);
     }
   }
 
@@ -656,6 +680,7 @@ export class UnitSystem {
     let targetX = -1;
     let targetY = -1;
     let targetDist = Infinity;
+    let targetUnit: UnitState | null = null;
 
     for (const [, other] of allUnits) {
       if (other.owner === unit.owner) continue;
@@ -666,6 +691,7 @@ export class UnitSystem {
         targetDist = d;
         targetX = other.x;
         targetY = other.y;
+        targetUnit = other;
       }
     }
 
@@ -695,7 +721,12 @@ export class UnitSystem {
         unit.inCombat = true;
 
         if (now - unit.lastAttackTime > 2500) {
-          projectileSystem.fireArtilleryShell(unit, targetX, targetY, unit.baseDamage * 2);
+          // Lead the shot using the target's real current velocity, not
+          // just where it happened to be standing when detected.
+          const aimAt = targetUnit
+            ? leadPosition(targetUnit.x, targetUnit.y, targetUnit.vx, targetUnit.vy, ARTILLERY_SHELL_TRAVEL_TIME)
+            : { x: targetX, y: targetY };
+          projectileSystem.fireArtilleryShell(unit, aimAt.x, aimAt.y, unit.baseDamage * 2);
           this.eventBus.emit('projectile:fired', {
             id: 'shell',
             type: 'artillery_shell',
@@ -1266,48 +1297,6 @@ export class UnitSystem {
 
   // ─── Physics helpers ────────────────────────────────────────────────────
 
-  private resolveUnitCollisions(allUnits: Map<string, UnitState>): void {
-    const unitArray = Array.from(allUnits.values()).filter(u => !u.reachedBase && !u.attachedGearId);
-
-    for (let i = 0; i < unitArray.length; i++) {
-      const a = unitArray[i];
-      for (let j = i + 1; j < unitArray.length; j++) {
-        const b = unitArray[j];
-
-        // Aether phantom skips collision with enemy units (but collides with friendly)
-        if (a.type === 'aether_phantom' && a.owner !== b.owner) continue;
-        if (b.type === 'aether_phantom' && b.owner !== a.owner) continue;
-
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const d = Math.sqrt(dx * dx + dy * dy);
-        const minDist = a.size + b.size;
-
-        if (d < minDist && d > 0.01) {
-          const overlap = minDist - d;
-          const nx = dx / d;
-          const ny = dy / d;
-          const totalMass = a.mass + b.mass;
-
-          // Push proportional to inverse mass
-          const pushA = overlap * (b.mass / totalMass);
-          const pushB = overlap * (a.mass / totalMass);
-
-          a.x -= nx * pushA;
-          a.y -= ny * pushA;
-          b.x += nx * pushB;
-          b.y += ny * pushB;
-
-          // Re-clamp
-          a.x = Math.max(0, Math.min(WORLD_WIDTH, a.x));
-          a.y = Math.max(LANE_Y_MIN, Math.min(LANE_Y_MAX, a.y));
-          b.x = Math.max(0, Math.min(WORLD_WIDTH, b.x));
-          b.y = Math.max(LANE_Y_MIN, Math.min(LANE_Y_MAX, b.y));
-        }
-      }
-    }
-  }
-
   private triggerIronGuardExplosion(
     unit: UnitState,
     allUnits: Map<string, UnitState>,
@@ -1320,7 +1309,11 @@ export class UnitSystem {
     // chain-detonation) react to "something exploded here".
     this.eventBus.emit('aoe:explosion', { x: unit.x, y: unit.y, radius, owner: unit.owner });
 
-    // Damage all units within radius (both sides)
+    // Damage all units within radius (both sides). Knockback is applied
+    // uniformly for every explosion source, including this one, by the
+    // onAoeExplosion listener reacting to the 'aoe:explosion' event emitted
+    // just above -- previously no explosion applied any pushback at all,
+    // however close a survivor stood.
     for (const [, other] of allUnits) {
       if (other.id === unit.id) continue;
       if (other.reachedBase) continue;
@@ -1384,6 +1377,7 @@ export class UnitSystem {
 
   removeUnit(unitId: string): void {
     this.units.delete(unitId);
+    this.physicsWorld.removeUnit(unitId);
   }
 
   /** Elite unlock tech per core spawner base type. */
@@ -1515,9 +1509,11 @@ export class UnitSystem {
   destroy(): void {
     this.eventBus.off('gear:full_rotation', this.onGearFullRotation);
     this.eventBus.off('unit:died', this.onUnitDied);
+    this.eventBus.off('aoe:explosion', this.onAoeExplosion);
     this.coldZones = [];
     this.gearsWithColdFriction.clear();
     this.slimePuddles = [];
     this.gearsWithPuddleFriction.clear();
+    this.physicsWorld.destroy();
   }
 }

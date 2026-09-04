@@ -2,7 +2,7 @@ import { GearState } from '../types/gear.types';
 import { World } from '../world/World';
 import { GearMeshGraph } from '../world/GearMeshGraph';
 import { EventBus } from './EventBus';
-import { GEAR_DEFINITIONS, INERTIA_DENSITY, gearRadius, motorTorque, motorOutput, crackLevelFor } from '../constants/gear.constants';
+import { GEAR_DEFINITIONS, gearInertia, motorTorque, motorOutput, crackLevelFor } from '../constants/gear.constants';
 import {
   AMPLIFIER_CHAIN_MULTIPLIER,
   COMBO_CHAIN_MIN_GEARS,
@@ -217,12 +217,9 @@ export class RotationPhysicsSystem {
           if (!neighbor || neighbor.isBurntOut) continue;
 
           const neighborTeeth = neighbor.teeth;
-          const neighborR = gearRadius(neighborTeeth);
 
           // Torque attenuation by gear ratio
           const neighborTorque = currentTorque * (currentTeeth / neighborTeeth);
-          const inertiaNeighbor = Math.PI * neighborR * neighborR * INERTIA_DENSITY;
-          void inertiaNeighbor; // computed but implicit in omega
           const neighborOmega = meshOmega(currentOmega, currentTeeth, neighborTeeth);
 
           // Apply overclock boost from adjacent overclock gears
@@ -329,8 +326,7 @@ export class RotationPhysicsSystem {
       if (!g) continue;
 
       const ratio = omegaRatios.get(gId) ?? 0;
-      const r = gearRadius(g.teeth);
-      const inertia = Math.PI * r * r * INERTIA_DENSITY;
+      const inertia = gearInertia(g.teeth);
       chainEffectiveInertia += inertia * (ratio * ratio);
       totalFrictionLoad += g.frictionLoad;
 

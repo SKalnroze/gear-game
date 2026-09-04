@@ -19,6 +19,7 @@
     "docs:check": "node tools/gen-design-docs.mjs --check"
   },
   "dependencies": {
+    "matter-js": "^0.20.0",
     "phaser": "^3.90.0",
     "phaser3-rex-plugins": "^1.80.19",
     "tone": "^15.1.22"
@@ -26,6 +27,7 @@
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@rollup/rollup-win32-x64-msvc": "^4.9.0",
+    "@types/matter-js": "^0.19.8",
     "@vitest/coverage-v8": "^4.0.18",
     "happy-dom": "^20.8.3",
     "typescript": "~5.7.2",

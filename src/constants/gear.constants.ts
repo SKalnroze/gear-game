@@ -1,3 +1,4 @@
+import Matter from 'matter-js';
 import { GearDefinition, GearType } from '../types/gear.types';
 
 // ─── Teeth-based sizing ───────────────────────────────────────────────────────
@@ -101,7 +102,40 @@ export function mineDamage(teeth: number): number {
 // ─── Physics constants ───────────────────────────────────────────────────────
 
 export const GEAR_MESH_TOLERANCE = 4;  // pixels
-export const INERTIA_DENSITY = 0.01;
+
+/**
+ * Density fed to Matter.js to compute each gear's real rotational inertia
+ * from its actual geometry (a solid disk of radius `gearRadius(teeth)`),
+ * instead of the old hand-rolled `π·r²·density` "inertia" figure that was
+ * really just mass reused as if it were rotational inertia. Real inertia
+ * scales with r⁴ (mass ∝ r², inertia ∝ mass·r²), not r² -- which is what
+ * makes tooth count cost genuine chain speed now: a reflected-inertia term
+ * that used to cancel exactly against the mesh-ratio weighting (the
+ * documented "Gear Precision has no trade-off" divergence) no longer does,
+ * because real inertia and the ratio² weighting no longer scale the same
+ * way. Calibrated so a lone 10-tooth motor's equilibrium omega lands where
+ * it always did (~4.07 rad/s) -- the pacing is preserved, only the *shape*
+ * of how size costs speed changed, from "not at all" to "quadratically."
+ */
+export const INERTIA_DENSITY = 0.000008158;
+
+const gearInertiaCache = new Map<number, { mass: number; inertia: number }>();
+
+/** Real mass and rotational inertia for a `teeth`-sized gear, from Matter.js's own solid-disk physics. */
+export function gearPhysics(teeth: number): { mass: number; inertia: number } {
+  let cached = gearInertiaCache.get(teeth);
+  if (!cached) {
+    const body = Matter.Bodies.circle(0, 0, gearRadius(teeth), { density: INERTIA_DENSITY });
+    cached = { mass: body.mass, inertia: body.inertia };
+    gearInertiaCache.set(teeth, cached);
+  }
+  return cached;
+}
+
+/** Real rotational inertia for a `teeth`-sized gear -- see `gearPhysics`. */
+export function gearInertia(teeth: number): number {
+  return gearPhysics(teeth).inertia;
+}
 
 // ─── Gear definitions (per-type, properties scale with teeth) ────────────────
 

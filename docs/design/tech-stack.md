@@ -11,6 +11,7 @@ What the game is built with, and why.
 | Layer | Choice | Reasoning |
 |---|---|---|
 | Engine | **Phaser 3** | 2D, canvas/WebGL, scene-graph based. The game is entirely procedural vector drawing, so the engine is used for its scene, input and tween systems rather than its asset pipeline. |
+| Physics | **Matter.js** (standalone, not the Phaser plugin) | Real rigidbody mass/inertia for gears and units -- see [Gears](gears.md#meshing) and [Units](units.md#movement-and-the-lane). Used directly rather than through `this.matter.*` so systems stay Phaser-free and testable headless in Vitest, matching the rest of the simulation layer. |
 | Language | **TypeScript**, strict | The simulation is a web of systems exchanging typed events; strict mode is doing real work here. |
 | Build | **Vite** | Fast dev server, minimal config. Phaser is split into its own chunk. |
 | UI widgets | **phaser3-rex-plugins** | Buttons, dropdowns and sliders inside a canvas are not worth writing twice. Wrapped by the project's own `Neon*` component layer. |

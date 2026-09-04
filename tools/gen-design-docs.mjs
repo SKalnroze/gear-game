@@ -315,7 +315,7 @@ function buildBlocks(m) {
     [
       ['`GEAR_MODULE`', num(gear.GEAR_MODULE), 'px of radius per tooth'],
       ['`GEAR_MESH_TOLERANCE`', num(gear.GEAR_MESH_TOLERANCE), 'px of slack when deciding two gears mesh'],
-      ['`INERTIA_DENSITY`', num(gear.INERTIA_DENSITY), 'mass per unit area, sets chain sluggishness'],
+      ['`INERTIA_DENSITY`', String(gear.INERTIA_DENSITY), 'density fed to Matter.js for real gear mass/inertia -- sets chain sluggishness'],
       ['`MIN_TEETH` / `MAX_TEETH`', `${num(gear.MIN_TEETH)} / ${num(gear.MAX_TEETH)}`, 'tooth count bounds'],
       ['`DEFAULT_TEETH`', num(gear.DEFAULT_TEETH), 'calibration point for every scaling formula'],
     ],

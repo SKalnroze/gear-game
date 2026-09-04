@@ -48,7 +48,7 @@ Adding a **second motor** is the only way to speed a chain up without removing g
 
 The clearest way to read the economy is to follow the first minute.
 
-**Starting position.** 30 gold, +2 gold/sec, and three unlocked gears: motor, infantry spawner, researcher.
+**Starting position.** 30 gold, +2 gold/sec, and three unlocked gears: motor, infantry spawner, researcher. Both sides also start with a free, pre-placed motor + crossbow tower behind it, meshed and already defending the lane — a pure buff on top of the gold/income above, not paid for out of the opening purse. Either side may sell them like any placed gear if they'd rather have the gold. This directly shortens the previously-uncontested opening: without it, the first defended position took as long as a player chose to build one; the free tower means an early rush is never entirely free to walk in.
 
 **The first build.** A gear costs `10 + teeth × 0.5`, so a 10-tooth gear is 15 gold. Motor plus infantry spawner is exactly 30 gold — **the starting purse buys precisely one working machine and nothing else.** That is a deliberate opening: there is exactly one sensible first move.
 
@@ -58,7 +58,11 @@ The clearest way to read the economy is to follow the first minute.
 
 **What that third gear costs you.** Adding any gear drops the chain to 0.216 rot/s. Unit output falls by a third; spend falls to 1.08 gold/sec, so net income rises to +0.92. The player is choosing between *army now* and *savings for a bigger machine*.
 
-**Time to win.** A base has 100 HP and an infantry deals 3 on arrival, so **34 infantry** end a match. At the opening rate that is 105 seconds of completely uncontested arrivals — the floor on match length, before any defence exists.
+**Time to win.** A base has 100 HP and an infantry deals 3 on arrival, so **34 infantry** end a match. At the opening rate that is 105 seconds of completely uncontested arrivals — the floor on match length, before any defence exists — though the free starting tower above now contests the very earliest arrivals.
+
+### Reading the trend, not just the total
+
+The resource row (`SlidingPanel`) shows each resource's raw total alongside a trailing-average rate — e.g. `G 42 (+1.8/s)` — computed over the last 60 seconds of *organic* change: passive income, mining, converting, spawner upkeep, ammo/repair costs. Manual, discrete actions (placing or selling a gear, spending or cancelling research, using an ability) are deliberately excluded from the sample, so the number answers "what is my machine doing for me right now," not "what did I just spend on that gear." The rate is omitted once it's negligible (under 0.05/sec) rather than showing a misleading `+0.0/s`.
 
 ---
 

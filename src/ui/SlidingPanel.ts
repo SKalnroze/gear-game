@@ -69,6 +69,11 @@ export class SlidingPanel {
   private tabButtons: Map<TabName, { bg: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text; underline: Phaser.GameObjects.Rectangle }> = new Map();
   private tabBodies: Map<TabName, Phaser.GameObjects.Container> = new Map();
 
+  // Resource-rate tooltip: trailing-average g/s (etc) shown next to each total
+  private economySystem: import('../systems/EconomySystem').EconomySystem | null = null;
+  private lastResources: { gold: number; iron: number; crystal: number; aether: number } = { gold: 30, iron: 0, crystal: 0, aether: 0 };
+  private rateRefreshEvent: Phaser.Time.TimerEvent | null = null;
+
   constructor(scene: Phaser.Scene, canvasW: number, canvasH: number, isPractice: boolean = false) {
     this.scene = scene;
     this.canvasW = canvasW;
@@ -203,10 +208,8 @@ export class SlidingPanel {
     // Economy updates — gold_changed fires on earn/spend, resources_changed on mining
     const updateResources = (owner: string, resources: { gold: number; iron: number; crystal: number; aether: number }) => {
       if (owner === 'player') {
-        this.goldText.setText(`G ${Math.floor(resources.gold)}`);
-        this.ironText.setText(`Fe ${Math.floor(resources.iron)}`);
-        this.crystalText.setText(`Cr ${Math.floor(resources.crystal)}`);
-        this.aetherText.setText(`Ae ${Math.floor(resources.aether)}`);
+        this.lastResources = resources;
+        this.renderResourceTexts();
       }
     };
     eventBus.on('economy:gold_changed', ({ owner, resources }) => updateResources(owner, resources));
@@ -235,6 +238,36 @@ export class SlidingPanel {
     eventBus.on('ui:gear_drag_end', onActionEnd);
     eventBus.on('ui:gear_pickup_start', onActionStart);
     eventBus.on('ui:gear_pickup_end', onActionEnd);
+  }
+
+  /** Wires the trailing-average rate tooltip -- called once systems are ready. */
+  setEconomySystem(economySystem: import('../systems/EconomySystem').EconomySystem): void {
+    this.economySystem = economySystem;
+    this.renderResourceTexts();
+    // Rates drift continuously (samples age out of the 60s window even with
+    // no new earn/spend), not just on economy:*_changed, so refresh on a timer.
+    this.rateRefreshEvent = this.scene.time.addEvent({
+      delay: 1000,
+      loop: true,
+      callback: () => this.renderResourceTexts(),
+    });
+  }
+
+  /** Formats "G 42 (+1.8/s)" style labels, rate suffix omitted until wired up. */
+  private formatResource(label: string, value: number, key: 'gold' | 'iron' | 'crystal' | 'aether'): string {
+    const base = `${label} ${Math.floor(value)}`;
+    const rate = this.economySystem?.getRate('player', key) ?? 0;
+    if (Math.abs(rate) < 0.05) return base;
+    const sign = rate > 0 ? '+' : '';
+    return `${base} (${sign}${rate.toFixed(1)}/s)`;
+  }
+
+  private renderResourceTexts(): void {
+    const r = this.lastResources;
+    this.goldText.setText(this.formatResource('G', r.gold, 'gold'));
+    this.ironText.setText(this.formatResource('Fe', r.iron, 'iron'));
+    this.crystalText.setText(this.formatResource('Cr', r.crystal, 'crystal'));
+    this.aetherText.setText(this.formatResource('Ae', r.aether, 'aether'));
   }
 
   private makeResText(x: number, y: number, text: string, color: string): Phaser.GameObjects.Text {

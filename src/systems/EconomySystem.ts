@@ -16,6 +16,9 @@ import {
 import { UnitSystem } from './UnitSystem';
 import { distance } from '../utils/MathUtils';
 
+/** Window for the HUD's trailing resource-rate tooltip. */
+const RATE_WINDOW_MS = 60000;
+
 /**
  * Manages gold, iron, crystal, and aether for both player and AI.
  * Gold: passive income, spent on gear placement and unit spawning
@@ -39,6 +42,17 @@ export class EconomySystem {
 
   private lastGoldTick: number = 0;
   private practiceMode: boolean = false;
+  private now: number = 0;
+
+  /** Rolling per-resource, per-owner samples of organic (non-purchase) net
+   * change, used to compute the HUD's trailing-average rate tooltip. Manual
+   * purchases (gear placement/sale, research spend/refund, ability use) are
+   * deliberately not recorded here -- the tooltip answers "what is my machine
+   * doing for me," not "what did I just spend." */
+  private rateSamples: Record<'player' | 'ai', Record<keyof ResourceState, Array<{ t: number; delta: number }>>> = {
+    player: { gold: [], iron: [], crystal: [], aether: [] },
+    ai: { gold: [], iron: [], crystal: [], aether: [] },
+  };
 
   private readonly onGearFullRotation = ({ gearId, owner }: { gearId: string; owner: 'player' | 'ai' }) => {
     const gear = this.world.getGear(gearId);
@@ -207,10 +221,38 @@ export class EconomySystem {
   }
 
   update(now: number): void {
+    this.now = now;
     if (now - this.lastGoldTick >= GOLD_TICK_INTERVAL) {
       this.lastGoldTick = now;
       this.tickGold();
     }
+    this.pruneRateSamples(now);
+  }
+
+  private pruneRateSamples(now: number): void {
+    for (const owner of ['player', 'ai'] as const) {
+      for (const key of ['gold', 'iron', 'crystal', 'aether'] as const) {
+        const samples = this.rateSamples[owner][key];
+        while (samples.length > 0 && now - samples[0].t > RATE_WINDOW_MS) samples.shift();
+      }
+    }
+  }
+
+  private recordSample(owner: 'player' | 'ai', key: keyof ResourceState, delta: number): void {
+    this.rateSamples[owner][key].push({ t: this.now, delta });
+  }
+
+  /**
+   * Trailing average rate of organic change (per second) for a resource,
+   * over the last RATE_WINDOW_MS -- or since match start if shorter.
+   * Excludes manual purchases (see rateSamples doc comment above).
+   */
+  getRate(owner: 'player' | 'ai', key: keyof ResourceState): number {
+    const samples = this.rateSamples[owner][key];
+    if (samples.length === 0) return 0;
+    const total = samples.reduce((sum, s) => sum + s.delta, 0);
+    const windowMs = Math.max(1000, Math.min(RATE_WINDOW_MS, this.now));
+    return total / (windowMs / 1000);
   }
 
   private tickGold(): void {
@@ -226,19 +268,21 @@ export class EconomySystem {
     }
   }
 
-  earnGold(owner: 'player' | 'ai', amount: number): void {
+  earnGold(owner: 'player' | 'ai', amount: number, trackForRate: boolean = true): void {
     const res = owner === 'player' ? this.playerResources : this.aiResources;
     res.gold += amount;
+    if (trackForRate) this.recordSample(owner, 'gold', amount);
     this.eventBus.emit('economy:gold_changed', { owner, resources: { ...res } });
   }
 
-  spendGold(owner: 'player' | 'ai', amount: number): boolean {
+  spendGold(owner: 'player' | 'ai', amount: number, trackForRate: boolean = true): boolean {
     const res = owner === 'player' ? this.playerResources : this.aiResources;
     if (res.gold < amount) {
       this.eventBus.emit('economy:insufficient_funds', { owner, resource: 'gold', needed: amount });
       return false;
     }
     res.gold -= amount;
+    if (trackForRate) this.recordSample(owner, 'gold', -amount);
     this.eventBus.emit('economy:gold_changed', { owner, resources: { ...res } });
     return true;
   }
@@ -248,19 +292,21 @@ export class EconomySystem {
     return res.gold >= amount;
   }
 
-  earnResource(owner: 'player' | 'ai', type: 'iron' | 'crystal' | 'aether', amount: number): void {
+  earnResource(owner: 'player' | 'ai', type: 'iron' | 'crystal' | 'aether', amount: number, trackForRate: boolean = true): void {
     const res = owner === 'player' ? this.playerResources : this.aiResources;
     res[type] += amount;
+    if (trackForRate) this.recordSample(owner, type, amount);
     this.eventBus.emit('economy:resources_changed', { owner, resources: { ...res } });
   }
 
-  spendResource(owner: 'player' | 'ai', type: 'iron' | 'crystal' | 'aether', amount: number): boolean {
+  spendResource(owner: 'player' | 'ai', type: 'iron' | 'crystal' | 'aether', amount: number, trackForRate: boolean = true): boolean {
     const res = owner === 'player' ? this.playerResources : this.aiResources;
     if (res[type] < amount) {
       this.eventBus.emit('economy:insufficient_funds', { owner, resource: type, needed: amount });
       return false;
     }
     res[type] -= amount;
+    if (trackForRate) this.recordSample(owner, type, -amount);
     this.eventBus.emit('economy:resources_changed', { owner, resources: { ...res } });
     return true;
   }

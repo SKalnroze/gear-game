@@ -96,12 +96,12 @@ export class TechSystem {
     // If something is already in progress, add to queue instead
     if (tech.inProgress) {
       tech.queue.push(nodeId);
-      this.economySystem.spendGold(owner, node.goldCost);
+      this.economySystem.spendGold(owner, node.goldCost, false);
       this.eventBus.emit('tech:queued', { nodeId, owner });
       return true;
     }
 
-    this.economySystem.spendGold(owner, node.goldCost);
+    this.economySystem.spendGold(owner, node.goldCost, false);
     tech.inProgress = nodeId;
     tech.progressStartedAt = this.clock.now;
 
@@ -117,7 +117,7 @@ export class TechSystem {
     if (tech.inProgress === nodeId) {
       tech.inProgress = undefined;
       tech.progressStartedAt = undefined;
-      this.economySystem.earnGold(owner, node.goldCost);
+      this.economySystem.earnGold(owner, node.goldCost, false);
       // Auto-advance queue (gold already spent at queue time)
       if (tech.queue.length > 0) {
         const next = tech.queue.shift()!;
@@ -132,7 +132,7 @@ export class TechSystem {
     const queueIdx = tech.queue.indexOf(nodeId);
     if (queueIdx !== -1) {
       tech.queue.splice(queueIdx, 1);
-      this.economySystem.earnGold(owner, node.goldCost);
+      this.economySystem.earnGold(owner, node.goldCost, false);
       this.eventBus.emit('tech:cancelled', { nodeId, owner });
       return true;
     }

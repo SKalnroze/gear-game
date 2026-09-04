@@ -967,7 +967,7 @@ export class AIController {
         if (motorToSell) {
           const refund = this.gearSystem.sellGear(motorToSell.id);
           if (refund !== null) {
-            this.economySystem.earnGold(this.owner, refund);
+            this.economySystem.earnGold(this.owner, refund, false);
             return this.withReason(
               { type: 'idle' },
               `recycled defense motor ${motorToSell.id} for ${refund}g — awaiting defensive gear placement`,
@@ -1224,14 +1224,14 @@ export class AIController {
       case 'place_gear': {
         if (!decision.gearType || !decision.teeth || decision.x === undefined || decision.y === undefined) break;
         const cost = this.getGearPlacementCost(decision.teeth);
-        if (this.economySystem.spendGold(this.owner, cost)) {
+        if (this.economySystem.spendGold(this.owner, cost, false)) {
           const placed = this.gearSystem.tryPlace(
             decision.gearType, decision.teeth, decision.x, decision.y, this.owner,
           );
           // tryPlace can refuse (zone, overlap, tech gate). The gold was
           // already spent, so refund it rather than silently burning it.
           if (!placed) {
-            this.economySystem.earnGold(this.owner, cost);
+            this.economySystem.earnGold(this.owner, cost, false);
             this.log(`placement refused for ${decision.gearType} @ ${decision.x},${decision.y} — refunded ${cost}g`);
           }
         }

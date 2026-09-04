@@ -141,6 +141,7 @@ export class UIScene extends Phaser.Scene {
 
     // ── SlidingPanel ──────────────────────────────────────────────────────
     this.slidingPanel = new SlidingPanel(this, this.scale.width, this.scale.height, data.isPractice);
+    this.slidingPanel.setEconomySystem(data.economySystem);
 
     // In spectate mode the current view tech may differ from playerTech
     const viewTech = this.isSpectate && this.spectateOwner === 'ai'

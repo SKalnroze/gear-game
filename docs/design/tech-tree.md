@@ -23,10 +23,10 @@ Research runs on game time, so pausing genuinely pauses it, and game speed scale
 |---|---|---|---|
 | Gears | 13 | 1205 | 612s |
 | Units | 13 | 760 | 675s |
-| Economy | 13 | 820 | 582s |
+| Economy | 13 | 865 | 612s |
 | Abilities | 2 | 100 | 60s |
 | Defense | 9 | 580 | 363s |
-| **All** | **50** | **3465** | **2292s** |
+| **All** | **50** | **3510** | **2322s** |
 <!-- END GENERATED: tech.summary -->
 
 ## Shape
@@ -95,20 +95,22 @@ Note that the elite unlocks and `Total War` sit at the end of long chains, so ro
 
 The two lines are a genuine choice: gold nodes pay immediately and passively, mining nodes pay more but only if you build for them.
 
+**All three mining nodes are researchable in parallel from the start** — Iron, Crystal, and Aether Mining share no prerequisite chain between them, so a player can diversify into any resource, or several at once, as soon as they can afford the research. This was previously a strict `iron → crystal → aether` gate; removing it is deliberate, in service of letting players (and the AI) explore build variety early rather than being funneled down one mining line before the others even unlock. Their gold/time costs are priced standalone rather than assuming prior mining investment: Aether Mining in particular costs meaningfully more than it used to (150g/110s, up from 100g/75s) precisely because reaching it is no longer proof you already built iron and crystal infrastructure — rushing straight to the best conversion rate is now a real, expensive gamble rather than a late-game payoff for earlier investment.
+
 <!-- BEGIN GENERATED: tech.economy -->
 | Node | Tier | Gold | Time | Requires | Effects |
 |---|---|---|---|---|---|
 | **Gold Mining I**<br>`gold_mining_1` | T1 | 15 | 12s | — | `gold_bonus_per_sec` (value=1) |
 | **Power Efficiency I**<br>`power_efficiency_1` | T1 | 20 | 15s | — | `power_bonus_pct` (value=0.1) |
 | **Iron Mining**<br>`unlock_iron_mining` | T1 | 20 | 24s | — | `unlock_gear` (gearType=iron_miner) |
+| **Crystal Mining**<br>`unlock_crystal_mining` | T1 | 45 | 40s | — | `unlock_gear` (gearType=crystal_miner) |
+| **Aether Mining**<br>`unlock_aether_mining` | T1 | 150 | 110s | — | `unlock_gear` (gearType=aether_miner) |
 | **Iron Smelting**<br>`iron_to_gold` | T2 | 35 | 30s | `unlock_iron_mining` | `unlock_gear` (gearType=iron_converter) |
 | **Gold Mining II**<br>`gold_mining_2` | T2 | 45 | 27s | `gold_mining_1` | `gold_bonus_per_sec` (value=2) |
-| **Crystal Mining**<br>`unlock_crystal_mining` | T2 | 50 | 45s | `unlock_iron_mining` | `unlock_gear` (gearType=crystal_miner) |
 | **Power Efficiency II**<br>`power_efficiency_2` | T2 | 55 | 33s | `power_efficiency_1` | `power_bonus_pct` (value=0.15) |
 | **Crystal Refining**<br>`crystal_to_gold` | T3 | 60 | 54s | `unlock_crystal_mining`<br>`iron_to_gold` | `unlock_gear` (gearType=crystal_converter) |
 | **Gold Mining III**<br>`gold_mining_3` | T3 | 80 | 42s | `gold_mining_2` | `gold_bonus_per_sec` (value=3) |
 | **Aether Transmutation**<br>`aether_to_gold` | T3 | 90 | 75s | `unlock_aether_mining`<br>`crystal_to_gold` | `unlock_gear` (gearType=aether_converter) |
-| **Aether Mining**<br>`unlock_aether_mining` | T3 | 100 | 75s | `unlock_crystal_mining` | `unlock_gear` (gearType=aether_miner) |
 | **Gold Empire**<br>`gold_empire` | T3 | 120 | 72s | `gold_mining_3` | `gold_bonus_per_sec` (value=5) |
 | **Power Overdrive**<br>`power_overdrive` | T3 | 130 | 78s | `power_efficiency_2`<br>`capacitor_upgrade` | `power_bonus_pct` (value=0.25) |
 <!-- END GENERATED: tech.economy -->

@@ -33,6 +33,7 @@ import {
   WORLD_WIDTH, WORLD_HEIGHT,
   EDGE_SCROLL_MARGIN, EDGE_SCROLL_SPEED,
   CANVAS_HEIGHT, PANEL_COLLAPSED_H, PANEL_EXPANDED_H,
+  PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X, LANE_Y_MIN, LANE_Y_MAX,
 } from '../constants/world.constants';
 import { AI_INITIAL_DECISION_DELAY, REPOSITION_COOLDOWN_MS, CAPACITOR_BURST_ROTATIONS, gearPlacementCost } from '../constants/balance.constants';
 import { GameSoundManager } from '../systems/SoundManager';
@@ -249,6 +250,12 @@ export class GameScene extends Phaser.Scene {
       this.gameClock, this.abilitySystem, this.aiAbilitySystem,
     );
     this.unitSystem.setTechSystem(this.techSystem);
+
+    // ─── Starting defenses ───────────────────────────────────────────────
+    // Both sides open with a free, pre-placed motor + crossbow tower behind
+    // it, mirrored across the lane. Pure buff: starting gold/income are
+    // unchanged, and either side may sell these like any placed gear.
+    this.placeStartingDefenses();
 
     // create controllers based on lobby slots
     if (rightAI) {
@@ -548,6 +555,31 @@ export class GameScene extends Phaser.Scene {
     for (const [, mg] of this.mineGraphics) mg.destroy();
     this.mineGraphics.clear();
     eventBus.removeAllListeners();
+  }
+
+  /**
+   * Free pre-placed motor + crossbow tower for both sides, mirrored across
+   * the lane: tower toward the enemy, motor behind it. Placement ignores
+   * gold and tech gating (crossbow_turret_tech isn't researched at match
+   * start) since these are a starting bonus, not a purchase.
+   */
+  private placeStartingDefenses(): void {
+    const laneY = (LANE_Y_MIN + LANE_Y_MAX) / 2;
+    // Motor and tower must sit exactly meshing-distance apart (sum of their
+    // radii) so the tower is actually driven by the motor from the start.
+    const meshGap = gearRadius(DEFAULT_TEETH) * 2;
+    const leftTowerX = PLAYER_ZONE_MAX_X - 260;
+    const rightTowerX = AI_ZONE_MIN_X + 260;
+
+    for (const owner of ['player', 'ai'] as const) {
+      const onRight = owner === 'player' ? this.world.isPlayerOnRight() : !this.world.isPlayerOnRight();
+      const towerX = onRight ? rightTowerX : leftTowerX;
+      // Motor sits behind the tower, i.e. further from the enemy/lane centre.
+      const motorX = onRight ? towerX + meshGap : towerX - meshGap;
+
+      this.gearSystem.tryPlace('motor', DEFAULT_TEETH, motorX, laneY, owner, true);
+      this.gearSystem.tryPlace('crossbow_turret', DEFAULT_TEETH, towerX, laneY, owner, true);
+    }
   }
 
   private wireEvents(): void {
@@ -915,7 +947,7 @@ export class GameScene extends Phaser.Scene {
               this.dragGearType, this.dragGearTeeth, snap.x, snap.y, 'player',
             );
             if (placed) {
-              this.economySystem.spendGold('player', cost);
+              this.economySystem.spendGold('player', cost, false);
             }
           } else if (def) {
             this.showNotEnoughGold();
@@ -1005,7 +1037,7 @@ export class GameScene extends Phaser.Scene {
           const dy = gear.y - clickY;
           if (Math.sqrt(dx * dx + dy * dy) < gearRadius(gear.teeth)) {
             const refund = this.gearSystem.sellGear(gear.id);
-            if (refund !== null) this.economySystem.earnGold(this._playerOwner(), refund);
+            if (refund !== null) this.economySystem.earnGold(this._playerOwner(), refund, false);
             break;
           }
         }

@@ -69,7 +69,7 @@ export class AbilitySystem {
 
     switch (id) {
       case 'power_surge':
-        this.economySystem.earnGold(this.owner, GOLD_SURGE_AMOUNT);
+        this.economySystem.earnGold(this.owner, GOLD_SURGE_AMOUNT, false);
         break;
     }
 

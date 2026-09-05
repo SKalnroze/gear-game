@@ -40,6 +40,7 @@ export interface GameEventMap {
   'unit:died': { unitId: string; owner: 'player' | 'ai' };
   'unit:reached_base': { unit: UnitState };
   'unit:damaged': { unitId: string; damage: number; x: number; y: number };
+  'unit:healed': { unitId: string; amount: number; x: number; y: number };
 
   // Projectile events
   'projectile:fired': { id: string; type: string; owner: 'player' | 'ai'; x: number; y: number };
@@ -49,7 +50,7 @@ export interface GameEventMap {
   'cold_beam:fired': { owner: 'player' | 'ai'; srcX: number; srcY: number; dstX: number; dstY: number };
   'cold_zone:created': { id: string; x: number; y: number; radius: number };
   'cold_zone:expired': { id: string };
-  'slime_puddle:created': { id: string; x: number; y: number; radius: number };
+  'slime_puddle:created': { id: string; x: number; y: number; radius: number; duration: number };
   'slime_puddle:expired': { id: string };
   'sentry:pulse': { owner: 'player' | 'ai'; x: number; y: number; radius: number };
 
@@ -90,6 +91,7 @@ export interface GameEventMap {
   'ui:gear_pickup_start': {};
   'ui:gear_pickup_end': {};
   'ui:teeth_changed': { teeth: number };
+  'ui:teeth_wheel_delta': { delta: number };
   'ui:tech_node_clicked': { nodeId: TechNodeId };
   'ui:tooltip_show': { text: string; x: number; y: number };
   'ui:tooltip_hide': {};
@@ -113,4 +115,7 @@ export interface GameEventMap {
 
   // Spectate events
   'spectate:switch_view': { owner: 'player' | 'ai' };
+
+  // Settings events
+  'settings:changed': {};
 }

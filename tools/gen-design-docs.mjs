@@ -123,8 +123,8 @@ function buildBlocks(m) {
       ['Healer output', '`teeth × 1.5`', num(gear.healerOutput(T)), 'linear'],
       ['Healer radius', '`radius × 3`', `${num(gear.healerRadius(T))} px`, 'linear'],
       ['Turret ammo', '`max(3, round(teeth × 0.5))`', num(gear.turretMaxAmmo(T)), 'linear, floor 3'],
-      ['Crossbow range', '`250 × √(teeth/10)`', `${num(gear.turretRange(T, 'crossbow_turret'))} px`, 'square root'],
-      ['Artillery range', '`400 × √(teeth/10)`', `${num(gear.turretRange(T, 'artillery_turret'))} px`, 'square root'],
+      ['Crossbow turret range', '`size(teeth) × 4 × 0.75`', `${num(gear.turretRange(T, 'crossbow_turret'))} px`, 'linear -- always 0.75x the mobile Crossbow\'s own range'],
+      ['Artillery turret range', '`size(teeth) × 10 × 0.8`', `${num(gear.turretRange(T, 'artillery_turret'))} px`, 'linear -- always 0.8x the mobile Artillery\'s own range'],
     ],
   );
 

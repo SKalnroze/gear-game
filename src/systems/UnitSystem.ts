@@ -1,8 +1,8 @@
 import { UnitState, UnitType, UnitDefinition } from '../types/unit.types';
-import type { GearState } from '../types/gear.types';
+import type { GearState, GearType } from '../types/gear.types';
 import { EventBus } from './EventBus';
 import { UNIT_DEFINITIONS } from '../constants/unit.constants';
-import { gearRadius, crackLevelFor } from '../constants/gear.constants';
+import { gearRadius, crackLevelFor, DEFAULT_TEETH } from '../constants/gear.constants';
 import { WORLD_WIDTH, LANE_Y_MIN, LANE_Y_MAX } from '../constants/world.constants';
 import { randomInt } from '../utils/MathUtils';
 import { World } from '../world/World';
@@ -24,7 +24,7 @@ import {
 } from './unit.utils';
 import { computeDamage, getChainUnitType } from '../constants/unit.constants';
 import { UnitPhysicsWorld } from './UnitPhysicsWorld';
-import { COMBO_CHAIN_MIN_GEARS } from '../constants/balance.constants';
+import { COMBO_CHAIN_MIN_GEARS, CAVALRY_CHARGE_SENSE_RANGE } from '../constants/balance.constants';
 import type { RotationPhysicsSystem } from './RotationPhysicsSystem';
 import type { TechSystem } from './TechSystem';
 
@@ -82,8 +82,11 @@ interface SlimePuddle {
 
 /** Charge acceleration for cavalry (px/s²) */
 const CAVALRY_CHARGE_ACCEL = 200;
-/** Crystal sentinel search range */
-const SENTINEL_ATTACK_RANGE = 500;
+/** Crystal sentinel search range -- was 500 against a 72px firing range at
+ * 10 teeth, a huge detect/fire gap that made it trek across most of the
+ * gap in the open before it could use its kit ("area control, not the
+ * front line"). Tightened to roughly 2x its own firing range instead. */
+const SENTINEL_ATTACK_RANGE = 150;
 /** Infantry/Iron Guard melee range — used when target is within contact */
 const MELEE_CONTACT_DIST = 2; // extra beyond size+size
 /** Cavalry retreat duration (seconds) */
@@ -93,6 +96,24 @@ const SHIELD_AURA_RADIUS = 90;
 const SHIELD_AURA_FACTOR = 0.8;
 /** Refreshed every beam tick (800ms) while the sentinel is active; a bit longer so a brief gap doesn't drop it */
 const SHIELD_AURA_TIMER = 1.2;
+
+/** Saboteur: how far ahead it looks for an enemy gear to sabotage, how
+ * often it can act, how much friction it adds, and how long that friction
+ * lasts before decaying back out. */
+const SABOTEUR_SEEK_RANGE = 400;
+const SABOTEUR_ACTION_COOLDOWN_MS = 2000;
+const SABOTEUR_FRICTION_AMOUNT = 90;
+const SABOTEUR_FRICTION_DURATION_MS = 4000;
+
+/** Raider: how far ahead it looks for a miner/converter to disable, how
+ * often it can re-trigger, and how long the disable lasts. */
+const RAIDER_SEEK_RANGE = 450;
+const RAIDER_ACTION_COOLDOWN_MS = 2500;
+const RAIDER_DISABLE_MS = 5000;
+const RAIDER_TARGET_TYPES: ReadonlySet<GearType> = new Set([
+  'iron_miner', 'crystal_miner', 'aether_miner',
+  'iron_converter', 'crystal_converter', 'aether_converter',
+]);
 
 
 /** Build initial UnitState fields for new fields. */
@@ -137,6 +158,11 @@ export class UnitSystem {
   private gearsWithColdFriction: Set<string> = new Set();
   private slimePuddles: SlimePuddle[] = [];
   private gearsWithPuddleFriction: Set<string> = new Set();
+
+  // Saboteur friction debuffs: additive, so each one must be individually
+  // un-applied on expiry rather than reset to a computed total, the same
+  // reasoning as the cold-zone/slime-puddle friction above.
+  private saboteurDebuffs: { gearId: string; amount: number; expiresAt: number }[] = [];
 
   // Tech modifiers, keyed `${owner}:${unitType}`. These used to be keyed by
   // unit type alone, so a tech node one side researched buffed *both* sides'
@@ -309,7 +335,7 @@ export class UnitSystem {
 
       switch (unit.type) {
         case 'slime':
-          this.updateSlime(unit, deltaSec);
+          this.updateSlime(unit, deltaSec, allUnits, allGears);
           break;
         case 'infantry':
           this.updateInfantry(unit, deltaSec, now, allUnits, allGears);
@@ -341,6 +367,22 @@ export class UnitSystem {
         case 'sentry_unit':
           this.updateSentryUnit(unit, deltaSec, now, allGears);
           break;
+        case 'sapper':
+        case 'skirmish_diver':
+          // Both reuse Infantry's movement/targeting wholesale -- their
+          // identity is entirely in their stats and multipliers (see
+          // UNIT_GEAR_DAMAGE_MULT and COUNTER_TABLE), not a bespoke behavior.
+          this.updateInfantry(unit, deltaSec, now, allUnits, allGears);
+          break;
+        case 'saboteur':
+          this.updateSaboteur(unit, deltaSec, now, allGears);
+          break;
+        case 'raider':
+          this.updateRaider(unit, deltaSec, now, allGears);
+          break;
+        case 'field_medic':
+          this.updateFieldMedic(unit, deltaSec, now, allUnits);
+          break;
         default:
           // Default march
           this.marchForward(unit, deltaSec);
@@ -348,9 +390,11 @@ export class UnitSystem {
       }
     }
 
-    // 1b. Update cold zones (crystal sentinel icy areas) and slime puddles
+    // 1b. Update cold zones (crystal sentinel icy areas), slime puddles,
+    // and expired saboteur friction debuffs.
     this.updateColdZones(now, allUnits, allGears);
     this.updateSlimePuddles(now, allUnits, allGears);
+    this.updateSaboteurDebuffs(now);
 
     // 1c. Apply this frame's pending knockback as a real impulse on the
     // unit's rigidbody -- done after every unit's own behavior update so it
@@ -389,10 +433,13 @@ export class UnitSystem {
         this.eventBus.emit('projectile:hit', { id: 'iron_explode', x: unit.x, y: unit.y, aoeRadius: explosionRadius });
       } else if (unit.type === 'slime') {
         const def = UNIT_DEFINITIONS.slime;
+        // Puddle size and slow strength scale with the size of the slime that
+        // died -- a bigger (higher-teeth-spawner) slime leaves a bigger, stickier puddle.
+        const sizeRatio = unit.size / (DEFAULT_TEETH * 1.2);
         this.createSlimePuddle(
           unit.x, unit.y,
-          def.puddleRadius ?? 50,
-          def.puddleSlowFactor ?? 0.55,
+          (def.puddleRadius ?? 50) * sizeRatio,
+          Math.min(0.9, (def.puddleSlowFactor ?? 0.55) * sizeRatio),
           def.frictionValue ?? 20,
           now,
         );
@@ -446,12 +493,76 @@ export class UnitSystem {
 
   /**
    * Slime never stops to fight and never deals damage -- it exists to pile
-   * up. Always marching (normal collision still applies, unlike Aether
-   * Phantom's pass-through) is exactly what lets a mass of them physically
-   * clog the lane.
+   * up. It steers toward the nearest enemy unit/gear the same way infantry
+   * does, but -- unlike infantry -- never halts at contact range to attack;
+   * it just keeps pushing through, which is what lets a mass of them
+   * physically clog the lane.
    */
-  private updateSlime(unit: UnitState, deltaSec: number): void {
-    this.marchForward(unit, deltaSec);
+  private updateSlime(
+    unit: UnitState,
+    deltaSec: number,
+    allUnits: Map<string, UnitState>,
+    allGears: ReturnType<World['getAllGears']>,
+  ): void {
+    const direction = marchDirection(unit.owner, this.playerRight);
+    const effectiveSpeed = unit.speed * (unit.slowFactor ?? 1);
+
+    let nearestDist2 = 300 * 300;
+    let nearestUnitTarget: UnitState | null = null;
+    for (const [, other] of allUnits) {
+      if (other.owner === unit.owner) continue;
+      if (other.reachedBase) continue;
+      if (!isInFront(unit, other.x, this.playerRight)) continue;
+      const d2 = sqrDist(unit.x, unit.y, other.x, other.y);
+      if (d2 < nearestDist2) {
+        nearestDist2 = d2;
+        nearestUnitTarget = other;
+      }
+    }
+
+    let nearestGearX = 0;
+    let nearestGearY = 0;
+    let nearestGearDist2 = Infinity;
+    let hasGearTarget = false;
+    if (!nearestUnitTarget) {
+      for (const [, gear] of allGears) {
+        if (gear.owner === unit.owner) continue;
+        if (gear.hp <= 0 || gear.isBurntOut) continue;
+        if (!isInFront(unit, gear.x, this.playerRight)) continue;
+        if (!gearInLane(gear.y)) continue;
+        const d2 = sqrDist(unit.x, unit.y, gear.x, gear.y);
+        if (d2 < nearestGearDist2) {
+          nearestGearDist2 = d2;
+          nearestGearX = gear.x;
+          nearestGearY = gear.y;
+          hasGearTarget = true;
+        }
+      }
+    }
+
+    if (nearestUnitTarget) {
+      const dx = nearestUnitTarget.x - unit.x;
+      const dy = nearestUnitTarget.y - unit.y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      unit.vx = (dx / d) * effectiveSpeed;
+      unit.vy = (dy / d) * effectiveSpeed;
+    } else if (hasGearTarget && nearestGearDist2 < 400 * 400) {
+      const dx = nearestGearX - unit.x;
+      const dy = nearestGearY - unit.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > 0.1) {
+        unit.vx = (dx / d) * effectiveSpeed;
+        unit.vy = (dy / d) * effectiveSpeed;
+      } else {
+        unit.vx = direction * effectiveSpeed;
+        unit.vy = 0;
+      }
+    } else {
+      unit.vx = direction * effectiveSpeed;
+      unit.vy = 0;
+    }
+
+    unit.behaviorState = 'marching';
     unit.inCombat = false;
   }
 
@@ -578,12 +689,18 @@ export class UnitSystem {
       return;
     }
 
-    // Only charge toward enemies that are in front
+    // Only charge toward enemies that are in front AND within sensor range --
+    // this used to have no distance cap at all, so a charge accumulated for
+    // as long as *anything* enemy-owned existed anywhere ahead in the lane,
+    // in practice the whole no-man's-land. See CAVALRY_CHARGE_SENSE_RANGE.
+    const senseRange2 = CAVALRY_CHARGE_SENSE_RANGE * CAVALRY_CHARGE_SENSE_RANGE;
     const hasForwardTarget = Array.from(allUnits.values()).some(
-      u => u.owner !== unit.owner && !u.reachedBase && isInFront(unit, u.x, this.playerRight),
+      u => u.owner !== unit.owner && !u.reachedBase && isInFront(unit, u.x, this.playerRight)
+        && sqrDist(unit.x, unit.y, u.x, u.y) <= senseRange2,
     );
     const hasForwardGear = Array.from(allGears.values()).some(
-      g => g.owner !== unit.owner && isInFront(unit, g.x, this.playerRight) && gearInLane(g.y),
+      g => g.owner !== unit.owner && isInFront(unit, g.x, this.playerRight) && gearInLane(g.y)
+        && sqrDist(unit.x, unit.y, g.x, g.y) <= senseRange2,
     );
 
     // If no forward targets, just march forward (don't charge backward)
@@ -871,6 +988,202 @@ export class UnitSystem {
     });
   }
 
+  /**
+   * Saboteur: seeks the nearest enemy gear in the lane and, on contact,
+   * fouls its rotation instead of dealing HP damage -- adds a temporary
+   * friction spike that throttles the whole chain it sits on the same way
+   * a cold zone or slime puddle does (see updateSaboteurDebuffs for the
+   * matching removal). Deliberately never fights units of its own accord;
+   * CombatSystem's generic engagement path handles it being attacked, the
+   * same way it already does for Slime and Sentry Unit.
+   */
+  private updateSaboteur(
+    unit: UnitState,
+    deltaSec: number,
+    now: number,
+    allGears: ReturnType<World['getAllGears']>,
+  ): void {
+    void deltaSec;
+    const effectiveSpeed = unit.speed * (unit.slowFactor ?? 1);
+    const direction = marchDirection(unit.owner, this.playerRight);
+    unit.inCombat = false;
+
+    let target: GearState | null = null;
+    let nearestDist2 = SABOTEUR_SEEK_RANGE * SABOTEUR_SEEK_RANGE;
+
+    for (const [, gear] of allGears) {
+      if (gear.owner === unit.owner) continue;
+      if (gear.hp <= 0 || gear.isBurntOut) continue;
+      if (!isInFront(unit, gear.x, this.playerRight)) continue;
+      if (!gearInLane(gear.y)) continue;
+      const d2 = sqrDist(unit.x, unit.y, gear.x, gear.y);
+      if (d2 < nearestDist2) {
+        nearestDist2 = d2;
+        target = gear;
+      }
+    }
+
+    if (!target) {
+      unit.vx = direction * effectiveSpeed;
+      unit.vy = 0;
+      unit.behaviorState = 'marching';
+      return;
+    }
+
+    const dx = target.x - unit.x;
+    const dy = target.y - unit.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    const contactDist = unit.size + gearRadius(target.teeth) + MELEE_CONTACT_DIST;
+
+    if (d <= contactDist) {
+      unit.vx = 0;
+      unit.vy = 0;
+      unit.behaviorState = 'attacking';
+
+      if (now - unit.lastAttackTime > SABOTEUR_ACTION_COOLDOWN_MS) {
+        unit.lastAttackTime = now;
+        target.frictionLoad = (target.frictionLoad ?? 0) + SABOTEUR_FRICTION_AMOUNT;
+        if (this.world) this.world.updateGear(target);
+        this.saboteurDebuffs.push({
+          gearId: target.id,
+          amount: SABOTEUR_FRICTION_AMOUNT,
+          expiresAt: now + SABOTEUR_FRICTION_DURATION_MS,
+        });
+        this.eventBus.emit('gear:rotation_result', {
+          gearId: target.id, owner: unit.owner, text: 'JAMMED', color: 0xff4444,
+        });
+      }
+    } else {
+      unit.vx = (dx / d) * effectiveSpeed;
+      unit.vy = (dy / d) * effectiveSpeed;
+      unit.behaviorState = 'marching';
+    }
+  }
+
+  /** Un-applies expired saboteur friction debuffs -- each one added a fixed
+   * amount, so removal must subtract that same amount back out rather than
+   * resetting to a freshly-computed total. */
+  private updateSaboteurDebuffs(now: number): void {
+    if (this.saboteurDebuffs.length === 0 || !this.world) return;
+    const remaining: typeof this.saboteurDebuffs = [];
+    for (const debuff of this.saboteurDebuffs) {
+      if (now < debuff.expiresAt) {
+        remaining.push(debuff);
+        continue;
+      }
+      const gear = this.world.getGear(debuff.gearId);
+      if (gear) {
+        gear.frictionLoad = Math.max(0, (gear.frictionLoad ?? 0) - debuff.amount);
+        this.world.updateGear(gear);
+      }
+    }
+    this.saboteurDebuffs = remaining;
+  }
+
+  /**
+   * Raider: seeks the nearest enemy miner/converter gear *within the lane*
+   * and, on contact, disables it instead of dealing HP damage --
+   * EconomySystem checks `disabledUntil` and withholds that gear's
+   * production on rotation until it expires. Like every marching unit it
+   * cannot reach a gear built off-lane -- keeping mining chains off-lane
+   * keeps them safe from this entirely, the same trade-off that already
+   * protects them from everything else. Never fights units of its own
+   * accord, same as Saboteur.
+   */
+  private updateRaider(
+    unit: UnitState,
+    deltaSec: number,
+    now: number,
+    allGears: ReturnType<World['getAllGears']>,
+  ): void {
+    void deltaSec;
+    const effectiveSpeed = unit.speed * (unit.slowFactor ?? 1);
+    const direction = marchDirection(unit.owner, this.playerRight);
+    unit.inCombat = false;
+
+    let target: GearState | null = null;
+    let nearestDist2 = RAIDER_SEEK_RANGE * RAIDER_SEEK_RANGE;
+
+    for (const [, gear] of allGears) {
+      if (gear.owner === unit.owner) continue;
+      if (gear.hp <= 0 || gear.isBurntOut) continue;
+      if (!RAIDER_TARGET_TYPES.has(gear.type)) continue;
+      if (!isInFront(unit, gear.x, this.playerRight)) continue;
+      if (!gearInLane(gear.y)) continue;
+      const d2 = sqrDist(unit.x, unit.y, gear.x, gear.y);
+      if (d2 < nearestDist2) {
+        nearestDist2 = d2;
+        target = gear;
+      }
+    }
+
+    if (!target) {
+      unit.vx = direction * effectiveSpeed;
+      unit.vy = 0;
+      unit.behaviorState = 'marching';
+      return;
+    }
+
+    const dx = target.x - unit.x;
+    const dy = target.y - unit.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    const contactDist = unit.size + gearRadius(target.teeth) + MELEE_CONTACT_DIST;
+
+    if (d <= contactDist) {
+      unit.vx = 0;
+      unit.vy = 0;
+      unit.behaviorState = 'attacking';
+
+      if (now - unit.lastAttackTime > RAIDER_ACTION_COOLDOWN_MS) {
+        unit.lastAttackTime = now;
+        target.disabledUntil = now + RAIDER_DISABLE_MS;
+        if (this.world) this.world.updateGear(target);
+        this.eventBus.emit('gear:rotation_result', {
+          gearId: target.id, owner: unit.owner, text: 'RAIDED', color: 0xff8844,
+        });
+      }
+    } else {
+      unit.vx = (dx / d) * effectiveSpeed;
+      unit.vy = (dy / d) * effectiveSpeed;
+      unit.behaviorState = 'marching';
+    }
+  }
+
+  /**
+   * Field Medic: marches with the army and never fights (deals no damage,
+   * baseDamage 0) -- every couple of seconds it pulses a heal to nearby
+   * allied units, the mobile counterpart to the stationary Healer gear's
+   * aura. Never targets gears at all.
+   */
+  private updateFieldMedic(
+    unit: UnitState,
+    deltaSec: number,
+    now: number,
+    allUnits: Map<string, UnitState>,
+  ): void {
+    this.marchForward(unit, deltaSec);
+    unit.inCombat = false;
+
+    const def = UNIT_DEFINITIONS.field_medic;
+    const interval = def.healPulseIntervalMs ?? 2000;
+    if (now - unit.lastAttackTime < interval) return;
+    unit.lastAttackTime = now;
+
+    const radius = def.healRadius ?? 90;
+    const healAmt = def.healAmount ?? 6;
+
+    for (const [, ally] of allUnits) {
+      if (ally.owner !== unit.owner) continue;
+      if (ally.id === unit.id) continue;
+      if (ally.reachedBase || ally.hp >= ally.maxHp) continue;
+      const d = distance(unit.x, unit.y, ally.x, ally.y);
+      if (d > radius) continue;
+      const actualHeal = Math.min(ally.maxHp - ally.hp, healAmt);
+      ally.hp += actualHeal;
+      this.eventBus.emit('unit:healed', { unitId: ally.id, amount: actualHeal, x: ally.x, y: ally.y });
+    }
+  }
+
   private updateIronGuard(
     unit: UnitState,
     deltaSec: number,
@@ -1001,10 +1314,14 @@ export class UnitSystem {
       const d = distance(unit.x, unit.y, other.x, other.y);
       const contactDist = unit.size + other.size;
       if (d < contactDist) {
-        // Phantom deals damage proportional to overlap intensity
+        // Phantom deals damage proportional to overlap intensity. Self-damage
+        // scales off what it's passing *through* (other.baseDamage), not its
+        // own stat -- previously a flat rate off its own baseDamage meant
+        // phasing through a 10-HP Slime cost exactly as much as phasing
+        // through an 80-HP Iron Guard.
         const overlapFraction = 1 - d / contactDist;
         const enemyDmg = computeDamage(unit.type, other, unit.baseDamage * 1.8 * deltaSec * overlapFraction);
-        const selfDmg   = computeDamage(other.type, unit, unit.baseDamage * 0.8 * deltaSec * overlapFraction);
+        const selfDmg   = computeDamage(other.type, unit, other.baseDamage * 0.4 * deltaSec * overlapFraction);
         other.hp -= enemyDmg;
         unit.hp  -= selfDmg;
 
@@ -1223,7 +1540,7 @@ export class UnitSystem {
 
     const id = nextSlimePuddleId();
     this.slimePuddles.push({ id, x, y, radius, endTime: nowSec + duration, slowFactor, gearFriction });
-    this.eventBus.emit('slime_puddle:created', { id, x, y, radius });
+    this.eventBus.emit('slime_puddle:created', { id, x, y, radius, duration });
   }
 
   /**
@@ -1435,6 +1752,18 @@ export class UnitSystem {
       iron_guard_spawner: 'iron_guard',
       crystal_sentinel_spawner: 'crystal_sentinel',
       aether_phantom_spawner: 'aether_phantom',
+      // These two were declared as gears (GEAR_DEFINITIONS), gated by tech,
+      // and documented as spawning their unit -- but never wired into this
+      // map, so placing one produced nothing. Fixed alongside adding the
+      // five new spawners below, which would have shipped with the exact
+      // same gap otherwise.
+      crossbow_spawner: 'crossbow',
+      sentry_spawner: 'sentry_unit',
+      sapper_spawner: 'sapper',
+      skirmish_diver_spawner: 'skirmish_diver',
+      saboteur_spawner: 'saboteur',
+      raider_spawner: 'raider',
+      field_medic_spawner: 'field_medic',
     };
 
     const baseUnitType = spawnerMap[gear.type];
@@ -1466,6 +1795,13 @@ export class UnitSystem {
       iron_guard: 'Iron Guard',
       crystal_sentinel: 'Sentinel',
       aether_phantom: 'Phantom',
+      crossbow: 'Crossbow',
+      sentry_unit: 'Sentry',
+      sapper: 'Sapper',
+      skirmish_diver: 'Diver',
+      saboteur: 'Saboteur',
+      raider: 'Raider',
+      field_medic: 'Medic',
     };
     const label = unitLabels[unitType] ?? unitType;
 

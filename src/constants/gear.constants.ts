@@ -1,5 +1,9 @@
 import Matter from 'matter-js';
 import { GearDefinition, GearType } from '../types/gear.types';
+import {
+  UNIT_SIZE_TEETH_MULT, CROSSBOW_RANGE_MULT, ARTILLERY_RANGE_MULT,
+  CROSSBOW_TURRET_RANGE_FRACTION, ARTILLERY_TURRET_RANGE_FRACTION,
+} from './balance.constants';
 
 // ─── Teeth-based sizing ───────────────────────────────────────────────────────
 
@@ -78,10 +82,21 @@ export function turretMaxAmmo(teeth: number): number {
   return Math.max(3, Math.round(teeth * 0.5));
 }
 
-/** Turret attack range */
+/**
+ * Turret attack range -- always a fraction of its mobile counterpart's own
+ * attack range (see unit.utils.ts computeScaledStats), never an independent
+ * number. Used to be a flat base (400/250) scaled by sqrt(teeth/10) that
+ * hugely outranged the mobile Crossbow/Artillery it's meant to lose to --
+ * 250 vs 48, 400 vs 120 at 10 teeth -- backwards from "defense is cheap but
+ * falls to ranged pressure." Deriving it this way makes that inversion
+ * structurally impossible: whatever the mobile unit's range becomes, the
+ * turret's stays a fixed fraction under it.
+ */
 export function turretRange(teeth: number, type: 'crossbow_turret' | 'artillery_turret'): number {
-  const base = type === 'artillery_turret' ? 400 : 250;
-  return Math.round(base * Math.sqrt(teeth / 10));
+  const size = Math.max(4, Math.round(teeth * UNIT_SIZE_TEETH_MULT));
+  return type === 'artillery_turret'
+    ? Math.round(size * ARTILLERY_RANGE_MULT * ARTILLERY_TURRET_RANGE_FRACTION)
+    : Math.round(size * CROSSBOW_RANGE_MULT * CROSSBOW_TURRET_RANGE_FRACTION);
 }
 
 /** How far ahead of a minelayer its firing zone reaches, same sqrt-scaling idiom as turretRange. */
@@ -331,5 +346,40 @@ export const GEAR_DEFINITIONS: Record<GearType, GearDefinition> = {
     goldCost: 8,
     description: 'A clutch built to take a jam for the chain instead of breaking. Sharply reduces its own jam damage, and softens jam damage on a meshed neighbour too.',
     unlockNode: 'unlock_relief_valve',
+  },
+
+  sapper_spawner: {
+    type: 'sapper_spawner',
+    goldCost: 6,
+    description: 'Spawns a Sapper unit per full rotation (9 gold cost). Weak against other units, but its hits against gears count for 6x -- built to breach a turtled defense.',
+    unlockNode: 'unlock_sapper_spawner',
+  },
+
+  skirmish_diver_spawner: {
+    type: 'skirmish_diver_spawner',
+    goldCost: 6,
+    description: 'Spawns a Skirmish Diver unit per full rotation (9 gold cost). Fast flanker that punishes Artillery, Crystal Sentinel and Crossbow for stopping to shoot -- loses hard to anything that can also close on it.',
+    unlockNode: 'unlock_skirmish_diver_spawner',
+  },
+
+  saboteur_spawner: {
+    type: 'saboteur_spawner',
+    goldCost: 6,
+    description: 'Spawns a Saboteur unit per full rotation (10 gold cost). Fouls an enemy gear\'s rotation on contact instead of damaging it -- attacks the machine\'s speed, not its health.',
+    unlockNode: 'unlock_saboteur_spawner',
+  },
+
+  raider_spawner: {
+    type: 'raider_spawner',
+    goldCost: 6,
+    description: 'Spawns a Raider unit per full rotation (10 gold cost). Disables an enemy miner or converter within the lane for a few seconds instead of damaging it.',
+    unlockNode: 'unlock_raider_spawner',
+  },
+
+  field_medic_spawner: {
+    type: 'field_medic_spawner',
+    goldCost: 6,
+    description: 'Spawns a Field Medic unit per full rotation (8 gold cost). Marches with the army, healing nearby allied units on a pulse. Never fights.',
+    unlockNode: 'unlock_field_medic_spawner',
   },
 };

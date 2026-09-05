@@ -16,7 +16,7 @@ import { GearUnitInteractionSystem } from '../systems/GearUnitInteractionSystem'
 import { AIController } from '../ai/AIController';
 import { AbilitySystem } from '../systems/AbilitySystem';
 import { GearEntity } from '../entities/Gear';
-import { panelState } from '../ui/SlidingPanel';
+import { gearDisplayName } from '../ui/GearGridSection';
 import { UnitEntity } from '../entities/Unit';
 import { GearType, GearState } from '../types/gear.types';
 import { UnitState, UnitType } from '../types/unit.types';
@@ -100,6 +100,9 @@ export class GameScene extends Phaser.Scene {
   // Cold zone visuals (crystal sentinel icy areas)
   private coldZoneGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
 
+  // Slime puddle visuals (slime death pools)
+  private slimePuddleGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
+
   // Entity maps
   private gearEntities: Map<string, GearEntity> = new Map();
   private unitEntities: Map<string, UnitEntity> = new Map();
@@ -109,12 +112,13 @@ export class GameScene extends Phaser.Scene {
   private dragGearTeeth: number = DEFAULT_TEETH;
   private isDragging: boolean = false;
   // The downTime of the press that started this drag (selected the gear card). The
-  // panel's collapse tween mutates panelState.topY live for ~220ms after that same
+  // panel's collapse tween updates hudTopY live for ~220ms after that same
   // press, so if its pointerup lands after topY has animated past the pointer, the
   // selecting click itself would otherwise read as "released in the world" and place
   // immediately. Comparing downTime forces placement to require a genuinely later,
   // distinct press-release pair.
   private dragStartedAtDownTime: number = -1;
+  private placementLabelText: Phaser.GameObjects.Text | null = null;
   private removeMode: boolean = false;
   private asEnemyMode: boolean = false;  // practice only: place gears as enemy owner
   private isPaused: boolean = false;      // pause all game simulation
@@ -136,6 +140,12 @@ export class GameScene extends Phaser.Scene {
 
   // Camera zoom and pan state
   private cameraZoom: number = 1.0;
+
+  // Top edge of the bottom-docked HUD panel, in screen space (input above it hits the
+  // world, below it hits the panel). Tracked via the panel's own 'ui:panel_height_changed'
+  // event rather than reading SlidingPanel's shared state directly, keeping the game
+  // layer decoupled from UI-internal state.
+  private hudTopY: number = CANVAS_HEIGHT - PANEL_COLLAPSED_H;
   private isPanningCamera: boolean = false;
   private panStart: { px: number; py: number; scrollX: number; scrollY: number } = {
     px: 0, py: 0, scrollX: 0, scrollY: 0,
@@ -250,12 +260,6 @@ export class GameScene extends Phaser.Scene {
       this.gameClock, this.abilitySystem, this.aiAbilitySystem,
     );
     this.unitSystem.setTechSystem(this.techSystem);
-
-    // ─── Starting defenses ───────────────────────────────────────────────
-    // Both sides open with a free, pre-placed motor + crossbow tower behind
-    // it, mirrored across the lane. Pure buff: starting gold/income are
-    // unchanged, and either side may sell these like any placed gear.
-    this.placeStartingDefenses();
 
     // create controllers based on lobby slots
     if (rightAI) {
@@ -387,6 +391,46 @@ export class GameScene extends Phaser.Scene {
       (zg as any)._pulseTween = tween;
     });
 
+    // Slime puddle created (persistent slowing pool left behind on death)
+    eventBus.on('slime_puddle:created', ({ id, x, y, radius, duration }: { id: string; x: number; y: number; radius: number; duration: number }) => {
+      const pg = this.add.graphics().setDepth(-10);
+      this.slimePuddleGraphics.set(id, pg);
+      const drawPuddle = (alpha: number) => {
+        pg.clear();
+        pg.fillStyle(0x66dd33, alpha * 0.4);
+        pg.fillCircle(x, y, radius);
+        pg.lineStyle(1.5, 0x99ff55, alpha * 0.6);
+        pg.strokeCircle(x, y, radius);
+      };
+      drawPuddle(1.0);
+      // Slowly become more transparent over its lifetime until it dissipates.
+      const tween = this.tweens.add({
+        targets: { alpha: 1.0 },
+        alpha: 0.15,
+        duration: duration * 1000,
+        ease: 'Sine.easeIn',
+        onUpdate: (tw: any) => drawPuddle(tw.targets[0].alpha),
+      });
+      (pg as any)._fadeTween = tween;
+    });
+
+    eventBus.on('slime_puddle:expired', ({ id }: { id: string }) => {
+      const pg = this.slimePuddleGraphics.get(id);
+      if (pg) {
+        const tween = (pg as any)._fadeTween;
+        if (tween) tween.stop();
+        this.slimePuddleGraphics.delete(id);
+        this.tweens.add({
+          targets: { alpha: pg.alpha },
+          alpha: 0,
+          duration: 400,
+          ease: 'Cubic.easeOut',
+          onUpdate: (tw: any) => pg.setAlpha(tw.targets[0].alpha),
+          onComplete: () => pg.destroy(),
+        });
+      }
+    });
+
     // Mine landed and armed for detonation — a small warning marker while it
     // arms, then (per-frame in update()) hidden from whichever owner isn't
     // the mine's own, in a normal match.
@@ -451,6 +495,14 @@ export class GameScene extends Phaser.Scene {
 
     // ─── EventBus wiring ─────────────────────────────────────────────────
     this.wireEvents();
+
+    // ─── Starting defenses ───────────────────────────────────────────────
+    // Both sides open with a free, pre-placed motor + crossbow tower behind
+    // it, mirrored across the lane. Pure buff: starting gold/income are
+    // unchanged, and either side may sell these like any placed gear.
+    // Must run after wireEvents() — gear:placed listener (createGearEntity)
+    // has to exist before these fire, or the sprites never get created.
+    this.placeStartingDefenses();
 
     // ─── Input ───────────────────────────────────────────────────────────
     if (!this.isSpectate) {
@@ -552,6 +604,12 @@ export class GameScene extends Phaser.Scene {
       zg.destroy();
     }
     this.coldZoneGraphics.clear();
+    for (const [, pg] of this.slimePuddleGraphics) {
+      const tw = (pg as any)._fadeTween;
+      if (tw) tw.stop();
+      pg.destroy();
+    }
+    this.slimePuddleGraphics.clear();
     for (const [, mg] of this.mineGraphics) mg.destroy();
     this.mineGraphics.clear();
     eventBus.removeAllListeners();
@@ -675,19 +733,24 @@ export class GameScene extends Phaser.Scene {
       // Draw ghost immediately at centre of visible world for instant feedback
       const cam = this.cameras.main;
       const wx = cam.scrollX + (this.scale.width / 2) / this.cameraZoom;
-      const wy = cam.scrollY + (panelState.topY / 2) / this.cameraZoom;
-      const snap = this.gearSystem.getSnapPosition(wx, wy, this.dragGearTeeth, this._playerOwner());
-      this.worldRenderer.drawGhostGear(snap.x, snap.y, this.dragGearTeeth, snap.valid, snap.snapTargetId !== null);
+      const wy = cam.scrollY + (this.hudTopY / 2) / this.cameraZoom;
+      this.updateDragGhostAt(wx, wy);
     });
 
     eventBus.on('ui:gear_drag_end', () => {
       this.isDragging = false;
       this.worldRenderer.clearGhostGear();
+      this.clearPlacementLabel();
     });
 
     // Update selected teeth when palette changes teeth picker
     eventBus.on('ui:teeth_changed', ({ teeth }) => {
       this.selectedTeeth = teeth;
+      if (this.isDragging) {
+        this.dragGearTeeth = teeth;
+        const p = this.input.activePointer;
+        this.updateDragGhostAt(p.worldX, p.worldY);
+      }
     });
 
     // Listen for remove mode toggled from toolbar
@@ -699,6 +762,7 @@ export class GameScene extends Phaser.Scene {
         this.isRepositioning = false;
         this.repositionGearId = null;
         this.worldRenderer.clearGhostGear();
+        this.clearPlacementLabel();
       }
     });
 
@@ -721,7 +785,7 @@ export class GameScene extends Phaser.Scene {
   private clampCamera(): void {
     const cam = this.cameras.main;
     const viewW = this.scale.width / this.cameraZoom;
-    const viewH = panelState.topY / this.cameraZoom;
+    const viewH = this.hudTopY / this.cameraZoom;
     cam.scrollX = Phaser.Math.Clamp(cam.scrollX, 1 - viewW, WORLD_WIDTH - 1);
     cam.scrollY = Phaser.Math.Clamp(cam.scrollY, 1 - viewH, WORLD_HEIGHT - 1);
   }
@@ -729,7 +793,7 @@ export class GameScene extends Phaser.Scene {
   /** Camera input for spectate mode: wheel zoom + right-click pan only */
   private setupSpectateCameraInput(): void {
     this.input.on('wheel', (ptr: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
-      if (ptr.y > panelState.topY) return;
+      if (ptr.y > this.hudTopY) return;
       this.cameraZoom = Phaser.Math.Clamp(
         this.cameraZoom + (dy > 0 ? -0.05 : 0.05),
         0.1,
@@ -758,10 +822,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupInput(): void {
+    eventBus.on('ui:panel_height_changed', ({ topY }) => { this.hudTopY = topY; });
+
     // ─── Camera zoom (mouse wheel) ─────────────────────────────────────
     this.input.on('wheel', (ptr: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
       if (this.winSystem.isGameOver()) return; // lock zoom on game-over screen
-      if (ptr.y > panelState.topY) return; // over panel — panel handles zoom
+      if (ptr.y > this.hudTopY) return; // over panel — panel handles zoom
+      // While a gear is selected for placement, wheel changes its teeth size
+      // instead of the camera zoom -- scroll up = bigger, scroll down = smaller.
+      if (this.isDragging && this.dragGearType) {
+        eventBus.emit('ui:teeth_wheel_delta', { delta: dy > 0 ? -1 : 1 });
+        return;
+      }
       this.cameraZoom = Phaser.Math.Clamp(
         this.cameraZoom + (dy > 0 ? -0.05 : 0.05),
         0.1,
@@ -783,14 +855,11 @@ export class GameScene extends Phaser.Scene {
 
       // ─── Palette drag (updates ghost even while cursor is over panel) ───
       if (this.isDragging && this.dragGearType) {
-        const isPractice = this.leftSlot.kind === 'human' && this.rightSlot.kind === 'human';
-        const ghostOwner: 'player' | 'ai' = (isPractice && this.asEnemyMode) ? this._enemyOwner() : this._playerOwner();
-        const snap = this.gearSystem.getSnapPosition(pointer.worldX, pointer.worldY, this.dragGearTeeth, ghostOwner);
-        this.worldRenderer.drawGhostGear(snap.x, snap.y, this.dragGearTeeth, snap.valid, snap.snapTargetId !== null);
+        this.updateDragGhostAt(pointer.worldX, pointer.worldY);
         return;
       }
 
-      if (pointer.y > panelState.topY) return; // over panel — no world interaction
+      if (pointer.y > this.hudTopY) return; // over panel — no world interaction
 
       // ─── Picked-up gear drag ────────────────────────────────────────
       if (this.pickedUpGearId) {
@@ -914,19 +983,16 @@ export class GameScene extends Phaser.Scene {
       }
 
       // ─── Palette drop ────────────────────────────────────────────────
+      // Selection stays active across multiple placements — only right-click
+      // (see the pointerdown handler below) or leaving the world clears it.
       if (!this.isDragging || !this.dragGearType) return;
       // This is the same press that selected the card, not a later click in the
       // world -- the panel's collapse tween may have already animated topY past
       // the pointer by now, so don't trust that check for this particular press.
       if (pointer.downTime === this.dragStartedAtDownTime) return;
       // Released inside panel — keep gear selected, user will click in world to place
-      if (pointer.y > panelState.topY) return;
-      if (pointer.y > WORLD_HEIGHT) {
-        this.isDragging = false;
-        this.worldRenderer.clearGhostGear();
-        eventBus.emit('ui:gear_drag_end', {});
-        return;
-      }
+      if (pointer.y > this.hudTopY) return;
+      if (pointer.y > WORLD_HEIGHT) return; // dead zone between world and panel — ignore, keep selection
 
       const worldX = pointer.worldX;
       const worldY = pointer.worldY;
@@ -950,18 +1016,19 @@ export class GameScene extends Phaser.Scene {
               this.economySystem.spendGold('player', cost, false);
             }
           } else if (def) {
-            this.showNotEnoughGold();
+            const missing = cost - this.economySystem.getResources('player').gold;
+            this.showInsufficientFundsAtCursor(pointer.worldX, pointer.worldY, missing);
           }
         }
       }
 
-      this.isDragging = false;
-      this.worldRenderer.clearGhostGear();
-      eventBus.emit('ui:gear_drag_end', {});
+      // Keep dragging/selection active — re-draw the ghost at the same spot so
+      // its color immediately reflects gold spent on the placement just made.
+      this.updateDragGhostAt(pointer.worldX, pointer.worldY);
     });
 
-    // R key: toggle remove mode
-    this.input.keyboard?.addKey('R').on('down', () => {
+    // Toggle remove mode (rebindable in Settings; takes effect next match)
+    this.input.keyboard?.addKey(GAME_SETTINGS.keybinds.removeMode).on('down', () => {
       this.removeMode = !this.removeMode;
       eventBus.emit('ui:remove_mode_toggled', { active: this.removeMode });
       if (this.removeMode) {
@@ -1021,7 +1088,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      if (pointer.y > panelState.topY) return; // over panel — panel handles click
+      if (pointer.y > this.hudTopY) return; // over panel — panel handles click
 
       // Remove mode takes priority
       if (this.removeMode) {
@@ -1091,7 +1158,7 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    this.input.keyboard?.addKey('ESC').on('down', () => {
+    this.input.keyboard?.addKey(GAME_SETTINGS.keybinds.cancel).on('down', () => {
       // Cancel pickup
       if (this.pickedUpGearId) {
         const entity = this.gearEntities.get(this.pickedUpGearId);
@@ -1321,9 +1388,9 @@ export class GameScene extends Phaser.Scene {
       else if (pointer.x > vw - hMargin)    { cam.scrollX += scrollAmount; moved = true; }
       if (pointer.y < vMargin)              { cam.scrollY -= scrollAmount; moved = true; }
       // Bottom edge only: don't scroll the world while the pointer is over the
-      // (bottom-docked) panel -- panelState.topY is the same "over panel" boundary
+      // (bottom-docked) panel -- hudTopY is the same "over panel" boundary
       // used everywhere else in this scene.
-      else if (pointer.y > vh - vMargin && pointer.y < panelState.topY) { cam.scrollY += scrollAmount; moved = true; }
+      else if (pointer.y > vh - vMargin && pointer.y < this.hudTopY) { cam.scrollY += scrollAmount; moved = true; }
       if (moved) this.clampCamera();
     }
 
@@ -1412,30 +1479,62 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private showNotEnoughGold(): void {
-    const panelW = 200;
-    const panelH = 36;
-    // Position relative to camera scroll so it appears in viewport center
-    const cam = this.cameras.main;
-    const vw = this.scale.width;
-    const panelX = cam.scrollX + vw / 2 - panelW / 2;
-    const panelY = WORLD_HEIGHT - 50;
+  /**
+   * Recompute the snap position for the currently-selected palette gear at the
+   * given world point, redraw its ghost, and update the floating label above
+   * it. Single entry point so every place that can move the ghost (pointer
+   * move, wheel resize, post-placement redraw) agrees on owner/afford rules.
+   */
+  private updateDragGhostAt(worldX: number, worldY: number): void {
+    if (!this.isDragging || !this.dragGearType) return;
+    const isPractice = this.leftSlot.kind === 'human' && this.rightSlot.kind === 'human';
+    const free = isPractice && this.asEnemyMode;
+    const ghostOwner: 'player' | 'ai' = free ? this._enemyOwner() : this._playerOwner();
+    const snap = this.gearSystem.getSnapPosition(worldX, worldY, this.dragGearTeeth, ghostOwner);
+    const cost = gearPlacementCost(this.dragGearTeeth);
+    const afford = free || this.economySystem.canAffordGold('player', cost);
+    this.worldRenderer.drawGhostGear(snap.x, snap.y, this.dragGearTeeth, snap.valid && afford, snap.snapTargetId !== null);
+    this.updatePlacementLabel(snap.x, snap.y, this.dragGearTeeth, cost, free || afford);
+  }
 
-    const bg = this.add.graphics().setDepth(250);
-    bg.fillStyle(0x0a0005, 0.92);
-    bg.fillRect(panelX, panelY, panelW, panelH);
-    bg.lineStyle(2, 0xff2222, 1);
-    bg.strokeRect(panelX, panelY, panelW, panelH);
+  /** Floating "GEAR NAME · teeth · cost" label hovering above the placement ghost. */
+  private updatePlacementLabel(worldX: number, worldY: number, teeth: number, cost: number, afford: boolean): void {
+    if (!this.dragGearType) return;
+    const label = `${gearDisplayName(this.dragGearType)}  ${teeth}t  G ${cost}`;
+    const color = afford ? '#66ff99' : '#ff6644';
+    const y = worldY - gearRadius(teeth) - 14;
+    if (this.placementLabelText) {
+      this.placementLabelText.setText(label);
+      this.placementLabelText.setColor(color);
+      this.placementLabelText.setPosition(worldX, y);
+    } else {
+      this.placementLabelText = this.add.text(worldX, y, label, {
+        fontSize: '12px', fontFamily: 'monospace', color,
+        stroke: '#000000', strokeThickness: 3,
+      }).setOrigin(0.5, 1).setDepth(251);
+    }
+  }
 
+  private clearPlacementLabel(): void {
+    this.placementLabelText?.destroy();
+    this.placementLabelText = null;
+  }
+
+  /** Fading "need N more gold" text at the cursor when a placement click fails on cost. */
+  private showInsufficientFundsAtCursor(worldX: number, worldY: number, missingGold: number): void {
     const msg = this.add.text(
-      cam.scrollX + vw / 2, panelY + panelH / 2,
-      'Not enough gold!',
+      worldX, worldY - 20,
+      `Need ${Math.ceil(missingGold)} more gold`,
       { fontSize: '12px', color: '#ff6644', fontFamily: 'monospace' },
     ).setOrigin(0.5).setDepth(251);
 
-    this.time.delayedCall(1500, () => {
-      bg.destroy();
-      msg.destroy();
+    this.tweens.add({
+      targets: msg,
+      y: worldY - 50,
+      alpha: 0,
+      duration: 1200,
+      ease: 'Cubic.easeOut',
+      onComplete: () => msg.destroy(),
     });
   }
 

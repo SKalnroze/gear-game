@@ -9,11 +9,14 @@ import { GearGridSection } from '../ui/GearGridSection';
 import { RadialTechSection } from '../ui/RadialTechSection';
 import { ActionsSection } from '../ui/ActionsSection';
 import { BaseHealthBars } from '../ui/BaseHealthBars';
+import { PlayerInfoBars, INFO_BARS_BOTTOM_Y } from '../ui/PlayerInfoBars';
+import { JamIndicator } from '../ui/JamIndicator';
 import { TechState } from '../types/tech.types';
 import { AIStrategyProfile } from '../types/ai.types';
 import { PANEL_COLLAPSED_H, WORLD_WIDTH, WORLD_HEIGHT } from '../constants/world.constants';
 import { NEON, NEON_STR, UI_DEPTH } from '../constants/ui.constants';
 import { neonBtn } from '../ui/NeonRex';
+import { neonBtnGroup } from '../ui/NeonForm';
 
 /**
  * UIScene: runs in parallel with GameScene, provides all HUD elements.
@@ -31,6 +34,8 @@ export class UIScene extends Phaser.Scene {
   private toastManager!: ToastManager;
   private minimap!: Minimap;
   private healthBars!: BaseHealthBars;
+  private infoBars!: PlayerInfoBars;
+  private jamIndicator!: JamIndicator;
   /** Per-frame research-bar refresh; removed on shutdown. */
   private onSceneUpdate: (() => void) | null = null;
 
@@ -39,8 +44,6 @@ export class UIScene extends Phaser.Scene {
   private isSpectate: boolean = false;
   private playerIsRight: boolean = false; // orientation flag
 
-  // Spectate overlay elements (for toggle-button text update)
-  private spectateToggleBtn: Phaser.GameObjects.Text | null = null;
 
   // Stored for rebuild
   private techSystem!: import('../systems/TechSystem').TechSystem;
@@ -133,15 +136,24 @@ export class UIScene extends Phaser.Scene {
       this.isSpectate ? null : this.playerIsRight ? 'ai' : 'player';
     this.healthBars = new BaseHealthBars(this, winSystem, playerLabel, aiLabel, humanOwner);
 
+    // ── Resources + research (open information — always visible for both
+    // players, stacked directly under each health bar) ─────────────────────
+    this.infoBars = new PlayerInfoBars(this, data.economySystem, data.techSystem);
+
+    // ── Jam indicator (top-left, below the resource/research stack; skipped
+    // in spectate mode since there's no single "player" perspective there) ──
+    if (!this.isSpectate) {
+      this.jamIndicator = new JamIndicator(this, world, 6, INFO_BARS_BOTTOM_Y + 6);
+    }
+
     // ── Tooltip (must be first — high depth) ──────────────────────────────
     this.tooltipManager = new TooltipManager(this, eventBus);
 
     // ── Toast notifications ────────────────────────────────────────────────
-    this.toastManager = new ToastManager(this, eventBus);
+    this.toastManager = new ToastManager(this, eventBus, world);
 
     // ── SlidingPanel ──────────────────────────────────────────────────────
     this.slidingPanel = new SlidingPanel(this, this.scale.width, this.scale.height, data.isPractice);
-    this.slidingPanel.setEconomySystem(data.economySystem);
 
     // In spectate mode the current view tech may differ from playerTech
     const viewTech = this.isSpectate && this.spectateOwner === 'ai'
@@ -182,9 +194,7 @@ export class UIScene extends Phaser.Scene {
     // shutdown, so re-registering per session stacked one extra per-frame
     // callback for every game played.
     this.onSceneUpdate = () => {
-      const owner = this.isSpectate ? this.spectateOwner : 'player';
-      const progress = this.techSystem.getResearchProgress(owner);
-      this.slidingPanel.updateResearch(progress);
+      this.infoBars.refreshResearch();
     };
     this.events.on('update', this.onSceneUpdate);
 
@@ -193,6 +203,9 @@ export class UIScene extends Phaser.Scene {
       this.minimap.reposition(newState.minimap.x, newState.minimap.y, newState.minimap.w, newState.minimap.h);
       this.slidingPanel.resize(newState.canvasW, newState.canvasH);
       this.radialTechSection.resize(newState.canvasW);
+      this.healthBars.resize(newState.canvasW);
+      this.infoBars.resize(newState.canvasW);
+      this.gearGridSection.resize(newState.canvasW);
     };
 
     // ── Shutdown cleanup ───────────────────────────────────────────────────
@@ -216,26 +229,16 @@ export class UIScene extends Phaser.Scene {
    */
   private createSpectateOverlay(): void {
     const cw = this.scale.width;
-    const barY = 48; // below health bars
+    const barY = 48; // below health bars, single consolidated row
 
-    // Title — centered
-    this.add.text(cw / 2, barY, 'SPECTATE — AI vs AI', {
-      fontSize: '15px',
-      color: '#cc88ff',
-      fontFamily: 'monospace',
-      fontStyle: 'bold',
-      backgroundColor: '#00000099',
-      padding: { left: 14, right: 14, top: 5, bottom: 5 },
-    }).setOrigin(0.5, 0).setDepth(400);
-
-    // Back-to-menu button — below title
-    const menuBtn = this.add.text(cw / 2, barY + 32, '[ BACK TO MENU ]', {
+    // Back-to-menu — left side, inline with the title
+    const menuBtn = this.add.text(12, barY, '‹ MENU', {
       fontSize: '11px',
       color: '#aaaaaa',
       fontFamily: 'monospace',
       backgroundColor: '#00000099',
-      padding: { left: 10, right: 10, top: 4, bottom: 4 },
-    }).setOrigin(0.5, 0).setDepth(400).setInteractive({ useHandCursor: true });
+      padding: { left: 10, right: 10, top: 5, bottom: 5 },
+    }).setOrigin(0, 0).setDepth(400).setInteractive({ useHandCursor: true });
 
     menuBtn.on('pointerover', () => menuBtn.setColor('#ffffff'));
     menuBtn.on('pointerout',  () => menuBtn.setColor('#aaaaaa'));
@@ -244,27 +247,23 @@ export class UIScene extends Phaser.Scene {
       this.scene.start('MenuScene');
     });
 
-    // Perspective toggle — right side
-    let currentOwner: 'player' | 'ai' = 'player';
-    this.spectateToggleBtn = this.add.text(cw - 12, barY, '👁 VIEW: PLAYER 1', {
-      fontSize: '12px',
-      color: NEON_STR.blue,
+    // Title — centered, same row
+    this.add.text(cw / 2, barY, 'SPECTATE — AI vs AI', {
+      fontSize: '13px',
+      color: '#cc88ff',
       fontFamily: 'monospace',
+      fontStyle: 'bold',
       backgroundColor: '#00000099',
-      padding: { left: 10, right: 10, top: 4, bottom: 4 },
-    }).setOrigin(1, 0).setDepth(400).setInteractive({ useHandCursor: true });
+      padding: { left: 14, right: 14, top: 5, bottom: 5 },
+    }).setOrigin(0.5, 0).setDepth(400);
 
-    this.spectateToggleBtn.on('pointerover', () => this.spectateToggleBtn?.setColor('#ffffff'));
-    this.spectateToggleBtn.on('pointerout', () => {
-      this.spectateToggleBtn?.setColor(currentOwner === 'player' ? NEON_STR.blue : NEON_STR.red);
-    });
-    this.spectateToggleBtn.on('pointerdown', () => {
-      currentOwner = currentOwner === 'player' ? 'ai' : 'player';
-      const col = currentOwner === 'player' ? NEON_STR.blue : NEON_STR.red;
-      this.spectateToggleBtn?.setColor(col);
-      this.spectateToggleBtn?.setText(currentOwner === 'player' ? '👁 VIEW: PLAYER 1' : '👁 VIEW: PLAYER 2');
-      eventBus.emit('spectate:switch_view', { owner: currentOwner });
-    });
+    // Perspective toggle — right side, same row
+    const btnW = 96, btnH = 22;
+    const toggleX = cw - 12 - btnW * 2;
+    neonBtnGroup(this, toggleX, barY - 3, btnW, btnH,
+      [{ key: 'player', label: '👁 PLAYER 1' }, { key: 'ai', label: '👁 PLAYER 2' }],
+      'player', NEON.blue,
+      key => eventBus.emit('spectate:switch_view', { owner: key as 'player' | 'ai' }));
   }
 
   /** Called only in spectate mode: listen for perspective switch events. */
@@ -309,6 +308,8 @@ export class UIScene extends Phaser.Scene {
     this.tooltipManager?.destroy();
     this.toastManager?.destroy();
     this.healthBars?.destroy();
+    this.infoBars?.destroy();
+    this.jamIndicator?.destroy();
     this.actionsSection?.destroy();
     this.gearGridSection?.destroy();
     this.radialTechSection?.destroy();

@@ -37,6 +37,8 @@ export class CombatSystem {
     'cavalry', 'artillery', 'crystal_sentinel', 'aether_phantom',
     'elite_cavalry', 'elite_artillery',
     'infantry', 'iron_guard', 'mixed', 'elite_infantry',
+    // Sapper and Skirmish Diver reuse Infantry's own behavior function.
+    'sapper', 'skirmish_diver',
   ]);
 
   /**

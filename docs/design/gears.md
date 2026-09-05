@@ -56,7 +56,7 @@ This is a real design constraint on layout, not an error state — an even ring 
 
 ## The catalogue
 
-Costs and unlocks for all 27 gear types.
+Costs and unlocks for all 33 gear types.
 
 <!-- BEGIN GENERATED: gears.catalogue -->
 | Gear | Gold cost | Unlocked by | In-game description |
@@ -89,6 +89,11 @@ Costs and unlocks for all 27 gear types.
 | Healer | 0 | `healer_gear_tech` | Emits a healing aura on each full rotation. Heals nearby friendly gears and units. Aura size and healing scale with gear size. |
 | Sentry Gear | 6 | `unlock_sentry` | Pulses true-sight on each full rotation, revealing hidden enemy mines within its radius early. Stationary counter to the Minelayer. |
 | Relief Valve | 8 | `unlock_relief_valve` | A clutch built to take a jam for the chain instead of breaking. Sharply reduces its own jam damage, and softens jam damage on a meshed neighbour too. |
+| Sapper Spawner | 6 | `unlock_sapper_spawner` | Spawns a Sapper unit per full rotation (9 gold cost). Weak against other units, but its hits against gears count for 6x -- built to breach a turtled defense. |
+| Skirmish Diver Spawner | 6 | `unlock_skirmish_diver_spawner` | Spawns a Skirmish Diver unit per full rotation (9 gold cost). Fast flanker that punishes Artillery, Crystal Sentinel and Crossbow for stopping to shoot -- loses hard to anything that can also close on it. |
+| Saboteur Spawner | 6 | `unlock_saboteur_spawner` | Spawns a Saboteur unit per full rotation (10 gold cost). Fouls an enemy gear's rotation on contact instead of damaging it -- attacks the machine's speed, not its health. |
+| Raider Spawner | 6 | `unlock_raider_spawner` | Spawns a Raider unit per full rotation (10 gold cost). Disables an enemy miner or converter within the lane for a few seconds instead of damaging it. |
+| Field Medic Spawner | 6 | `unlock_field_medic_spawner` | Spawns a Field Medic unit per full rotation (8 gold cost). Marches with the army, healing nearby allied units on a pulse. Never fights. |
 <!-- END GENERATED: gears.catalogue -->
 
 <!-- BEGIN GENERATED: gears.formulas -->
@@ -105,8 +110,8 @@ Costs and unlocks for all 27 gear types.
 | Healer output | `teeth × 1.5` | 15 | linear |
 | Healer radius | `radius × 3` | 75 px | linear |
 | Turret ammo | `max(3, round(teeth × 0.5))` | 5 | linear, floor 3 |
-| Crossbow range | `250 × √(teeth/10)` | 250 px | square root |
-| Artillery range | `400 × √(teeth/10)` | 400 px | square root |
+| Crossbow turret range | `size(teeth) × 4 × 0.75` | 36 px | linear -- always 0.75x the mobile Crossbow's own range |
+| Artillery turret range | `size(teeth) × 10 × 0.8` | 96 px | linear -- always 0.8x the mobile Artillery's own range |
 <!-- END GENERATED: gears.formulas -->
 
 ---
@@ -153,7 +158,7 @@ Costs and unlocks for all 27 gear types.
 
 **Status.** Implemented.
 
-### Spawners — infantry, artillery, cavalry, iron guard, crystal sentinel, aether phantom
+### Spawners — infantry, artillery, cavalry, iron guard, crystal sentinel, aether phantom, crossbow, sentry, sapper, skirmish diver, saboteur, raider, field medic
 
 **Intent.** The only door units come through. Pinning production to a spawner gear is what makes the army a property of the machine rather than a purchase — you cannot buy a wave, you can only build something that produces one.
 
@@ -163,7 +168,7 @@ Costs and unlocks for all 27 gear types.
 
 **Status.** Implemented. See [Units](units.md) for what each produces.
 
-There are nine spawner gears (`crossbow_spawner` and `sentry_spawner` join the original seven) and thirteen unit types. The remaining four — `mixed` and the three elites — have no spawner of their own; instead the three core spawners (infantry/artillery/cavalry) produce them under the right conditions. See [Units](units.md) for exactly what those conditions are.
+There are fourteen spawner gears and eighteen unit types. The remaining four — `mixed` and the three elites — have no spawner of their own; instead the three core spawners (infantry/artillery/cavalry) produce them under the right conditions. See [Units](units.md) for exactly what those conditions are.
 
 ---
 

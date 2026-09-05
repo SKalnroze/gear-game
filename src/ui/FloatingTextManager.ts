@@ -52,6 +52,13 @@ export class FloatingTextManager {
     this.spawnAt(x, y, `-${Math.ceil(damage)}`, 0xff4444);
   };
 
+  private readonly handleUnitHealed = ({ amount, x, y }: {
+    amount: number; x: number; y: number;
+  }): void => {
+    if (amount < 0.5) return;
+    this.spawnAt(x, y, `+${Math.ceil(amount)}`, 0x44ff88);
+  };
+
   constructor(scene: Phaser.Scene, eventBus: EventBus, world: World) {
     this.scene = scene;
     this.world = world;
@@ -60,12 +67,14 @@ export class FloatingTextManager {
     eventBus.on('gear:rotation_result', this.handleRotationResult);
     eventBus.on('power:capacitor_burst', this.handleCapacitorBurst);
     eventBus.on('unit:damaged', this.handleUnitDamaged);
+    eventBus.on('unit:healed', this.handleUnitHealed);
   }
 
   destroy(): void {
     this.eventBus.off('gear:rotation_result', this.handleRotationResult);
     this.eventBus.off('power:capacitor_burst', this.handleCapacitorBurst);
     this.eventBus.off('unit:damaged', this.handleUnitDamaged);
+    this.eventBus.off('unit:healed', this.handleUnitHealed);
   }
 
   private spawn(gearId: string, text: string, color: number): void {

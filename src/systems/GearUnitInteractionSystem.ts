@@ -4,6 +4,7 @@ import { World } from '../world/World';
 import { EventBus } from './EventBus';
 import { gearRadius, spikeDamage, MAX_TEETH, GEAR_MODULE, crackLevelFor } from '../constants/gear.constants';
 import { ARMORED_DAMAGE_RATE, UNIT_COLLISION_RADIUS, UNIT_GEAR_DAMAGE_RATE } from '../constants/balance.constants';
+import { UNIT_GEAR_DAMAGE_MULT } from '../constants/unit.constants';
 import { distance } from '../utils/MathUtils';
 import { SpatialGrid } from '../utils/SpatialGrid';
 
@@ -117,9 +118,14 @@ export class GearUnitInteractionSystem {
           case 'aether_phantom_spawner':
           default:
             if (unit.owner === gear.owner) break;
-            if (unit.type === 'slime') {
+            if (unit.type === 'slime' || unit.type === 'saboteur' || unit.type === 'raider') {
               // Slime deals no damage to gears either -- just a soft
               // physical push so a pile of them doesn't visibly clip through.
+              // Saboteur and Raider are explicitly "instead of damaging it"
+              // units (UnitSystem.updateSaboteur/updateRaider apply their own
+              // effect on a cooldown) -- excluded here so that guarantee is
+              // structural, not just a side effect of how often their own
+              // contact distance happens to overlap this system's.
               this.resolveCircleCollision(unit, gear, d, contactDist, 0.3);
               this.world.updateUnit(unit);
             } else {
@@ -205,10 +211,13 @@ export class GearUnitInteractionSystem {
     // Hard block: push unit fully out of the gear
     this.resolveCircleCollision(unit, gear, d, contactDist, 1.0);
 
-    // Combat units always damage armored gears on contact
-    if (unit.type !== 'slime') {
+    // Combat units always damage armored gears on contact -- except the two
+    // "instead of damaging it" utility types, same exclusion as the generic
+    // gear-contact path above.
+    if (unit.type !== 'slime' && unit.type !== 'saboteur' && unit.type !== 'raider') {
       // Bug 1.2 fix: rate-based damage (not per-frame), normalised to 1 second
-      const damage = unit.baseDamage * ARMORED_DAMAGE_RATE * deltaSec;
+      const gearDmgMult = UNIT_GEAR_DAMAGE_MULT[unit.type] ?? 1;
+      const damage = unit.baseDamage * ARMORED_DAMAGE_RATE * gearDmgMult * deltaSec;
       const wasAlive = gear.hp > 0;
       gear.hp = Math.max(0, gear.hp - damage);
       gear.crackLevel = crackLevelFor(gear.hp, gear.maxHp);
@@ -243,8 +252,11 @@ export class GearUnitInteractionSystem {
   ): void {
     if (gear.isBurntOut) return;
 
-    // Meaningful damage: baseDamage HP/sec
-    const damage = unit.baseDamage * UNIT_GEAR_DAMAGE_RATE * deltaSec;
+    // Meaningful damage: baseDamage HP/sec, times a per-type gear-damage
+    // multiplier -- 1 for everything except Sapper, whose entire identity
+    // as an anti-gear siege unit lives in this one number.
+    const gearDmgMult = UNIT_GEAR_DAMAGE_MULT[unit.type] ?? 1;
+    const damage = unit.baseDamage * UNIT_GEAR_DAMAGE_RATE * gearDmgMult * deltaSec;
     const wasAlive = gear.hp > 0;
     gear.hp = Math.max(0, gear.hp - damage);
     gear.crackLevel = crackLevelFor(gear.hp, gear.maxHp);

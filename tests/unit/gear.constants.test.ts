@@ -62,20 +62,23 @@ describe('gearMaxHp', () => {
 });
 
 describe('turretRange', () => {
-  it('crossbow at teeth=10 → 250', () => {
-    expect(turretRange(10, 'crossbow_turret')).toBe(250);
+  // Derived from the mobile unit's own range (size * mult), times a
+  // fraction < 1 -- a turret must always under-range its mobile
+  // counterpart, never out-range it. size = max(4, round(teeth * 1.2)).
+  it('crossbow at teeth=10 → round(12 * 4 * 0.75) = 36', () => {
+    expect(turretRange(10, 'crossbow_turret')).toBe(36);
   });
 
-  it('artillery at teeth=10 → 400', () => {
-    expect(turretRange(10, 'artillery_turret')).toBe(400);
+  it('artillery at teeth=10 → round(12 * 10 * 0.8) = 96', () => {
+    expect(turretRange(10, 'artillery_turret')).toBe(96);
   });
 
-  it('crossbow at teeth=40 → round(250 * sqrt(4)) = 500', () => {
-    expect(turretRange(40, 'crossbow_turret')).toBe(500);
+  it('crossbow at teeth=40 → round(48 * 4 * 0.75) = 144', () => {
+    expect(turretRange(40, 'crossbow_turret')).toBe(144);
   });
 
-  it('artillery at teeth=40 → round(400 * sqrt(4)) = 800', () => {
-    expect(turretRange(40, 'artillery_turret')).toBe(800);
+  it('artillery at teeth=40 → round(48 * 10 * 0.8) = 384', () => {
+    expect(turretRange(40, 'artillery_turret')).toBe(384);
   });
 });
 

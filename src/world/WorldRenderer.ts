@@ -39,7 +39,7 @@ export class WorldRenderer {
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
-    this.worldGraphics = scene.add.graphics();
+    this.worldGraphics = scene.add.graphics().setDepth(-50);
     this.overlayGraphics = scene.add.graphics();
     this.snapPreviewGraphics = scene.add.graphics();
     this.meshArcGraphics = scene.add.graphics();

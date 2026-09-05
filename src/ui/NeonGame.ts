@@ -72,6 +72,36 @@ function hexStr(c: number): string {
   return '#' + c.toString(16).padStart(6, '0');
 }
 
+/**
+ * Shared bar-fill drawing routine: dark track + colored fill + top highlight,
+ * with an optional fill direction so mirrored/reversed bars (e.g. two bases
+ * facing each other) share the same drawing code as a normal left-to-right
+ * bar instead of re-deriving it. Used by neonHealthBar and BaseHealthBars.
+ */
+export function drawNeonBarFill(
+  g: Phaser.GameObjects.Graphics,
+  x: number, y: number, w: number, h: number,
+  frac: number, color: number,
+  opts: { direction?: 'ltr' | 'rtl'; trackColor?: number; radius?: number } = {},
+): void {
+  const direction = opts.direction ?? 'ltr';
+  const radius = opts.radius ?? 0;
+  const trackColor = opts.trackColor ?? 0x0a0f1a;
+  const clamped = Phaser.Math.Clamp(frac, 0, 1);
+
+  g.fillStyle(trackColor, 1);
+  if (radius) g.fillRoundedRect(x, y, w, h, radius); else g.fillRect(x, y, w, h);
+
+  if (clamped > 0) {
+    const fillW = Math.ceil(w * clamped);
+    const fillX = direction === 'ltr' ? x : x + w - fillW;
+    g.fillStyle(color, 1);
+    if (radius) g.fillRoundedRect(fillX, y, fillW, h, radius); else g.fillRect(fillX, y, fillW, h);
+    g.fillStyle(0xffffff, 0.12);
+    g.fillRect(fillX, y + 1, fillW, Math.min(3, h - 2));
+  }
+}
+
 // ── 1. neonHealthBar ──────────────────────────────────────────────────────
 
 export function neonHealthBar(
@@ -94,10 +124,6 @@ export function neonHealthBar(
     const frac = Phaser.Math.Clamp(current / maxValue, 0, 1);
     const hc = healthColor(frac);
 
-    // Dark track
-    g.fillStyle(0x0a0f1a, 0.95);
-    g.fillRect(x, y, w, h);
-
     // Neon border around track
     g.lineStyle(1.5, hc.hex, 0.7);
     g.strokeRect(x, y, w, h);
@@ -106,14 +132,8 @@ export function neonHealthBar(
     g.fillStyle(hc.hex, 0.04);
     g.fillRect(x - 3, y - 3, w + 6, h + 6);
 
-    // Filled portion
-    if (frac > 0) {
-      g.fillStyle(hc.hex, 0.55);
-      g.fillRect(x + 1, y + 1, (w - 2) * frac, h - 2);
-      // Bright top edge highlight
-      g.fillStyle(hc.hex, 0.25);
-      g.fillRect(x + 1, y + 1, (w - 2) * frac, 2);
-    }
+    // Track + filled portion
+    drawNeonBarFill(g, x + 1, y + 1, w - 2, h - 2, frac, hc.hex);
 
     txt.setText(`${Math.round(current)} / ${maxValue}`);
     txt.setColor(hc.str);

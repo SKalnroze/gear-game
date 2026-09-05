@@ -32,8 +32,13 @@ Base values, calibrated at 10 teeth. A spawner's tooth count scales everything.
 | Crystal Sentinel | 50 | 55 | 6 | 8 | 6 crystal | 72 |
 | Aether Phantom | 25 | 100 | 4 | 6 | 5 aether | 36 |
 | Crossbow | 20 | 60 | 5 | 3 | 6 gold | 48 |
-| Sentry Unit | 30 | 45 | 2 | 2 | 10 gold | 36 |
+| Sentry Unit | 30 | 70 | 2 | 2 | 10 gold | 36 |
 | Slime | 10 | 40 | 0 | 0 | 2 gold | 36 |
+| Sapper | 45 | 35 | 4 | 4 | 9 gold | 36 |
+| Skirmish Diver | 18 | 110 | 7 | 3 | 9 gold | 36 |
+| Saboteur | 22 | 55 | 3 | 2 | 10 gold | 36 |
+| Raider | 20 | 100 | 3 | 2 | 10 gold | 36 |
+| Field Medic | 25 | 65 | 0 | 0 | 8 gold | 36 |
 <!-- END GENERATED: units.stats -->
 
 **Combat dmg** is dealt to units and gears in the field; **base dmg** is the damage applied to the enemy base on arrival. They are separate numbers, so a unit can be a good raider and a poor fighter or the reverse.
@@ -130,6 +135,46 @@ The intent of these exponents: bigger spawners make **fewer, tougher, slower, mo
 
 **Status.** Implemented. Its own spawner, `slime_spawner`, needs only `unlock_slime_spawner`.
 
+### Sapper
+
+**Intent.** An answer to a pure-defense turtle. Every unit deals gear damage at the same flat rate regardless of type; Sapper is the one exception, so a player facing a wall of spiked and armored gears has a real tool for breaching it besides raw zerg numbers — attacking the machine directly, the [first pillar](../GAME_DESIGN.md#1-the-machine-is-the-strategy) taken literally.
+
+**Behaviour.** Marches and fights exactly like Infantry (same targeting, same melee loop) — its identity isn't a bespoke AI, it's `UNIT_GEAR_DAMAGE_MULT` (`unit.constants.ts`): every hit it lands on a gear counts for 6× what an Infantry hit would, applied in `GearUnitInteractionSystem`'s contact-damage sites. Below-neutral counter multipliers against every unit type make it a poor choice for a straight fight; that trade is the point.
+
+**Status.** Implemented. Its own spawner, `sapper_spawner`, needs `unlock_sapper_spawner`.
+
+### Skirmish Diver
+
+**Intent.** The counter to a kiting or artillery-heavy build. Cavalry already answers Infantry; Diver answers anything that wins by standing still and shooting — Artillery, Crystal Sentinel, Crossbow — the same way, but from the other side of the triangle.
+
+**Behaviour.** Marches and fights exactly like Infantry — reach isn't the mechanic here, the counter table is: 2.5–3× damage against every stop-and-shoot type, at the cost of losing hard to anything that can also close distance on it (Cavalry, Iron Guard). Fast and fragile, so it either connects before dying or doesn't matter.
+
+**Status.** Implemented. Its own spawner, `skirmish_diver_spawner`, needs `unlock_skirmish_diver_spawner`.
+
+### Saboteur
+
+**Intent.** Attacks a chain's *speed*, not its health — the unit-side counterpart to a jam. Weak in a fight by design, the same as Sentry Unit; its value is entirely in what it does to a gear it reaches, not what it can kill.
+
+**Behaviour.** Seeks the nearest enemy gear in the lane; on contact, on a cooldown, it adds a heavy temporary friction load (`SABOTEUR_FRICTION_AMOUNT`, `UnitSystem.ts`) to that gear instead of dealing HP damage — the same `frictionLoad` field a Crystal Sentinel cold zone or a Slime puddle uses, so it throttles the *whole chain* the gear sits on, not just that one gear. The debuff decays back out after `SABOTEUR_FRICTION_DURATION_MS`. Never fights of its own accord — like Slime and Sentry Unit, CombatSystem's generic engagement handles it being attacked.
+
+**Status.** Implemented. Its own spawner, `saboteur_spawner`, needs `unlock_saboteur_spawner`.
+
+### Raider
+
+**Intent.** The counter to an economy built inside the lane. A miner or converter placed off-lane is already safe from every marching unit in the game; Raider makes placing one *in* the lane for speed or safety elsewhere a real risk, without breaking the rule that a gear off-lane can't be reached at all.
+
+**Behaviour.** Seeks the nearest enemy miner or converter gear *within the lane*; on contact, on a cooldown, it sets `disabledUntil` (`gear.types.ts`) instead of dealing HP damage. `EconomySystem` checks that field on every `gear:full_rotation` and withholds the gear's output entirely until it expires — the gear keeps spinning (and still costs its chain the same reflected inertia), it just doesn't pay out. Never fights of its own accord, same as Saboteur.
+
+**Status.** Implemented. Its own spawner, `raider_spawner`, needs `unlock_raider_spawner`.
+
+### Field Medic
+
+**Intent.** The mobile counterpart to the stationary Healer gear's aura — sustain that travels with a push instead of waiting behind it. Lets a sustain-focused build spend a spawner slot on healing instead of a gear slot, a genuine build trade-off rather than a new mechanic.
+
+**Behaviour.** Marches with the army and never fights (zero damage, like Slime). Every couple of seconds it heals every nearby allied unit below full HP within its radius, mirroring `healerOutput`/`healerRadius` but applied to units directly from the unit's own position rather than a fixed gear.
+
+**Status.** Implemented. Its own spawner, `field_medic_spawner`, needs `unlock_field_medic_spawner`.
+
 ### Mixed and the Elites
 
 **Intent.** Elites are the late-tech reward: strictly stronger versions of the core three, gated behind deep research, so a long match escalates. `Mixed` is a generalist with no counter weaknesses.
@@ -147,21 +192,26 @@ The intent of these exponents: bigger spawners make **fewer, tougher, slower, mo
 **Intent.** A rock-paper-scissors triangle — infantry beats artillery beats cavalry beats infantry, at double damage — so that scouting what the opponent produces is worth doing, and so no single spawner is correct.
 
 <!-- BEGIN GENERATED: units.counters -->
-| Attacker ↓ / Defender → | Infantry | Artillery | Cavalry | Mixed | Elite Infantry | Elite Artillery | Elite Cavalry | Iron Guard | Crystal Sentinel | Aether Phantom | Crossbow | Sentry Unit | Slime |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **Infantry** | · | 2× | 0.5× | · | · | 2× | 0.5× | · | 1.2× | 1.5× | · | 1.2× | · |
-| **Artillery** | 0.5× | · | 2× | · | 0.5× | · | 2× | 1.5× | 0.8× | · | · | · | · |
-| **Cavalry** | 2× | 0.5× | · | · | 2× | 0.5× | · | 0.5× | · | 2× | 2× | 1.5× | 2× |
-| **Mixed** | · | · | · | · | · | · | · | · | · | · | · | · | · |
-| **Elite Infantry** | 1.5× | 3× | 0.5× | 1.2× | · | 3× | 0.5× | 1.2× | 1.5× | 2× | 1.5× | 1.5× | 1.5× |
-| **Elite Artillery** | 0.5× | 1.5× | 3× | 1.2× | 0.5× | · | 3× | 2× | 0.8× | 1.2× | 1.2× | · | · |
-| **Elite Cavalry** | 3× | 0.5× | 1.5× | 1.2× | 3× | 0.5× | · | 0.5× | 1.2× | 2.5× | 3× | 2× | 3× |
-| **Iron Guard** | · | 0.8× | 2× | · | · | 0.8× | 2× | · | · | 1.5× | 1.5× | · | · |
-| **Crystal Sentinel** | 0.8× | · | 0.9× | 0.9× | 0.8× | · | 0.9× | · | · | · | 0.9× | · | · |
-| **Aether Phantom** | 0.6× | · | 0.5× | 0.8× | 0.6× | · | 0.5× | · | · | · | 0.6× | · | · |
-| **Crossbow** | · | 1.2× | 0.5× | · | · | 1.2× | 0.5× | 0.6× | · | 2× | · | 1.2× | · |
-| **Sentry Unit** | · | · | · | · | · | · | · | · | · | · | · | · | · |
-| **Slime** | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | · |
+| Attacker ↓ / Defender → | Infantry | Artillery | Cavalry | Mixed | Elite Infantry | Elite Artillery | Elite Cavalry | Iron Guard | Crystal Sentinel | Aether Phantom | Crossbow | Sentry Unit | Slime | Sapper | Skirmish Diver | Saboteur | Raider | Field Medic |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **Infantry** | · | 2× | 0.5× | · | · | 2× | 0.5× | · | 1.2× | 1.5× | · | 1.2× | · | · | · | · | · | · |
+| **Artillery** | 0.5× | · | 2× | · | 0.5× | · | 2× | 1.5× | 0.8× | · | · | · | · | · | · | · | · | · |
+| **Cavalry** | 2× | 0.5× | · | · | 2× | 0.5× | · | 0.5× | · | 2× | 2× | 1.5× | 2× | 2× | 2× | 1.5× | 2× | 2× |
+| **Mixed** | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · |
+| **Elite Infantry** | 1.5× | 3× | 0.5× | 1.2× | · | 3× | 0.5× | 1.2× | 1.5× | 2× | 1.5× | 1.5× | 1.5× | · | · | · | · | · |
+| **Elite Artillery** | 0.5× | 1.5× | 3× | 1.2× | 0.5× | · | 3× | 2× | 0.8× | 1.2× | 1.2× | · | · | · | · | · | · | · |
+| **Elite Cavalry** | 3× | 0.5× | 1.5× | 1.2× | 3× | 0.5× | · | 0.5× | 1.2× | 2.5× | 3× | 2× | 3× | 2.5× | 2.5× | 2× | 2.5× | 2.5× |
+| **Iron Guard** | · | 0.8× | 2× | · | · | 0.8× | 2× | · | · | 1.5× | 1.5× | · | · | · | 1.2× | 1.5× | 1.2× | 1.5× |
+| **Crystal Sentinel** | 0.8× | · | 0.9× | 0.9× | 0.8× | · | 0.9× | · | · | · | 0.9× | · | · | · | · | · | · | · |
+| **Aether Phantom** | 0.6× | · | 0.5× | 0.8× | 0.6× | · | 0.5× | · | · | · | 0.6× | · | · | · | · | · | · | · |
+| **Crossbow** | · | 1.2× | 0.5× | · | · | 1.2× | 0.5× | 0.6× | · | 2× | · | 1.2× | · | · | · | · | · | · |
+| **Sentry Unit** | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · |
+| **Slime** | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | · | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× |
+| **Sapper** | 0.8× | 0.8× | 0.6× | 0.8× | 0.8× | 0.8× | 0.6× | 0.6× | 0.8× | 0.6× | 0.8× | · | · | · | 0.8× | · | · | · |
+| **Skirmish Diver** | · | 3× | 0.5× | · | · | 3× | 0.5× | 0.5× | 2.5× | · | 2.5× | 1.5× | 1.5× | 1.5× | · | 1.5× | · | 2× |
+| **Saboteur** | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · |
+| **Raider** | 0.6× | · | 0.5× | 0.8× | 0.6× | · | 0.5× | · | · | · | 0.6× | · | · | · | · | · | · | 1.5× |
+| **Field Medic** | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | 0.5× | · |
 <!-- END GENERATED: units.counters -->
 
 `·` means no modifier. Elites hit their favoured matchup harder than the base units do.

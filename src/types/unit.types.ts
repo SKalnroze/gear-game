@@ -16,7 +16,17 @@ export type UnitType =
   // Mobile true-sight pulse, counters hidden mines
   | 'sentry_unit'
   // Special -- the clog unit: no damage, explodes into a slowing puddle on death
-  | 'slime';
+  | 'slime'
+  // Anti-gear siege unit: weak vs units, tears gears apart
+  | 'sapper'
+  // Fast flanker built to punish ranged units and turrets
+  | 'skirmish_diver'
+  // Disruptor: fouls an enemy gear's rotation instead of dealing HP damage
+  | 'saboteur'
+  // Economic raider: disables a miner/converter gear instead of damaging it
+  | 'raider'
+  // Mobile sustain: heals nearby allied units, never fights
+  | 'field_medic';
 
 export interface UnitDefinition {
   type: UnitType;
@@ -35,6 +45,10 @@ export interface UnitDefinition {
   /** Sentry unit only: radius and interval of its true-sight pulse. */
   sightRadius?: number;
   sightPulseIntervalMs?: number;
+  /** Field medic only: radius, per-pulse heal amount, and pulse interval. */
+  healRadius?: number;
+  healAmount?: number;
+  healPulseIntervalMs?: number;
 }
 
 export type CounterTable = {

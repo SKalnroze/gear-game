@@ -50,6 +50,36 @@ export const CAPACITOR_OVERCLOCK_BURST_BONUS = 1.0;
 export const ENGAGE_DISTANCE = 36;         // px — unit-to-unit engagement range
 export const UNIT_COLLISION_RADIUS = 10;   // approximate circle radius for a unit
 
+/**
+ * Mobile Crossbow/Artillery range formula pieces, shared between
+ * unit.utils.ts (the mobile unit's own attack range) and turretRange() in
+ * gear.constants.ts, so a turret's range is always *derived from* -- and
+ * kept below -- its mobile counterpart's, instead of being an independent
+ * flat number the two can drift apart from. See balance.md "Defense vs
+ * ranged": a turret that outranges the unit meant to poke it inverts the
+ * design (defense should fall to ranged pressure, not out-range it).
+ */
+export const UNIT_SIZE_TEETH_MULT = 1.2;   // matches computeScaledStats' size formula
+export const CROSSBOW_RANGE_MULT = 4;      // mobile crossbow attack range = size * this
+export const ARTILLERY_RANGE_MULT = 10;    // mobile artillery attack range = size * this
+/** A turret's range is this fraction of its mobile counterpart's -- always under-ranged, by construction. */
+export const CROSSBOW_TURRET_RANGE_FRACTION = 0.75;
+export const ARTILLERY_TURRET_RANGE_FRACTION = 0.8;
+
+/**
+ * Cavalry charge: how far ahead it will sense a target/gear and start
+ * accumulating charge, and how much that accumulation is worth in bonus
+ * damage. Both used to be effectively unbounded -- no distance cap on the
+ * "is there a forward target" check at all -- which let a charge across a
+ * typical no-man's-land accumulate to 6x+ base damage, one-shotting a
+ * standard gear outright. Capped to the game's longest existing sensor
+ * range and the divisor loosened so a full-field charge is still the
+ * hardest hit in the game without being an automatic kill. See
+ * balance.md "Cavalry -- the charge formula needs a ceiling".
+ */
+export const CAVALRY_CHARGE_SENSE_RANGE = 500;
+export const CAVALRY_CHARGE_DAMAGE_DIVISOR = 160;
+
 // Gear-unit interaction
 export const ARMORED_DAMAGE_RATE = 0.08;   // baseDamage fraction per second (~8%/sec)
 export const UNIT_GEAR_DAMAGE_RATE = 1.0;  // HP/sec per baseDamage point (combat units vs non-armored gears)

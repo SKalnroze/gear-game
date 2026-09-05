@@ -55,15 +55,16 @@ Derived from the two lobby slots rather than chosen from a list, so the mode is 
 
 | Element | Position | Shows |
 |---|---|---|
-| **Base health bars** | Top corners | Each side's base HP. The friendly bar is always the cool colour and the hostile one red, whichever side you are on. Flashes on damage. |
-| **Minimap** | Bottom right, above the panel | The whole arena: zone shading, base markers, gears colour-coded by type, units by owner, and the current viewport rectangle. Click or drag to pan. |
+| **Base health bars** | Top corners | Each side's base HP. The friendly bar is always the cool colour and the hostile one red (orange in colorblind mode), whichever side you are on. Flashes on damage. Shrinks below an 800px-wide viewport. |
+| **Jam indicator** | Top-left, below the player health bar | Badge showing how many of the player's own gears are currently jammed; hidden at zero. Skipped in spectate. |
+| **Minimap** | Bottom right, above the panel | The whole arena: zone shading, base markers, gears colour-coded by type, units by owner, and the current viewport rectangle. Jammed gears (any owner) get a pulsing ring. Click or drag to pan. |
 | **Sliding panel** | Bottom, full width | The build interface. 60 px collapsed, 440 px expanded. |
-| **Resource readout** | Panel tab bar, right | Gold, iron, crystal, aether, plus the current research and its percentage. |
-| **Toasts** | Top centre | Research completed, ability activated, gear destroyed. Slide in, hold ~2 s, slide out. |
+| **Resource readout** | Panel tab bar, right | Gold, iron, crystal, aether, plus the current research and its percentage. Blocks shrink and hide the rate sub-text below an 800px-wide viewport. |
+| **Toasts** | Top centre | Research completed, ability activated, gear destroyed, a severe gear jam on one of the player's own gears. Slide in, hold ~2 s, slide out. |
 | **Tooltips** | Follows cursor | Detail on whatever is hovered. |
 | **Floating text** | In world | Per-gear production results, damage numbers, burst notices. Rises and fades. |
 
-The panel exports its top edge as shared state so the world scene knows where the HUD begins — a click below that line belongs to the panel, never the world. The panel auto-collapses when a gear drag starts, so you always have a clear view of where you are placing, and restores afterwards.
+`GameScene` listens for the panel's `ui:panel_height_changed` event to track where the HUD begins — a click below that line belongs to the panel, never the world. The panel auto-collapses when a gear drag starts, so you always have a clear view of where you are placing, and restores afterwards.
 
 ### GEARS tab
 
@@ -77,9 +78,9 @@ Cards show name, price, a miniature procedural gear glyph, and a type-coloured s
 
 **Intent.** Show the whole tree at once, including what you cannot yet reach, so research feels like navigation rather than a menu.
 
-Five labelled columns of cards, sorted by tier, with elbow connectors drawn from prerequisite to dependent — green when satisfied, grey when not. Hovering a card highlights every prerequisite it depends on, which is how a player reads a path backwards from a goal. A tier stripe colours the card. In-progress nodes show a live progress fill.
+A true radial tree, not a grid: prerequisite-chain depth is radius, so every node researchable right now — no prereqs, or all of them met — sits on one shared inner ring, and the tree fans outward as chains get longer. Angle is a thematic branch, finer than the tech data's own five columns, so a single resource's whole line always points one direction (Iron Mining, Iron Smelting and the Iron Guard Spawner all sit in the same wedge, even though the spawner is data-column "Units"). Elbow connectors — straight out to the child's ring, then an arc sweep to its angle — run from prerequisite to dependent, green when satisfied, grey when not, dashed for the tree's one cross-branch dependency (Super Amplifier's economy prereq). Hovering a card highlights every prerequisite it depends on. A tier stripe colours the card; in-progress nodes show a live progress fill.
 
-A **queue sidebar** on the left lists the node in progress and everything waiting, each cancellable for a full refund.
+Right mouse button drags to pan; the wheel zooms, centred on the cursor; a RECENTER button restores the default framing. A **queue sidebar** on the left, fixed regardless of pan/zoom, lists the node in progress and everything waiting, each cancellable for a full refund.
 
 ### ACTIONS tab
 
@@ -103,8 +104,8 @@ Three ability cards with cooldown bars, and below them a read-only list of which
 |---|---|
 | Click a gear card, then click the world | Place a gear (snaps to mesh) |
 | Click a placed gear | Pick it up to reposition, subject to cooldown |
-| `R` | Toggle sell mode |
-| `ESC` | Cancel the current placement |
+| `R` (rebindable) | Toggle sell mode |
+| `ESC` (rebindable) | Cancel the current placement |
 | Mouse wheel | Zoom, 0.1×–5× |
 | Middle-drag or right-drag | Pan |
 | Right-click while placing | Cancel rather than pan |
@@ -119,16 +120,22 @@ The camera has no hard bounds; it is clamped only so at least one world pixel st
 
 ## Settings
 
-Persisted to `localStorage` and applied immediately.
+Persisted to `localStorage`. Most settings apply live via a `settings:changed` event; two exceptions are noted below.
 
 | Setting | Default | Effect |
 |---|---|---|
-| Sound | On | Gates all SFX and music |
+| Sound | On | Master gate for all SFX and music |
+| Music volume | 0.7 | Slider, 0–1, applied live |
+| SFX volume | 0.7 | Slider, 0–1, applied live |
 | Game speed | 1× | 0.5× / 1× / 2× — scales the game clock, so simulation, research and income all move together |
+| UI scale | 1× (Normal) | Small / Normal / Large / XL — restarts this scene to preview; other scenes and the next match pick it up next time they're built |
+| Colorblind mode | Off | Swaps the hostile-side accent from red to orange across the HUD (health bars, base markers), applied live |
 | Edge scrolling | Off | Camera pans when the pointer nears a screen edge |
 | Edge scroll speed | 300 px/s | 150 / 300 / 600 |
 | Edge scroll zone | 5% | 3% / 5% / 10% of viewport |
+| Remove-mode key | `R` | Rebindable via the keybind picker in Controls |
+| Cancel key | `ESC` | Rebindable via the keybind picker in Controls |
 
 Ability cooldowns run on the same game clock as everything else, so they pause and scale with game speed like the rest of the simulation.
 
-Neither music nor SFX volume is exposed here — both are reachable only from the audio showcase, and that slider is not persisted.
+**Exceptions:** UI scale is read once at scene construction (see above), and a keybind change only takes effect on the next match — `GameScene` reads it once at scene creation. Neither is worth rebuilding a live scene or re-registering key listeners mid-match for.

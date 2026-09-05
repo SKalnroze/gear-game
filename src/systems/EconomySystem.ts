@@ -58,6 +58,14 @@ export class EconomySystem {
     const gear = this.world.getGear(gearId);
     if (!gear) return;
 
+    // Raider-disabled: this rotation produces nothing at all, regardless of
+    // gear type. The gear keeps spinning (and still costs the chain its
+    // reflected inertia) -- it just doesn't pay out.
+    if (gear.disabledUntil && this.now < gear.disabledUntil) {
+      this.eventBus.emit('gear:rotation_result', { gearId, owner, text: 'RAIDED', color: 0xff4444 });
+      return;
+    }
+
     if (gear.type === 'iron_miner') {
       const amt = miningOutput(gear.teeth);
       this.earnResource(owner, 'iron', amt);

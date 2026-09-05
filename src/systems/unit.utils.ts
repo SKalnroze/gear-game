@@ -5,7 +5,10 @@
 
 import { UnitDefinition, UnitState, UnitType } from '../types/unit.types';
 import { DEFAULT_TEETH } from '../constants/gear.constants';
-import { ENGAGE_DISTANCE } from '../constants/balance.constants';
+import {
+  ENGAGE_DISTANCE, UNIT_SIZE_TEETH_MULT, CROSSBOW_RANGE_MULT, ARTILLERY_RANGE_MULT,
+  CAVALRY_CHARGE_DAMAGE_DIVISOR,
+} from '../constants/balance.constants';
 import {
   LANE_Y_MIN, LANE_Y_MAX,
   PLAYER_BASE_X, AI_BASE_X,
@@ -28,6 +31,11 @@ export const TYPE_MASS_MULT: Partial<Record<UnitType, number>> = {
   crossbow: 0.9,
   sentry_unit: 1.0,
   slime: 0.6,
+  sapper: 1.8,
+  skirmish_diver: 0.7,
+  saboteur: 1.0,
+  raider: 0.7,
+  field_medic: 0.9,
 };
 
 // ─── Stat scaling ─────────────────────────────────────────────────────────────
@@ -57,17 +65,19 @@ export function computeScaledStats(def: UnitDefinition, teeth: number, unitType:
     speed:       Math.max(15, Math.round(def.speed      * Math.pow(s, -0.5))),
     baseDamage:  Math.max(1, Math.round(def.baseDamage  * Math.pow(s, 1.2))),
     damage:      Math.max(1, Math.round(def.damage      * Math.pow(s, 1.2))),
-    size:        Math.max(4, Math.round(teeth * 1.2)),
+    size:        Math.max(4, Math.round(teeth * UNIT_SIZE_TEETH_MULT)),
     // Artillery: stop-and-fire range = 5 unit diameters (10 × size)
     // Crystal sentinel: ranged, stops ~3 diameters away (6 × size)
     // Crossbow: short ranged skirmish distance (4 × size) -- stops well short
     // of melee contact but far closer than artillery/sentinel
+    // (Crossbow/Artillery multipliers shared with turretRange() in
+    // gear.constants.ts, so a turret's range is always derived from these.)
     attackRange: (unitType === 'artillery' || unitType === 'elite_artillery')
-      ? Math.max(4, Math.round(teeth * 1.2)) * 10
+      ? Math.max(4, Math.round(teeth * UNIT_SIZE_TEETH_MULT)) * ARTILLERY_RANGE_MULT
       : (unitType === 'crystal_sentinel')
-        ? Math.max(4, Math.round(teeth * 1.2)) * 6
+        ? Math.max(4, Math.round(teeth * UNIT_SIZE_TEETH_MULT)) * 6
         : (unitType === 'crossbow')
-          ? Math.max(4, Math.round(teeth * 1.2)) * 4
+          ? Math.max(4, Math.round(teeth * UNIT_SIZE_TEETH_MULT)) * CROSSBOW_RANGE_MULT
           : Math.max(ENGAGE_DISTANCE, Math.round(ENGAGE_DISTANCE * Math.pow(s, 0.8))),
     mass:        Math.max(1, Math.round(baseMass * massMult)),
     costAmount:  Math.max(1, Math.round(def.costAmount  * Math.pow(s, 1.3))),
@@ -135,7 +145,8 @@ export function computeAttackCooldown(size: number): number {
   return (size / 1.2) * 100;
 }
 
-/** Charge-boosted damage for cavalry. */
+/** Charge-boosted damage for cavalry. Divisor loosened from 100 -- see
+ * CAVALRY_CHARGE_DAMAGE_DIVISOR for why. */
 export function computeChargeDamage(baseDamage: number, chargeAccum: number): number {
-  return baseDamage * (1 + chargeAccum / 100);
+  return baseDamage * (1 + chargeAccum / CAVALRY_CHARGE_DAMAGE_DIVISOR);
 }

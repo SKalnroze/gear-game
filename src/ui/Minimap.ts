@@ -35,6 +35,11 @@ const GEAR_DOT_COLORS: Record<GearType, number> = {
   sentry_spawner: 0x66ffcc,
   sentry_gear: 0x66ffcc,
   relief_valve: 0xffaa22,
+  sapper_spawner: 0xaa8866,
+  skirmish_diver_spawner: 0xff5577,
+  saboteur_spawner: 0x884499,
+  raider_spawner: 0xffaa33,
+  field_medic_spawner: 0x44ffaa,
 };
 
 /**
@@ -54,6 +59,7 @@ export class Minimap {
   private scaleY: number;
 
   private isPointerDown: boolean = false;
+  private jammedGearIds: Set<string> = new Set();
 
   constructor(
     scene: Phaser.Scene,
@@ -96,6 +102,10 @@ export class Minimap {
       const newY = topY - mapH - 4;
       this.reposition(newX, newY, mapW, mapH);
     });
+
+    // Track jammed gears (any owner) so a jam off-screen is still visible on the radar.
+    eventBus.on('gear:jammed', ({ gearId }) => this.jammedGearIds.add(gearId));
+    eventBus.on('gear:jam_cleared', ({ gearId }) => this.jammedGearIds.delete(gearId));
   }
 
   reposition(x: number, y: number, mapW: number, mapH: number): void {
@@ -171,13 +181,18 @@ export class Minimap {
       g.fillRect(ox + mw - 2, oy, 2, mh);
     }
 
-    // Gears as dots (larger radius)
+    // Gears as dots (larger radius); jammed gears get a pulsing red ring
+    const jamPulse = 3.5 + Math.sin(this.scene.time.now / 150) * 2;
     for (const [, gear] of this.world.getAllGears()) {
       const dotX = ox + gear.x * sx;
       const dotY = oy + gear.y * sy;
       const color = GEAR_DOT_COLORS[gear.type] ?? 0x888888;
       g.fillStyle(color, gear.owner === 'player' ? 1.0 : 0.7);
       g.fillCircle(dotX, dotY, 3.5);
+      if (this.jammedGearIds.has(gear.id)) {
+        g.lineStyle(1.5, 0xff2244, 0.85);
+        g.strokeCircle(dotX, dotY, jamPulse + 3);
+      }
     }
 
     // Units as dots (larger radius)

@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { eventBus } from '../systems/EventBus';
 import { CANVAS_HEIGHT, PANEL_COLLAPSED_H, PANEL_EXPANDED_H } from '../constants/world.constants';
 import { NEON } from '../constants/ui.constants';
+import { neonToggle, neonLabeledToggle } from './NeonForm';
 
 /**
  * Exported panel state: TopY position of the panel top edge
@@ -47,15 +48,9 @@ export class SlidingPanel {
   private sep!: Phaser.GameObjects.Line;
   private maskGraphics!: Phaser.GameObjects.Graphics;
 
-  // Resource texts (separate objects for different colors)
-  private goldText!: Phaser.GameObjects.Text;
-  private ironText!: Phaser.GameObjects.Text;
-  private crystalText!: Phaser.GameObjects.Text;
-  private aetherText!: Phaser.GameObjects.Text;
-  private researchText!: Phaser.GameObjects.Text;
-
-  // REMOVE / AS ENEMY / PAUSE buttons
+  // REMOVE / AS ENEMY / PAUSE toggles
   private removeBtn!: Phaser.GameObjects.Container;
+  private toggleHandles: ReturnType<typeof neonToggle>[] = [];
 
   private activeTab: TabName | null = null;
   private currentBodyH: number = 0;
@@ -68,11 +63,6 @@ export class SlidingPanel {
 
   private tabButtons: Map<TabName, { bg: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text; underline: Phaser.GameObjects.Rectangle }> = new Map();
   private tabBodies: Map<TabName, Phaser.GameObjects.Container> = new Map();
-
-  // Resource-rate tooltip: trailing-average g/s (etc) shown next to each total
-  private economySystem: import('../systems/EconomySystem').EconomySystem | null = null;
-  private lastResources: { gold: number; iron: number; crystal: number; aether: number } = { gold: 30, iron: 0, crystal: 0, aether: 0 };
-  private rateRefreshEvent: Phaser.Time.TimerEvent | null = null;
 
   constructor(scene: Phaser.Scene, canvasW: number, canvasH: number, isPractice: boolean = false) {
     this.scene = scene;
@@ -125,19 +115,18 @@ export class SlidingPanel {
       btnX += TAB_BTN_W + TAB_BTN_GAP;
     }
 
-    // REMOVE toggle button (after tabs)
-    this.removeBtn = this.createRemoveButton(btnX + 58, TAB_CENTER_Y);
+    // REMOVE toggle (after tabs)
+    this.removeBtn = this.createLabeledToggle(
+      btnX, TAB_CENTER_Y, '$ SELL', NEON.yellow,
+      active => eventBus.emit('ui:remove_mode_toggled', { active }),
+    );
     this.tabBar.add(this.removeBtn);
     btnX += 122;
 
     // AS ENEMY toggle (practice mode only)
     if (this.isPractice) {
-      const asEnemyBtn = this.createToggleButton(
-        btnX + 58, TAB_CENTER_Y,
-        '⚔ AS ENEMY', 110,
-        0x1a0a00, 0xff8800, 0.7,
-        0x663300, 0xff8800, 1,
-        '#ff9933', '#ffffff',
+      const asEnemyBtn = this.createLabeledToggle(
+        btnX, TAB_CENTER_Y, '⚔ ENEMY', NEON.orange,
         active => eventBus.emit('ui:as_enemy_toggled', { active }),
       );
       this.tabBar.add(asEnemyBtn);
@@ -145,32 +134,11 @@ export class SlidingPanel {
     }
 
     // PAUSE toggle (all modes)
-    const pauseBtn = this.createToggleButton(
-      btnX + 58, TAB_CENTER_Y,
-      '⏸ PAUSE', 104,
-      0x0a0a1a, 0x4488ff, 0.7,
-      0x001144, 0x4488ff, 1,
-      '#6699ff', '#ffffff',
+    const pauseBtn = this.createLabeledToggle(
+      btnX, TAB_CENTER_Y, '⏸ PAUSE', NEON.blue,
       active => eventBus.emit('ui:pause_toggled', { paused: active }),
     );
     this.tabBar.add(pauseBtn);
-
-    // Resource displays (right side, multi-color)
-    const resY = PANEL_COLLAPSED_H / 2 - 6;
-    this.goldText = this.makeResText(this.canvasW - 380, resY, 'G —', '#ffcc00');
-    this.ironText = this.makeResText(this.canvasW - 295, resY, 'Fe —', '#aabbcc');
-    this.crystalText = this.makeResText(this.canvasW - 210, resY, 'Cr —', '#00ffcc');
-    this.aetherText = this.makeResText(this.canvasW - 125, resY, 'Ae —', '#cc44ff');
-
-    // Research progress (below resource row)
-    const researchY = PANEL_COLLAPSED_H / 2 + 6;
-    this.researchText = this.scene.add.text(this.canvasW - 380, researchY, '', {
-      fontSize: '15px',
-      color: '#00ffcc',
-      fontFamily: 'monospace',
-    });
-    this.researchText.setDepth(52);
-    this.tabBar.add(this.researchText);
 
     // Body container
     this.bodyContainer = this.scene.add.container(0, PANEL_COLLAPSED_H);
@@ -190,6 +158,12 @@ export class SlidingPanel {
     this.bodyContainer.setMask(this.maskGraphics.createGeometryMask());
     this.outerContainer.add(this.bodyContainer);
 
+    // Tab bar must always win hit-testing over body content -- scrolled body
+    // content can end up positioned under the tab row (masking only hides
+    // rendering, not input), so keep the tab bar one level up in the
+    // container's render/input order.
+    this.outerContainer.bringToTop(this.tabBar);
+
     // Dismiss zone
     this.dismissZone = this.scene.add.zone(
       this.canvasW / 2, this.canvasH / 2,
@@ -204,16 +178,6 @@ export class SlidingPanel {
     this.dismissZone.setVisible(false);
 
     panelState.topY = this.canvasH - PANEL_COLLAPSED_H;
-
-    // Economy updates — gold_changed fires on earn/spend, resources_changed on mining
-    const updateResources = (owner: string, resources: { gold: number; iron: number; crystal: number; aether: number }) => {
-      if (owner === 'player') {
-        this.lastResources = resources;
-        this.renderResourceTexts();
-      }
-    };
-    eventBus.on('economy:gold_changed', ({ owner, resources }) => updateResources(owner, resources));
-    eventBus.on('economy:resources_changed', ({ owner, resources }) => updateResources(owner, resources));
 
     // Collapse panel during gear drag/pickup; restore afterwards
     const onActionStart = () => {
@@ -238,48 +202,6 @@ export class SlidingPanel {
     eventBus.on('ui:gear_drag_end', onActionEnd);
     eventBus.on('ui:gear_pickup_start', onActionStart);
     eventBus.on('ui:gear_pickup_end', onActionEnd);
-  }
-
-  /** Wires the trailing-average rate tooltip -- called once systems are ready. */
-  setEconomySystem(economySystem: import('../systems/EconomySystem').EconomySystem): void {
-    this.economySystem = economySystem;
-    this.renderResourceTexts();
-    // Rates drift continuously (samples age out of the 60s window even with
-    // no new earn/spend), not just on economy:*_changed, so refresh on a timer.
-    this.rateRefreshEvent = this.scene.time.addEvent({
-      delay: 1000,
-      loop: true,
-      callback: () => this.renderResourceTexts(),
-    });
-  }
-
-  /** Formats "G 42 (+1.8/s)" style labels, rate suffix omitted until wired up. */
-  private formatResource(label: string, value: number, key: 'gold' | 'iron' | 'crystal' | 'aether'): string {
-    const base = `${label} ${Math.floor(value)}`;
-    const rate = this.economySystem?.getRate('player', key) ?? 0;
-    if (Math.abs(rate) < 0.05) return base;
-    const sign = rate > 0 ? '+' : '';
-    return `${base} (${sign}${rate.toFixed(1)}/s)`;
-  }
-
-  private renderResourceTexts(): void {
-    const r = this.lastResources;
-    this.goldText.setText(this.formatResource('G', r.gold, 'gold'));
-    this.ironText.setText(this.formatResource('Fe', r.iron, 'iron'));
-    this.crystalText.setText(this.formatResource('Cr', r.crystal, 'crystal'));
-    this.aetherText.setText(this.formatResource('Ae', r.aether, 'aether'));
-  }
-
-  private makeResText(x: number, y: number, text: string, color: string): Phaser.GameObjects.Text {
-    const t = this.scene.add.text(x, y, text, {
-      fontSize: '18px',
-      color,
-      fontFamily: 'monospace',
-      fontStyle: 'bold',
-    });
-    t.setDepth(52);
-    this.tabBar.add(t);
-    return t;
   }
 
   private createTabButton(tab: TabName, label: string, accentColor: number, cx: number, cy: number): void {
@@ -342,70 +264,26 @@ export class SlidingPanel {
     this.tabButtons.set(tab, { bg, text: txt, underline });
   }
 
-  private createRemoveButton(cx: number, cy: number): Phaser.GameObjects.Container {
-    return this.createToggleButton(
-      cx, cy,
-      '$ SELL', 100,
-      0x0f130a, 0xd4a017, 0.7,
-      0x3a2e00, 0xffd700, 1,
-      '#d4a017', '#ffffff',
-      active => eventBus.emit('ui:remove_mode_toggled', { active }),
-    );
-  }
-
   /**
-   * Generic reusable toggle button.
-   * Off state: bgFill/borderColor/borderAlpha/labelColor
-   * On state:  bgFillOn/borderColorOn/borderAlphaOn/labelColorOn
-   * onChange: called with new active state
+   * Label + neonToggle, label placed to the left and vertically centered
+   * against the toggle (shared NeonForm labeled-toggle component).
    */
-  private createToggleButton(
-    cx: number, cy: number,
-    label: string, width: number,
-    bgFill: number, borderColor: number, borderAlpha: number,
-    bgFillOn: number, borderColorOn: number, borderAlphaOn: number,
-    labelColor: string, labelColorOn: string,
+  private createLabeledToggle(
+    x: number, cy: number,
+    label: string, color: number,
     onChange: (active: boolean) => void,
   ): Phaser.GameObjects.Container {
-    const btnContainer = this.scene.add.container(cx, cy);
+    const container = this.scene.add.container(0, 0);
 
-    const bg = this.scene.add.rectangle(0, 0, width, TAB_BTN_H, bgFill, 0.9);
-    bg.setStrokeStyle(1.5, borderColor, borderAlpha);
-    bg.setDepth(51);
-    btnContainer.add(bg);
+    const toggleW = 36;
+    const toggleH = 18;
+    const toggle = neonLabeledToggle(
+      this.scene, x, cy - toggleH / 2, toggleW, toggleH, label, false, color, onChange,
+      { labelPos: 'left', fontSize: 13, gap: 8, labelColorStr: '#aabbcc', parent: this.tabBar, depth: 52 },
+    );
+    this.toggleHandles.push(toggle);
 
-    const txt = this.scene.add.text(0, -2, label, {
-      fontSize: '18px',
-      color: labelColor,
-      fontFamily: 'monospace',
-      fontStyle: 'bold',
-    }).setOrigin(0.5);
-    txt.setDepth(52);
-    btnContainer.add(txt);
-
-    let active = false;
-    bg.setInteractive({ useHandCursor: true });
-    bg.on('pointerover', () => {
-      if (!active) bg.setFillStyle(bgFillOn, 0.6);
-    });
-    bg.on('pointerout', () => {
-      if (!active) bg.setFillStyle(bgFill, 0.9);
-    });
-    bg.on('pointerdown', () => {
-      active = !active;
-      if (active) {
-        bg.setFillStyle(bgFillOn, 1);
-        bg.setStrokeStyle(2, borderColorOn, borderAlphaOn);
-        txt.setColor(labelColorOn);
-      } else {
-        bg.setFillStyle(bgFill, 0.9);
-        bg.setStrokeStyle(1.5, borderColor, borderAlpha);
-        txt.setColor(labelColor);
-      }
-      onChange(active);
-    });
-
-    return btnContainer;
+    return container;
   }
 
   private updateTabStyles(): void {
@@ -517,12 +395,6 @@ export class SlidingPanel {
     this.sep.setTo(-w / 2, PANEL_COLLAPSED_H, w / 2, PANEL_COLLAPSED_H);
     this.sep.setX(w / 2);
 
-    this.goldText.setX(w - 380);
-    this.ironText.setX(w - 295);
-    this.crystalText.setX(w - 210);
-    this.aetherText.setX(w - 125);
-    this.researchText.setX(w - 380);
-
     this.dismissZone.setPosition(w / 2, h / 2);
     this.dismissZone.setSize(w, h);
 
@@ -530,16 +402,6 @@ export class SlidingPanel {
     this.maskGraphics.fillStyle(0xffffff, 1);
     this.maskGraphics.fillRect(0, 0, w, PANEL_EXPANDED_H - PANEL_COLLAPSED_H);
     this.maskGraphics.setPosition(0, newY + PANEL_COLLAPSED_H);
-  }
-
-  public updateResearch(info: { nodeId: string; progress: number } | null): void {
-    if (!info) {
-      this.researchText.setText('');
-      return;
-    }
-    const pct = Math.floor(info.progress * 100);
-    // Use TECH_NODES for name lookup if available, else nodeId
-    this.researchText.setText(`◈ ${info.nodeId} ${pct}%`);
   }
 
   public registerTabBody(tab: TabName, body: Phaser.GameObjects.Container): void {

@@ -199,12 +199,16 @@ describe('computeChargeDamage', () => {
     expect(computeChargeDamage(10, 0)).toBe(10);
   });
 
-  it('chargeAccum=100 → 2× baseDamage', () => {
-    expect(computeChargeDamage(10, 100)).toBe(20);
+  it('chargeAccum=160 → 2× baseDamage', () => {
+    expect(computeChargeDamage(10, 160)).toBe(20);
   });
 
-  it('chargeAccum=50 → 1.5× baseDamage', () => {
-    expect(computeChargeDamage(10, 50)).toBe(15);
+  it('chargeAccum=100 → 1 + 100/160 = 1.625× baseDamage', () => {
+    expect(computeChargeDamage(10, 100)).toBeCloseTo(16.25);
+  });
+
+  it('chargeAccum=50 → 1 + 50/160 = 1.3125× baseDamage', () => {
+    expect(computeChargeDamage(10, 50)).toBeCloseTo(13.125);
   });
 });
 

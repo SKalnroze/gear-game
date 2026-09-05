@@ -1,5 +1,7 @@
 /** Neon palette and layout breakpoints for the UI overhaul */
 
+import { eventBus } from '../systems/EventBus';
+
 export const NEON = {
   cyan: 0x00ffcc,
   magenta: 0xff00aa,
@@ -34,14 +36,20 @@ export const BP_SMALL = 800;
 export const BP_MEDIUM = 1400;
 
 /** Persistent game settings (loaded/saved to localStorage) */
-function loadSettings(): {
+interface GameSettings {
   soundEnabled: boolean;
   gameSpeed: number;
   edgeScrollEnabled: boolean;
   edgeScrollSpeed: number;
   edgeScrollPercent: number;
   uiScale: number;
-} {
+  colorblindMode: boolean;
+  musicVolume: number;
+  sfxVolume: number;
+  keybinds: { removeMode: string; cancel: string };
+}
+
+function loadSettings(): GameSettings {
   try {
     const raw = localStorage.getItem('gear_game_settings');
     if (raw) {
@@ -53,10 +61,17 @@ function loadSettings(): {
         edgeScrollSpeed: parsed.edgeScrollSpeed ?? 300,
         edgeScrollPercent: parsed.edgeScrollPercent ?? 5,
         uiScale: parsed.uiScale ?? 1,
+        colorblindMode: parsed.colorblindMode ?? false,
+        musicVolume: parsed.musicVolume ?? 0.7,
+        sfxVolume: parsed.sfxVolume ?? 0.7,
+        keybinds: { removeMode: parsed.keybinds?.removeMode ?? 'R', cancel: parsed.keybinds?.cancel ?? 'ESC' },
       };
     }
   } catch { /* ignore */ }
-  return { soundEnabled: true, gameSpeed: 1, edgeScrollEnabled: false, edgeScrollSpeed: 300, edgeScrollPercent: 5, uiScale: 1 };
+  return {
+    soundEnabled: true, gameSpeed: 1, edgeScrollEnabled: false, edgeScrollSpeed: 300, edgeScrollPercent: 5, uiScale: 1,
+    colorblindMode: false, musicVolume: 0.7, sfxVolume: 0.7, keybinds: { removeMode: 'R', cancel: 'ESC' },
+  };
 }
 
 export const GAME_SETTINGS = loadSettings();
@@ -65,6 +80,17 @@ export function saveSettings(): void {
   try {
     localStorage.setItem('gear_game_settings', JSON.stringify(GAME_SETTINGS));
   } catch { /* ignore */ }
+  eventBus.emit('settings:changed', {});
+}
+
+/** Hostile-side accent color; swaps to a colorblind-safe hue when enabled (blue/orange instead of blue/red). */
+export function hostileColor(): number {
+  return GAME_SETTINGS.colorblindMode ? NEON.orange : NEON.red;
+}
+
+/** String form of {@link hostileColor}. */
+export function hostileColorStr(): string {
+  return GAME_SETTINGS.colorblindMode ? NEON_STR.orange : NEON_STR.red;
 }
 
 /**

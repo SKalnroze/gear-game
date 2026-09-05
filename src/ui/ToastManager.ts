@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { EventBus } from '../systems/EventBus';
+import type { World } from '../world/World';
+import { NeonUI } from './NeonUI';
 
 interface ToastEntry {
   message: string;
@@ -18,6 +20,7 @@ interface ToastEntry {
 export class ToastManager {
   private scene: Phaser.Scene;
   private eventBus: EventBus;
+  private world: World | null;
   private queue: ToastEntry[] = [];
   private busy: boolean = false;
 
@@ -26,13 +29,23 @@ export class ToastManager {
   private readonly TOAST_DURATION_MS = 2200;
   private readonly TWEEN_DURATION_MS = 220;
 
-  constructor(scene: Phaser.Scene, eventBus: EventBus) {
+  /** Severity threshold above which a jam is disruptive enough to interrupt the player with a toast. */
+  private static readonly SEVERE_JAM_THRESHOLD = 0.6;
+
+  constructor(scene: Phaser.Scene, eventBus: EventBus, world: World | null = null) {
     this.scene = scene;
     this.eventBus = eventBus;
+    this.world = world;
     this.wireEvents();
   }
 
   private wireEvents(): void {
+    this.eventBus.on('gear:jammed', ({ gearId, severity }) => {
+      if (severity < ToastManager.SEVERE_JAM_THRESHOLD) return;
+      if (this.world?.getGear(gearId)?.owner !== 'player') return;
+      this.push('⚠ Gear jammed!', '#ff4444', 0xff2244);
+    });
+
     this.eventBus.on('tech:research_complete', ({ nodeId, owner }) => {
       if (owner !== 'player') return;
       this.push(`✓ ${nodeId} researched`, '#44ffaa', 0x44ffaa);
@@ -67,14 +80,11 @@ export class ToastManager {
     const container = this.scene.add.container(toastX, toastY).setDepth(500);
 
     const bg = this.scene.add.graphics();
-    bg.fillStyle(0x0a0a1a, 0.92);
-    bg.fillRoundedRect(0, 0, this.TOAST_W, this.TOAST_H, 6);
-    bg.lineStyle(1, 0x334455, 1);
-    bg.strokeRoundedRect(0, 0, this.TOAST_W, this.TOAST_H, 6);
+    NeonUI.drawPanel(bg, 0, 0, this.TOAST_W, this.TOAST_H, entry.accentColor, 0.92);
 
     // 4px left accent bar
     bg.fillStyle(entry.accentColor, 0.9);
-    bg.fillRoundedRect(0, 0, 4, this.TOAST_H, { tl: 6, bl: 6, tr: 0, br: 0 });
+    bg.fillRect(0, 0, 4, this.TOAST_H);
 
     let labelX = this.TOAST_W / 2;
     if (entry.icon) {
@@ -88,7 +98,7 @@ export class ToastManager {
     const label = this.scene.add.text(
       labelX, this.TOAST_H / 2,
       entry.message,
-      { fontSize: '13px', color: entry.color, fontFamily: 'monospace' },
+      NeonUI.neonTextStyle(entry.color, 13, false),
     ).setOrigin(0.5);
 
     container.add([bg, label]);

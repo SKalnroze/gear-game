@@ -4,6 +4,7 @@ export type GearType =
   'iron_miner' | 'crystal_miner' | 'aether_miner' |
   'infantry_spawner' | 'artillery_spawner' | 'cavalry_spawner' | 'slime_spawner' | 'crossbow_spawner' |
   'iron_guard_spawner' | 'crystal_sentinel_spawner' | 'aether_phantom_spawner' | 'sentry_spawner' |
+  'sapper_spawner' | 'skirmish_diver_spawner' | 'saboteur_spawner' | 'raider_spawner' | 'field_medic_spawner' |
   'researcher' |
   'iron_converter' | 'crystal_converter' | 'aether_converter' |
   'crossbow_turret' | 'artillery_turret' | 'minelayer' | 'sentry_gear' |
@@ -41,4 +42,5 @@ export interface GearState {
   jamStress: number;          // torque magnitude at jam point, drives damage rate
   ammo?: number;              // current ammo (turret gears only)
   maxAmmo?: number;           // max ammo capacity
+  disabledUntil?: number;     // ms timestamp; a Raider-disabled gear produces nothing until then
 }

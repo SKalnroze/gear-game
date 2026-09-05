@@ -293,6 +293,54 @@ export const TECH_NODES: Record<string, TechNode> = {
     column: 1,
   },
 
+  // T2 -- the four new roles
+  unlock_sapper_spawner: {
+    id: 'unlock_sapper_spawner', name: 'Sapper Spawner',
+    description: 'Unlocks the Sapper Spawner gear. Weak against other units, but its hits against gears count for 6x -- built to breach a turtled defense.',
+    tier: 2, goldCost: 30, researchTime: 40000,
+    prereqs: ['unlock_infantry'],
+    effects: [
+      { kind: 'unlock_gear', gearType: 'sapper_spawner' },
+      { kind: 'unlock_unit', unitType: 'sapper' },
+    ],
+    column: 1,
+  },
+  unlock_skirmish_diver_spawner: {
+    id: 'unlock_skirmish_diver_spawner', name: 'Skirmish Diver Spawner',
+    description: 'Unlocks the Skirmish Diver Spawner gear. Fast flanker built on Cavalry\'s hit-and-run doctrine, applied against anything that stops to shoot from range.',
+    tier: 2, goldCost: 35, researchTime: 42000,
+    prereqs: ['unlock_cavalry_spawner'],
+    effects: [
+      { kind: 'unlock_gear', gearType: 'skirmish_diver_spawner' },
+      { kind: 'unlock_unit', unitType: 'skirmish_diver' },
+    ],
+    column: 1,
+  },
+  unlock_raider_spawner: {
+    id: 'unlock_raider_spawner', name: 'Raider Spawner',
+    description: 'Unlocks the Raider Spawner gear. Disables an enemy miner or converter placed within the lane for a few seconds instead of damaging it.',
+    tier: 2, goldCost: 30, researchTime: 42000,
+    prereqs: ['unlock_infantry'],
+    effects: [
+      { kind: 'unlock_gear', gearType: 'raider_spawner' },
+      { kind: 'unlock_unit', unitType: 'raider' },
+    ],
+    column: 1,
+  },
+
+  // T3
+  unlock_saboteur_spawner: {
+    id: 'unlock_saboteur_spawner', name: 'Saboteur Spawner',
+    description: 'Unlocks the Saboteur Spawner gear. Fouls an enemy gear\'s rotation on contact instead of damaging it -- attacks the machine\'s speed, not its health. Grown out of understanding how a jam actually works.',
+    tier: 3, goldCost: 65, researchTime: 55000,
+    prereqs: ['unlock_relief_valve'],
+    effects: [
+      { kind: 'unlock_gear', gearType: 'saboteur_spawner' },
+      { kind: 'unlock_unit', unitType: 'saboteur' },
+    ],
+    column: 1,
+  },
+
   // ─── COLUMN 2: ECONOMY ────────────────────────────────────────────────────
 
   // T1
@@ -487,6 +535,17 @@ export const TECH_NODES: Record<string, TechNode> = {
     tier: 2, goldCost: 60, researchTime: 42000,
     prereqs: ['armored_gears'],
     effects: [{ kind: 'unlock_gear', gearType: 'healer' }],
+    column: 4,
+  },
+  unlock_field_medic_spawner: {
+    id: 'unlock_field_medic_spawner', name: 'Field Medic Spawner',
+    description: 'Unlocks the Field Medic Spawner gear. Marches with the army, healing nearby allied units on a pulse -- the mobile counterpart to the Healer gear\'s stationary aura. Never fights.',
+    tier: 2, goldCost: 40, researchTime: 48000,
+    prereqs: ['armored_gears'],
+    effects: [
+      { kind: 'unlock_gear', gearType: 'field_medic_spawner' },
+      { kind: 'unlock_unit', unitType: 'field_medic' },
+    ],
     column: 4,
   },
   unlock_sentry: {

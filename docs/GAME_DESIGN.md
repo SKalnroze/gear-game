@@ -129,9 +129,9 @@ These words are used precisely throughout the design and the code. Where the cod
 | Chapter | Contents |
 |---|---|
 | [Views & flow](design/views.md) | Every screen, the navigation graph, the in-match HUD, controls, settings |
-| [Gears](design/gears.md) | The gear wiki — intent and numbers for all 23 types |
+| [Gears](design/gears.md) | The gear wiki — intent and numbers for all 33 types |
 | [Units](design/units.md) | The unit wiki, behaviours, the counter matrix |
-| [Tech tree](design/tech-tree.md) | All 48 nodes by column, and what each effect actually does |
+| [Tech tree](design/tech-tree.md) | All 58 nodes by column, and what each effect actually does |
 | [Balance](design/balance.md) | Economy, the physics maths, worked examples, tuning levers |
 | [Presentation](design/presentation.md) | Visual language, audio design, inspirations |
 | [Tech stack](design/tech-stack.md) | Engine, build, test, CI, tooling |

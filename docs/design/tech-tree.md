@@ -22,16 +22,16 @@ Research runs on game time, so pausing genuinely pauses it, and game speed scale
 | Column | Nodes | Total gold | Total research time |
 |---|---|---|---|
 | Gears | 14 | 1255 | 642s |
-| Units | 14 | 785 | 711s |
+| Units | 18 | 945 | 890s |
 | Economy | 13 | 865 | 612s |
 | Abilities | 2 | 100 | 60s |
-| Defense | 10 | 630 | 396s |
-| **All** | **53** | **3635** | **2421s** |
+| Defense | 11 | 670 | 444s |
+| **All** | **58** | **3835** | **2648s** |
 <!-- END GENERATED: tech.summary -->
 
 ## Shape
 
-Five columns, each a separate strategic axis, and three tiers of depth. Columns are deliberately near-independent — you can go deep in one or spread across several — with only two cross-column dependencies (Super Amplifier needs an economy node; the resource spawners need their mining nodes).
+Five columns, each a separate strategic axis, and three tiers of depth. Columns are deliberately near-independent — you can go deep in one or spread across several — with only three cross-column dependencies (Super Amplifier needs an economy node; the resource spawners need their mining nodes; the Saboteur Spawner needs Relief Valve, on the reasoning that understanding a jam well enough to build a clutch for one is also what it takes to cause one deliberately).
 
 Tiers gate escalation: a tier-3 node is a long, expensive commitment that pays off only in a long match.
 
@@ -80,9 +80,13 @@ The **Gear Precision** line is the backbone: each node unlocks larger tooth coun
 | **Crossbow Spawner**<br>`unlock_crossbow_spawner` | T1 | 25 | 36s | — | `unlock_gear` (gearType=crossbow_spawner)<br>`unlock_unit` (unitType=crossbow) |
 | **Cavalry Spawner**<br>`unlock_cavalry_spawner` | T1 | 30 | 54s | — | `unlock_gear` (gearType=cavalry_spawner)<br>`unlock_unit` (unitType=cavalry) |
 | **Iron Guard Spawner**<br>`unlock_iron_guard_spawner` | T2 | 20 | 36s | `unlock_iron_mining` | `unlock_gear` (gearType=iron_guard_spawner)<br>`unlock_unit` (unitType=iron_guard) |
+| **Sapper Spawner**<br>`unlock_sapper_spawner` | T2 | 30 | 40s | `unlock_infantry` | `unlock_gear` (gearType=sapper_spawner)<br>`unlock_unit` (unitType=sapper) |
+| **Raider Spawner**<br>`unlock_raider_spawner` | T2 | 30 | 42s | `unlock_infantry` | `unlock_gear` (gearType=raider_spawner)<br>`unlock_unit` (unitType=raider) |
+| **Skirmish Diver Spawner**<br>`unlock_skirmish_diver_spawner` | T2 | 35 | 42s | `unlock_cavalry_spawner` | `unlock_gear` (gearType=skirmish_diver_spawner)<br>`unlock_unit` (unitType=skirmish_diver) |
 | **Cavalry Charge**<br>`cavalry_charge` | T2 | 65 | 39s | `unlock_cavalry_spawner` | `unit_speed_pct` (unitType=cavalry, value=0.3)<br>`unit_damage_pct` (unitType=cavalry, value=0.15) |
 | **Elite Infantry**<br>`elite_infantry_unlock` | T2 | 70 | 42s | `unlock_infantry`<br>`infantry_speed` | `unlock_unit` (unitType=elite_infantry) |
 | **Crystal Sentinel Spawner**<br>`unlock_crystal_sentinel_spawner` | T3 | 50 | 75s | `unlock_crystal_mining` | `unlock_gear` (gearType=crystal_sentinel_spawner)<br>`unlock_unit` (unitType=crystal_sentinel) |
+| **Saboteur Spawner**<br>`unlock_saboteur_spawner` | T3 | 65 | 55s | `unlock_relief_valve` | `unlock_gear` (gearType=saboteur_spawner)<br>`unlock_unit` (unitType=saboteur) |
 | **Elite Artillery**<br>`elite_artillery_unlock` | T3 | 100 | 60s | `unlock_artillery_spawner`<br>`elite_infantry_unlock` | `unlock_unit` (unitType=elite_artillery) |
 | **Elite Cavalry**<br>`elite_cavalry_unlock` | T3 | 100 | 60s | `cavalry_charge`<br>`elite_infantry_unlock` | `unlock_unit` (unitType=elite_cavalry) |
 | **Aether Phantom Spawner**<br>`unlock_aether_phantom_spawner` | T3 | 100 | 120s | `unlock_aether_mining` | `unlock_gear` (gearType=aether_phantom_spawner)<br>`unlock_unit` (unitType=aether_phantom) |
@@ -149,6 +153,7 @@ The two lines are a genuine choice: gold nodes pay immediately and passively, mi
 |---|---|---|---|---|---|
 | **Base Fortification**<br>`base_fortification` | T1 | 30 | 24s | — | `base_hp_bonus` (value=20) |
 | **Spiked Gears**<br>`spiked_gears` | T1 | 45 | 27s | — | `unlock_gear` (gearType=spiked) |
+| **Field Medic Spawner**<br>`unlock_field_medic_spawner` | T2 | 40 | 48s | `armored_gears` | `unlock_gear` (gearType=field_medic_spawner)<br>`unlock_unit` (unitType=field_medic) |
 | **Armored Gears**<br>`armored_gears` | T2 | 45 | 27s | `base_fortification` | `unlock_gear` (gearType=armored) |
 | **Sentry**<br>`unlock_sentry` | T2 | 50 | 33s | `spiked_gears` | `unlock_gear` (gearType=sentry_gear)<br>`unlock_gear` (gearType=sentry_spawner)<br>`unlock_unit` (unitType=sentry_unit) |
 | **Crossbow Turret**<br>`crossbow_turret_tech` | T2 | 55 | 36s | `spiked_gears` | `unlock_gear` (gearType=crossbow_turret) |

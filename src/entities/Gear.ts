@@ -35,6 +35,11 @@ const GEAR_COLORS: Record<GearType, number> = {
   sentry_spawner: 0x66ffcc,
   sentry_gear: 0x66ffcc,
   relief_valve: 0xffaa22,
+  sapper_spawner: 0xaa8866,
+  skirmish_diver_spawner: 0xff5577,
+  saboteur_spawner: 0x884499,
+  raider_spawner: 0xffaa33,
+  field_medic_spawner: 0x44ffaa,
 };
 
 const GEAR_LABELS: Record<GearType, string> = {
@@ -66,6 +71,11 @@ const GEAR_LABELS: Record<GearType, string> = {
   sentry_spawner: 'SNTS',
   sentry_gear: 'SNT',
   relief_valve: 'RLF',
+  sapper_spawner: 'SAP',
+  skirmish_diver_spawner: 'DIV',
+  saboteur_spawner: 'SAB',
+  raider_spawner: 'RDR',
+  field_medic_spawner: 'MED',
 };
 
 /**

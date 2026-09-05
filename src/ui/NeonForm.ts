@@ -195,16 +195,19 @@ export function neonToggle(
   on: boolean,
   color: number,
   onChange: (v: boolean) => void,
+  parent?: Phaser.GameObjects.Container,
+  depth?: number,
 ): ToggleHandle {
   let value = on;
   const g = scene.add.graphics();
-  const radius = h / 2;
-  const thumbR = radius - 3;
+  const CORNER = 2; // slight bevel, keeps the blocky/square aesthetic
+  const pad = 3;
+  const thumbSize = h - pad * 2;
 
   function redraw(hovered: boolean): void {
     g.clear();
 
-    // Track (pill shape via two half-circles + rect)
+    // Track (square/blocky, not pill)
     const trackAlpha = value ? 0.55 : 0.15;
     const trackColor = value ? color : 0x333344;
     const borderAlpha = value ? (hovered ? 1 : 0.85) : (hovered ? 0.5 : 0.35);
@@ -212,42 +215,51 @@ export function neonToggle(
     // Outer glow when on
     if (value) {
       g.fillStyle(color, hovered ? 0.15 : 0.08);
-      g.fillRoundedRect(x - 3, y - 3, w + 6, h + 6, radius + 3);
+      g.fillRoundedRect(x - 3, y - 3, w + 6, h + 6, CORNER + 2);
     }
 
     // Track background
     g.fillStyle(0x0a0f1a, 0.95);
-    g.fillRoundedRect(x, y, w, h, radius);
+    g.fillRoundedRect(x, y, w, h, CORNER);
 
     // Track fill
     g.fillStyle(trackColor, trackAlpha);
-    g.fillRoundedRect(x, y, w, h, radius);
+    g.fillRoundedRect(x, y, w, h, CORNER);
 
     // Track border
     g.lineStyle(1.5, value ? color : 0x555566, borderAlpha);
-    g.strokeRoundedRect(x, y, w, h, radius);
+    g.strokeRoundedRect(x, y, w, h, CORNER);
 
-    // Thumb position
-    const thumbX = value ? x + w - radius : x + radius;
-    const thumbY = y + radius;
+    // Thumb position (square)
+    const thumbX = value ? x + w - pad - thumbSize : x + pad;
+    const thumbY = y + pad;
 
     // Thumb glow
     if (value) {
       g.fillStyle(color, 0.2);
-      g.fillCircle(thumbX, thumbY, thumbR + 3);
+      g.fillRect(thumbX - 3, thumbY - 3, thumbSize + 6, thumbSize + 6);
     }
 
     // Thumb
     g.fillStyle(value ? color : 0x555566, value ? 1 : 0.6);
-    g.fillCircle(thumbX, thumbY, thumbR);
+    g.fillRect(thumbX, thumbY, thumbSize, thumbSize);
     g.lineStyle(1, value ? color : 0x666677, value ? 1 : 0.5);
-    g.strokeCircle(thumbX, thumbY, thumbR);
+    g.strokeRect(thumbX, thumbY, thumbSize, thumbSize);
   }
 
   redraw(false);
 
   const zone = scene.add.zone(x + w / 2, y + h / 2, w, h)
     .setInteractive({ useHandCursor: true });
+
+  if (depth !== undefined) {
+    g.setDepth(depth);
+    zone.setDepth(depth + 1);
+  }
+  if (parent) {
+    parent.add(g);
+    parent.add(zone);
+  }
 
   zone.on('pointerover', () => redraw(true));
   zone.on('pointerout', () => redraw(false));
@@ -267,6 +279,71 @@ export function neonToggle(
       value = v;
       redraw(false);
     },
+  };
+}
+
+// ── 2b. neonLabeledToggle ─────────────────────────────────────────────────
+
+export interface NeonLabeledToggleOptions {
+  labelPos?: 'top' | 'left';
+  fontSize?: number;
+  gap?: number;
+  labelColorStr?: string;
+  parent?: Phaser.GameObjects.Container;
+  depth?: number;
+}
+
+export function neonLabeledToggle(
+  scene: Phaser.Scene,
+  x: number, y: number,
+  w: number, h: number,
+  labelText: string,
+  on: boolean,
+  color: number,
+  onChange: (v: boolean) => void,
+  opts: NeonLabeledToggleOptions = {},
+): ToggleHandle {
+  const labelPos = opts.labelPos ?? 'left';
+  const fontSize = opts.fontSize ?? 11;
+  const gap = opts.gap ?? 8;
+  const colorStr = opts.labelColorStr ?? ('#' + color.toString(16).padStart(6, '0'));
+
+  let label: Phaser.GameObjects.Text;
+  let toggleX: number;
+  let toggleY: number;
+
+  if (labelPos === 'left') {
+    label = scene.add.text(x, y + h / 2, labelText, {
+      fontSize: `${fontSize}px`,
+      color: colorStr,
+      fontFamily: 'monospace',
+      fontStyle: 'bold',
+    }).setOrigin(0, 0.5);
+    toggleX = x + label.width + gap;
+    toggleY = y;
+  } else {
+    label = scene.add.text(x, y, labelText, {
+      fontSize: `${fontSize}px`,
+      color: colorStr,
+      fontFamily: 'monospace',
+      fontStyle: 'bold',
+    }).setOrigin(0, 0);
+    toggleX = x;
+    toggleY = y + label.height + gap;
+  }
+
+  if (opts.depth !== undefined) label.setDepth(opts.depth);
+  if (opts.parent) opts.parent.add(label);
+
+  const toggle = neonToggle(scene, toggleX, toggleY, w, h, on, color, onChange, opts.parent, opts.depth);
+
+  return {
+    destroy(): void {
+      label.destroy();
+      toggle.destroy();
+    },
+    getValue(): boolean { return toggle.getValue(); },
+    setValue(v: boolean): void { toggle.setValue(v); },
   };
 }
 

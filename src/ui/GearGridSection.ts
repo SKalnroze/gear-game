@@ -10,7 +10,8 @@ import { panelState } from './SlidingPanel';
 
 const TILE_W = 148;
 const TILE_H = 96;
-const GRID_COLS = 5;
+const MIN_COLS = 3;
+const MAX_COLS = 5;
 const PADDING = 8;
 const TEETH_BAR_H = 46;
 
@@ -43,10 +44,15 @@ const TYPE_COLORS: Record<GearType, number> = {
   sentry_spawner: 0x66ffcc,
   sentry_gear: 0x66ffcc,
   relief_valve: 0xffaa22,
+  sapper_spawner: 0xaa8866,
+  skirmish_diver_spawner: 0xff5577,
+  saboteur_spawner: 0x884499,
+  raider_spawner: 0xffaa33,
+  field_medic_spawner: 0x44ffaa,
 };
 
 /** Short display name for gear types that are too long */
-function gearDisplayName(type: GearType): string {
+export function gearDisplayName(type: GearType): string {
   const map: Partial<Record<GearType, string>> = {
     iron_miner: 'IRON MINER',
     crystal_miner: 'CRYSTAL MINER',
@@ -59,6 +65,11 @@ function gearDisplayName(type: GearType): string {
     aether_phantom_spawner: 'AETHER PH.',
     crossbow_spawner: 'XBOW SPAWNER',
     sentry_spawner: 'SENTRY SPWN',
+    sapper_spawner: 'SAPPER SPWN',
+    skirmish_diver_spawner: 'DIVER SPWN',
+    saboteur_spawner: 'SABOTEUR SPWN',
+    raider_spawner: 'RAIDER SPWN',
+    field_medic_spawner: 'MEDIC SPWN',
   };
   return map[type] ?? type.replace(/_/g, ' ').toUpperCase();
 }
@@ -83,22 +94,28 @@ export class GearGridSection {
   private scrollY: number = 0;
   private contentHeight: number = 0;
   private maxScrollY: number = 0;
+  private visibleH: number = 0;
   private tilesContainer!: Phaser.GameObjects.Container;
-
-  // Shared locked tooltip
-  private lockedTooltip!: Phaser.GameObjects.Text;
+  private hitZones: Map<GearType, Phaser.GameObjects.Zone> = new Map();
+  private rowY: Map<GearType, number> = new Map();
+  private cols: number = MAX_COLS;
+  private barBg!: Phaser.GameObjects.Rectangle;
 
   constructor(scene: Phaser.Scene, playerTech: TechState, readonly: boolean = false) {
     this.scene = scene;
     this.playerTech = playerTech;
     this.readonly = readonly;
+    this.cols = this.computeCols(scene.scale.width);
     this.container = scene.add.container(8, 8);
 
     this.buildGrid();
-    this.buildLockedTooltip();
     if (!readonly) {
       this.setupInputHandlers();
     }
+  }
+
+  private computeCols(canvasW: number): number {
+    return Phaser.Math.Clamp(Math.floor(canvasW / (TILE_W + PADDING)), MIN_COLS, MAX_COLS);
   }
 
   private buildGrid(): void {
@@ -106,44 +123,32 @@ export class GearGridSection {
     this.tilesContainer = this.scene.add.container(0, TEETH_BAR_H);
     this.container.add(this.tilesContainer);
 
-    let x = 0;
-    let y = 0;
-    let col = 0;
-
     for (const gearType of Object.keys(GEAR_DEFINITIONS) as GearType[]) {
       const tile = this.createTile(gearType);
-      tile.setPosition(x, y);
       this.tilesContainer.add(tile);
       this.tiles.set(gearType, tile);
-
-      col++;
-      if (col >= GRID_COLS) {
-        col = 0;
-        x = 0;
-        y += TILE_H + PADDING;
-      } else {
-        x += TILE_W + PADDING;
-      }
     }
 
-    // Compute scroll limits (panel body = 380px, minus container offset of 8)
-    const rows = Math.ceil(Object.keys(GEAR_DEFINITIONS).length / GRID_COLS);
-    this.contentHeight = rows * (TILE_H + PADDING);
-    const visibleH = 380 - 8 - TEETH_BAR_H;
-    this.maxScrollY = Math.max(0, this.contentHeight - visibleH);
+    this.layoutTiles();
 
     // Mouse wheel scrolling
     this.scene.input.on('wheel', (_ptr: Phaser.Input.Pointer, _objs: unknown, _dx: number, dy: number) => {
       this.applyScroll(dy > 0 ? 30 : -30);
     });
 
+    // Re-clip hit areas whenever the panel slides (expand/collapse/resize),
+    // since scrolled tiles can otherwise stay clickable outside the visible
+    // panel body -- e.g. overlapping the tab bar once the panel is closed.
+    eventBus.on('ui:panel_height_changed', this.handlePanelHeightChanged);
+    this.updateTileInputVisibility();
+
     // ── Teeth picker bar (added AFTER tiles so it renders on top) ──
-    const barBg = this.scene.add.rectangle(
-      (GRID_COLS * (TILE_W + PADDING)) / 2 - PADDING / 2, TEETH_BAR_H / 2,
-      GRID_COLS * (TILE_W + PADDING) - PADDING, TEETH_BAR_H - 4,
+    this.barBg = this.scene.add.rectangle(
+      (this.cols * (TILE_W + PADDING)) / 2 - PADDING / 2, TEETH_BAR_H / 2,
+      this.cols * (TILE_W + PADDING) - PADDING, TEETH_BAR_H - 4,
       0x0a1020, 1,
     );
-    this.container.add(barBg);
+    this.container.add(this.barBg);
 
     const teethLabel = this.scene.add.text(8, TEETH_BAR_H / 2 - 8, 'TEETH SIZE', {
       fontSize: '13px', color: '#667788', fontFamily: 'monospace', fontStyle: 'bold',
@@ -174,9 +179,75 @@ export class GearGridSection {
     this.container.add(nextBtn);
   }
 
+  /** Positions all tiles for the current column count and recomputes scroll limits. */
+  private layoutTiles(): void {
+    let x = 0;
+    let y = 0;
+    let col = 0;
+    for (const gearType of this.tiles.keys()) {
+      const tile = this.tiles.get(gearType)!;
+      tile.setPosition(x, y);
+      this.rowY.set(gearType, y);
+
+      col++;
+      if (col >= this.cols) {
+        col = 0;
+        x = 0;
+        y += TILE_H + PADDING;
+      } else {
+        x += TILE_W + PADDING;
+      }
+    }
+
+    const rows = Math.ceil(this.tiles.size / this.cols);
+    this.contentHeight = rows * (TILE_H + PADDING);
+    this.visibleH = 380 - 8 - TEETH_BAR_H;
+    this.maxScrollY = Math.max(0, this.contentHeight - this.visibleH);
+    this.scrollY = Phaser.Math.Clamp(this.scrollY, 0, this.maxScrollY);
+    this.tilesContainer.setY(TEETH_BAR_H - this.scrollY);
+  }
+
+  /** Recomputes column count for the given canvas width and re-lays-out the grid if it changed. */
+  public resize(canvasW: number): void {
+    const newCols = this.computeCols(canvasW);
+    if (newCols === this.cols) return;
+    this.cols = newCols;
+    this.layoutTiles();
+    if (this.barBg) {
+      this.barBg.setPosition((this.cols * (TILE_W + PADDING)) / 2 - PADDING / 2, TEETH_BAR_H / 2);
+      this.barBg.setSize(this.cols * (TILE_W + PADDING) - PADDING, TEETH_BAR_H - 4);
+    }
+    this.updateTileInputVisibility();
+  }
+
   private applyScroll(delta: number): void {
     this.scrollY = Phaser.Math.Clamp(this.scrollY + delta, 0, this.maxScrollY);
     this.tilesContainer.setY(TEETH_BAR_H - this.scrollY);
+    this.updateTileInputVisibility();
+  }
+
+  private readonly handlePanelHeightChanged = (): void => {
+    this.updateTileInputVisibility();
+  };
+
+  /**
+   * Enables/disables each tile's hit zone based on whether it's actually
+   * inside the currently visible panel body -- scroll offset can otherwise
+   * leave tiles clickable while they're masked out of view (e.g. shifted up
+   * under the tab bar, or entirely off-screen while the panel is collapsed).
+   */
+  private updateTileInputVisibility(): void {
+    if (!panelState.isExpanded) {
+      for (const [, zone] of this.hitZones) {
+        if (zone.input) zone.input.enabled = false;
+      }
+      return;
+    }
+    for (const [gearType, zone] of this.hitZones) {
+      const y = this.rowY.get(gearType) ?? 0;
+      const visible = y + TILE_H > this.scrollY && y < this.scrollY + this.visibleH;
+      if (zone.input) zone.input.enabled = visible;
+    }
   }
 
   private createTile(gearType: GearType): Phaser.GameObjects.Container {
@@ -305,34 +376,24 @@ export class GearGridSection {
         eventBus.emit('ui:gear_drag_start', { gearType, teeth: this.selectedTeeth });
       });
     } else if (!isUnlocked) {
-      // Show locked tooltip with unlock requirement
+      // Show locked tooltip with unlock requirement, via the shared TooltipManager
       hitZone.on('pointerover', () => {
         const unlockNode = Object.values(TECH_NODES).find(n =>
           n.effects.some(e => e.kind === 'unlock_gear' && (e as { kind: string; gearType: string }).gearType === gearType)
         );
         const msg = unlockNode ? `Requires: ${unlockNode.name}` : 'Locked';
-        this.lockedTooltip.setText(msg);
-        this.lockedTooltip.setVisible(true);
+        const pointer = this.scene.input.activePointer;
+        eventBus.emit('ui:tooltip_show', { text: msg, x: pointer.x + 14, y: pointer.y - 24 });
       });
       hitZone.on('pointerout', () => {
-        this.lockedTooltip.setVisible(false);
+        eventBus.emit('ui:tooltip_hide', {});
       });
     }
     tile.add(hitZone);
 
+    this.hitZones.set(gearType, hitZone);
     this.tileGraphics.set(gearType, { border, isLocked: !isUnlocked });
     return tile;
-  }
-
-  private buildLockedTooltip(): void {
-    this.lockedTooltip = this.scene.add.text(8, 4, '', {
-      fontSize: '11px', color: '#aabbcc', fontFamily: 'monospace',
-      backgroundColor: '#060e18',
-      padding: { x: 6, y: 4 },
-    });
-    this.lockedTooltip.setDepth(100);
-    this.lockedTooltip.setVisible(false);
-    this.container.add(this.lockedTooltip);
   }
 
   private drawBorder(g: Phaser.GameObjects.Graphics, color: number, alpha: number): void {
@@ -362,7 +423,13 @@ export class GearGridSection {
 
   private setupInputHandlers(): void {
     eventBus.on('tech:research_complete', this.handleResearchComplete);
+    eventBus.on('ui:teeth_wheel_delta', this.handleTeethWheelDelta);
   }
+
+  private readonly handleTeethWheelDelta = ({ delta }: { delta: number }): void => {
+    if (panelState.isAnimating) return;
+    this.changeTeethe(delta);
+  };
 
   private rebuildGrid(): void {
     for (const [gearType, tile] of this.tiles) {
@@ -377,8 +444,10 @@ export class GearGridSection {
         newTile.setPosition(tilePos.x, tilePos.y);
         this.tilesContainer.add(newTile);
         this.tiles.set(gearType, newTile);
+        this.rowY.set(gearType, tilePos.y);
       }
     }
+    this.updateTileInputVisibility();
   }
 
   public getContainer(): Phaser.GameObjects.Container {
@@ -387,6 +456,8 @@ export class GearGridSection {
 
   public destroy(): void {
     eventBus.off('tech:research_complete', this.handleResearchComplete);
+    eventBus.off('ui:panel_height_changed', this.handlePanelHeightChanged);
+    eventBus.off('ui:teeth_wheel_delta', this.handleTeethWheelDelta);
   }
 
   public reposition(x: number, y: number): void {

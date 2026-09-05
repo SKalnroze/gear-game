@@ -25,6 +25,12 @@ import {
   neonSkillBar, neonHotkeyBar, neonTimeline, neonCombatLog,
 } from '../ui/NeonGame';
 import { NEON, NEON_STR, BG } from '../constants/ui.constants';
+import { GearEntity } from '../entities/Gear';
+import { UnitEntity } from '../entities/Unit';
+import { GEAR_DEFINITIONS } from '../constants/gear.constants';
+import { UNIT_DEFINITIONS } from '../constants/unit.constants';
+import type { GearState, GearType } from '../types/gear.types';
+import type { UnitState, UnitType } from '../types/unit.types';
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -33,7 +39,7 @@ const CONTENT_PAD = 20;
 const SECTION_GAP = 18;
 const LBL_COLOR   = '#557799';
 
-type Category = 'form' | 'layout' | 'feedback' | 'data' | 'game';
+type Category = 'form' | 'layout' | 'feedback' | 'data' | 'game' | 'entities';
 
 const CATS: { key: Category; label: string; color: number; cStr: string }[] = [
   { key: 'form',     label: 'FORM',     color: NEON.cyan,    cStr: NEON_STR.cyan },
@@ -41,7 +47,13 @@ const CATS: { key: Category; label: string; color: number; cStr: string }[] = [
   { key: 'feedback', label: 'FEEDBACK', color: NEON.magenta, cStr: NEON_STR.magenta },
   { key: 'data',     label: 'DATA',     color: NEON.orange,  cStr: NEON_STR.orange },
   { key: 'game',     label: 'GAME UI',  color: NEON.green,   cStr: NEON_STR.green },
+  { key: 'entities', label: 'ENTITIES', color: NEON.yellow,  cStr: NEON_STR.yellow },
 ];
+
+/** Readable label from a snake_case type key, e.g. 'crystal_miner' -> 'CRYSTAL MINER'. */
+function typeLabel(type: string): string {
+  return type.replace(/_/g, ' ').toUpperCase();
+}
 
 // ── Scene ─────────────────────────────────────────────────────────────────
 
@@ -191,6 +203,7 @@ export class UIShowcaseScene extends Phaser.Scene {
       case 'feedback': y = this.buildFeedback(px, y, panelW, col2W, col2, sLabel); break;
       case 'data':     y = this.buildData(px, y, panelW, col2W, col2, sLabel); break;
       case 'game':     y = this.buildGame(px, y, panelW, col2W, sLabel, rLabel); break;
+      case 'entities': y = this.buildEntities(px, y, panelW, sLabel); break;
     }
 
     this.totalH = y + 60;
@@ -764,6 +777,110 @@ export class UIShowcaseScene extends Phaser.Scene {
     });
     this.cHandles.push({ destroy: () => logTimer.destroy() });
     y += 150 + gap;
+
+    return y;
+  }
+
+  // ── ENTITIES ──────────────────────────────────────────────────────────
+  // Static previews of real GearEntity/UnitEntity instances (and the two
+  // projectile shapes), grouped by definition table so every gear/unit/
+  // projectile added to the game shows up here automatically.
+
+  private buildEntities(
+    px: number, startY: number, panelW: number,
+    sLabel: (ly: number, t: string, c?: string) => number,
+  ): number {
+    let y = startY;
+    const gap = SECTION_GAP;
+    const cStr = NEON_STR.yellow;
+
+    /** Lays out a row of preview cells, invoking `draw(cx, cy, key)` for each, label below. */
+    const grid = <T extends string>(
+      keys: T[], cellW: number, cellH: number, labelY: number,
+      draw: (cx: number, cy: number, key: T) => void,
+    ): number => {
+      const cols = Math.max(1, Math.floor(panelW / cellW));
+      const rows = Math.ceil(keys.length / cols);
+      keys.forEach((key, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const cx = px + col * cellW + cellW / 2;
+        const cellTop = y + row * cellH;
+        const cy = cellTop + labelY - 14;
+        draw(cx, cy, key);
+        this.reg(this.add.text(cx, cellTop + labelY, typeLabel(key), {
+          fontSize: '7px', color: '#7788aa', fontFamily: 'monospace', align: 'center',
+          wordWrap: { width: cellW - 6, useAdvancedWrap: true },
+        }).setOrigin(0.5, 0));
+      });
+      return rows * cellH;
+    };
+
+    // Gears — one GearEntity per defined GearType, fixed at DEFAULT_TEETH
+    // so every preview renders at the same size regardless of balance values.
+    y = sLabel(y, `GEARS  (${Object.keys(GEAR_DEFINITIONS).length} types, real GearEntity render)`, cStr);
+    const gearTypes = Object.keys(GEAR_DEFINITIONS) as GearType[];
+    y += grid(gearTypes, 110, 96, 56, (cx, cy, type) => {
+      const state: GearState = {
+        id: `showcase_${type}`, type, teeth: 10, x: cx, y: cy,
+        owner: 'player', angularVelocity: 0, currentAngle: 0, accumulatedAngle: 0,
+        frictionLoad: 0, torqueOutput: 0, isSpinning: false, isBurntOut: false,
+        hp: 100, maxHp: 100, isJammed: false, crackLevel: 0, jamStress: 0,
+      };
+      this.reg(new GearEntity(this, state, { now: 0 }));
+    });
+    y += gap;
+
+    // Units — one UnitEntity per defined UnitType, size 0 so it falls back
+    // to that type's default visual size.
+    y = sLabel(y, `UNITS  (${Object.keys(UNIT_DEFINITIONS).length} types, real UnitEntity render)`, cStr);
+    const unitTypes = Object.keys(UNIT_DEFINITIONS) as UnitType[];
+    y += grid(unitTypes, 110, 88, 50, (cx, cy, type) => {
+      const def = UNIT_DEFINITIONS[type];
+      const state: UnitState = {
+        id: `showcase_${type}`, type, hp: def.hp, maxHp: def.hp, x: cx, y: cy,
+        owner: 'player', speed: def.speed, baseDamage: def.baseDamage,
+        inCombat: false, reachedBase: false, damage: def.damage,
+        frictionValue: def.frictionValue ?? 0,
+        size: 0, attackRange: 50, mass: 1,
+        vx: 0, vy: 0, knockbackVx: 0, knockbackVy: 0,
+        behaviorState: 'marching', lastAttackTime: 0, chargeAccum: 0, retreatTimer: 0,
+        slowTimer: 0, slowFactor: 1, shieldTimer: 0, shieldFactor: 1,
+      };
+      this.reg(new UnitEntity(this, state));
+    });
+    y += gap;
+
+    // Projectiles — only 2 types exist; drawn with the same shapes GameScene
+    // uses in renderProjectiles(), since that logic isn't exported.
+    y = sLabel(y, 'PROJECTILES', cStr);
+    const projG = this.reg(this.add.graphics());
+    const shellX = px + 40, shellY = y + 24;
+    projG.fillStyle(0xff6600, 1);
+    projG.fillCircle(shellX, shellY, 8);
+    projG.lineStyle(1, 0xffaa00, 1);
+    projG.strokeCircle(shellX, shellY, 8);
+    projG.fillStyle(0xffdd00, 0.4);
+    projG.fillCircle(shellX, shellY, 12.8);
+    this.reg(this.add.text(shellX, y + 44, 'ARTILLERY SHELL', {
+      fontSize: '8px', color: '#7788aa', fontFamily: 'monospace',
+    }).setOrigin(0.5, 0));
+
+    const shardX = px + 140, shardY = y + 24, s = 8;
+    projG.fillStyle(0x44ffff, 0.9);
+    projG.beginPath();
+    projG.moveTo(shardX, shardY - s);
+    projG.lineTo(shardX + s * 0.6, shardY);
+    projG.lineTo(shardX, shardY + s);
+    projG.lineTo(shardX - s * 0.6, shardY);
+    projG.closePath();
+    projG.fillPath();
+    projG.lineStyle(1, 0xffffff, 0.7);
+    projG.strokePath();
+    this.reg(this.add.text(shardX, y + 44, 'CRYSTAL SHARD', {
+      fontSize: '8px', color: '#7788aa', fontFamily: 'monospace',
+    }).setOrigin(0.5, 0));
+    y += 60 + gap;
 
     return y;
   }

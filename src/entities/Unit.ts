@@ -19,6 +19,12 @@ const UNIT_COLORS: Record<UnitType, number> = {
   sentry_unit: 0x66ffcc,
   // Special
   slime: 0x66dd33,
+  // New roles
+  sapper: 0xaa8866,
+  skirmish_diver: 0xff5577,
+  saboteur: 0x884499,
+  raider: 0xffaa33,
+  field_medic: 0x44ffaa,
 };
 
 /** Per-type size map fallback if state.size is not set */
@@ -36,6 +42,11 @@ const UNIT_SIZES: Record<UnitType, number> = {
   crossbow: 9,
   sentry_unit: 10,
   slime: 7,
+  sapper: 11,
+  skirmish_diver: 8,
+  saboteur: 9,
+  raider: 8,
+  field_medic: 9,
 };
 
 /**
@@ -141,6 +152,21 @@ export class UnitEntity extends Phaser.GameObjects.Container {
         break;
       case 'slime':
         this.drawSlime(g, color, ownerColor, size);
+        break;
+      case 'sapper':
+        this.drawSapper(g, color, ownerColor, size);
+        break;
+      case 'skirmish_diver':
+        this.drawSkirmishDiver(g, color, ownerColor, size, state.owner);
+        break;
+      case 'saboteur':
+        this.drawSaboteur(g, color, ownerColor, size);
+        break;
+      case 'raider':
+        this.drawRaider(g, color, ownerColor, size);
+        break;
+      case 'field_medic':
+        this.drawFieldMedic(g, color, ownerColor, size);
         break;
       default:
         this.drawGeneric(g, color, ownerColor, size);
@@ -458,6 +484,118 @@ export class UnitEntity extends Phaser.GameObjects.Container {
     g.strokeCircle(0, 0, size);
     g.fillStyle(ownerColor, 0.3);
     g.fillCircle(0, 0, size);
+  }
+
+  /** Sapper: a squat armored block with a drill-bit nose -- built to breach, not to fight. */
+  private drawSapper(
+    g: Phaser.GameObjects.Graphics,
+    color: number,
+    ownerColor: number,
+    size: number,
+  ): void {
+    const w = size * 1.7;
+    const h = size * 1.4;
+    g.fillStyle(color, 1);
+    g.lineStyle(1.5, 0xffffff, 0.8);
+    g.fillRect(-w / 2, -h / 2, w, h);
+    g.strokeRect(-w / 2, -h / 2, w, h);
+    g.fillStyle(ownerColor, 0.3);
+    g.fillRect(-w / 2, -h / 2, w, h);
+
+    // Drill-bit nose, forward-pointing
+    g.fillStyle(0xcccccc, 0.9);
+    g.fillTriangle(w / 2, 0, w / 2 - size * 0.5, -size * 0.35, w / 2 - size * 0.5, size * 0.35);
+  }
+
+  /** Skirmish Diver: a slim dart, sharper and thinner than Cavalry's triangle. */
+  private drawSkirmishDiver(
+    g: Phaser.GameObjects.Graphics,
+    color: number,
+    ownerColor: number,
+    size: number,
+    owner: 'player' | 'ai',
+  ): void {
+    const facingRight = owner === 'player';
+    const tipX = facingRight ? size * 1.3 : -size * 1.3;
+    const baseX = facingRight ? -size * 0.6 : size * 0.6;
+
+    g.fillStyle(color, 1);
+    g.lineStyle(1, 0xffffff, 0.85);
+    g.fillTriangle(tipX, 0, baseX, -size * 0.55, baseX, size * 0.55);
+    g.strokeTriangle(tipX, 0, baseX, -size * 0.55, baseX, size * 0.55);
+    g.fillStyle(ownerColor, 0.3);
+    g.fillTriangle(tipX, 0, baseX, -size * 0.55, baseX, size * 0.55);
+  }
+
+  /** Saboteur: a diamond with a spark at its core. */
+  private drawSaboteur(
+    g: Phaser.GameObjects.Graphics,
+    color: number,
+    ownerColor: number,
+    size: number,
+  ): void {
+    g.fillStyle(color, 1);
+    g.lineStyle(1.5, 0xffffff, 0.8);
+    g.beginPath();
+    g.moveTo(0, -size);
+    g.lineTo(size, 0);
+    g.lineTo(0, size);
+    g.lineTo(-size, 0);
+    g.closePath();
+    g.fillPath();
+    g.strokePath();
+
+    g.fillStyle(ownerColor, 0.3);
+    g.beginPath();
+    g.moveTo(0, -size);
+    g.lineTo(size, 0);
+    g.lineTo(0, size);
+    g.lineTo(-size, 0);
+    g.closePath();
+    g.fillPath();
+
+    // Spark core
+    g.fillStyle(0xffee66, 0.9);
+    g.fillCircle(0, 0, size * 0.28);
+  }
+
+  /** Raider: a low, fast wedge with a coin-glint dot -- built to slip in and out. */
+  private drawRaider(
+    g: Phaser.GameObjects.Graphics,
+    color: number,
+    ownerColor: number,
+    size: number,
+  ): void {
+    g.fillStyle(color, 1);
+    g.lineStyle(1, 0xffffff, 0.8);
+    g.fillEllipse(0, 0, size * 2, size * 1.2);
+    g.strokeEllipse(0, 0, size * 2, size * 1.2);
+    g.fillStyle(ownerColor, 0.3);
+    g.fillEllipse(0, 0, size * 2, size * 1.2);
+
+    g.fillStyle(0xffdd44, 0.9);
+    g.fillCircle(0, 0, size * 0.3);
+  }
+
+  /** Field Medic: a plain circle with a medic's cross. */
+  private drawFieldMedic(
+    g: Phaser.GameObjects.Graphics,
+    color: number,
+    ownerColor: number,
+    size: number,
+  ): void {
+    g.fillStyle(color, 1);
+    g.lineStyle(1, 0xffffff, 0.8);
+    g.fillCircle(0, 0, size);
+    g.strokeCircle(0, 0, size);
+    g.fillStyle(ownerColor, 0.3);
+    g.fillCircle(0, 0, size);
+
+    const armLen = size * 0.55;
+    const armW = size * 0.22;
+    g.fillStyle(0xffffff, 0.95);
+    g.fillRect(-armW / 2, -armLen, armW, armLen * 2);
+    g.fillRect(-armLen, -armW / 2, armLen * 2, armW);
   }
 
   private drawHpBar(state: UnitState): void {

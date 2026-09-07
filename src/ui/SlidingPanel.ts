@@ -49,6 +49,7 @@ export class SlidingPanel {
   private maskGraphics!: Phaser.GameObjects.Graphics;
 
   // REMOVE / AS ENEMY / PAUSE toggles
+  private wireBtn!: Phaser.GameObjects.Container;
   private removeBtn!: Phaser.GameObjects.Container;
   private toggleHandles: ReturnType<typeof neonToggle>[] = [];
 
@@ -121,6 +122,16 @@ export class SlidingPanel {
       active => eventBus.emit('ui:remove_mode_toggled', { active }),
     );
     this.tabBar.add(this.removeBtn);
+    btnX += 122;
+
+    // WIRE toggle: click a gear, then click another to run cable between them.
+    // Clicking an already-wired pair cuts it, so drawing and cutting are one
+    // gesture rather than two modes to hunt for.
+    this.wireBtn = this.createLabeledToggle(
+      btnX, TAB_CENTER_Y, '⚡ WIRE', NEON.cyan,
+      active => eventBus.emit('ui:wire_mode_toggled', { active }),
+    );
+    this.tabBar.add(this.wireBtn);
     btnX += 122;
 
     // AS ENEMY toggle (practice mode only)

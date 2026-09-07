@@ -446,4 +446,46 @@ export const GEAR_DEFINITIONS: Record<GearType, GearDefinition> = {
     description: 'Spawns a Field Medic unit per full rotation (8 gold cost). Marches with the army, healing nearby allied units on a pulse. Never fights.',
     unlockNode: 'unlock_field_medic_spawner',
   },
+
+  // ─── Electrical ────────────────────────────────────────────────────────
+  crank: {
+    type: 'crank',
+    goldCost: 5,
+    description: 'Click it to spin it by hand. Output decays over ~6s -- enough to light a burner from a cold start, never enough to run an economy.',
+  },
+  solar_panel: {
+    type: 'solar_panel',
+    goldCost: 25,
+    description: 'Generates a small trickle of electricity forever, with no fuel. Never enough on its own.',
+    unlockNode: 'basic_electricity',
+  },
+  burner: {
+    type: 'burner',
+    goldCost: 30,
+    description: 'Burns coal into electricity and waste heat. The workhorse generator -- and the gear most likely to cook itself.',
+    unlockNode: 'basic_electricity',
+  },
+  battery: {
+    type: 'battery',
+    goldCost: 35,
+    description: 'Stores surplus electricity and gives it back on demand. Storage is what turns an overload into income.',
+    unlockNode: 'basic_electricity',
+  },
+  power_pole: {
+    type: 'power_pole',
+    goldCost: 8,
+    description: 'Carries no load of its own -- it just reaches three times further than anything else, and takes twice as many wires.',
+    unlockNode: 'basic_electricity',
+  },
+  grid_tie: {
+    type: 'grid_tie',
+    goldCost: 0,
+    description: 'The buyer at your base wall. Wire your grid to it and surplus electricity is sold for gold, up to its intake. Cannot be built or sold.',
+  },
+  coal_miner: {
+    type: 'coal_miner',
+    goldCost: 20,
+    description: 'Digs coal, the feedstock for burners and oilers.',
+    unlockNode: 'basic_electricity',
+  },
 };

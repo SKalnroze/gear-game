@@ -40,6 +40,14 @@ const GEAR_COLORS: Record<GearType, number> = {
   saboteur_spawner: 0x884499,
   raider_spawner: 0xffaa33,
   field_medic_spawner: 0x44ffaa,
+  // Electrical -- a warm amber family, distinct from the cool economy gears.
+  crank:       0xffaa44,
+  solar_panel: 0xffdd66,
+  burner:      0xff6622,
+  battery:     0x44ddaa,
+  power_pole:  0x998866,
+  grid_tie:    0x66ffdd,
+  coal_miner:  0x776655,
 };
 
 const GEAR_LABELS: Record<GearType, string> = {
@@ -76,6 +84,13 @@ const GEAR_LABELS: Record<GearType, string> = {
   saboteur_spawner: 'SAB',
   raider_spawner: 'RDR',
   field_medic_spawner: 'MED',
+  crank:       'CRNK',
+  solar_panel: 'SOL',
+  burner:      'BURN',
+  battery:     'BATT',
+  power_pole:  'POLE',
+  grid_tie:    'TIE',
+  coal_miner:  'COAL',
 };
 
 /**

@@ -21,11 +21,12 @@ import type { GearState, GearTier, GearType } from '../types/gear.types';
 import type { ResourceState } from '../types/economy.types';
 import type { UnitState } from '../types/unit.types';
 import type { GameEventMap } from '../types/events.types';
+import type { PowerRole } from '../world/power.utils';
 
 export type Owner = 'player' | 'ai';
 
 /** Resources a gear can mine or spend. Gold is handled by its own verbs. */
-export type StockResource = 'iron' | 'crystal' | 'aether';
+export type StockResource = 'iron' | 'crystal' | 'aether' | 'coal';
 
 /**
  * Broad role of a gear, used for grouping in the UI and for the structural
@@ -80,12 +81,27 @@ export interface GearBehaviourCtx {
 
 export type GearBehaviour = (ctx: GearBehaviourCtx) => void;
 
+/** Electrical role, when the gear is part of the power network at all. */
+export interface PowerSpec {
+  role: PowerRole;
+  /** Electricity produced per second, before the tier multiplier. */
+  generates?: number;
+  /** Storage capacity, before the tier multiplier. */
+  stores?: number;
+  /** Electricity requested per second, before the tier multiplier. */
+  draws?: number;
+  /** Surplus purchased per second (grid tie only), before the tier multiplier. */
+  buys?: number;
+}
+
 /**
  * What a gear type does. Every hook is optional; a gear with none is inert
- * scenery (armour, spikes handled elsewhere).
+ * scenery whose only contribution is its shape in the chain.
  */
 export interface GearBehaviourSpec {
   category: GearCategory;
+  /** Present only for gears that participate in the wire network. */
+  power?: PowerSpec;
   /** Runs once when the gear is placed -- initial ammo, buffers, and so on. */
   onPlace?: GearBehaviour;
   /** Runs on every completed rotation. The main production hook. */

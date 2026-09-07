@@ -31,7 +31,7 @@ export interface GameEventMap {
   'economy:resources_changed': { owner: 'player' | 'ai'; resources: ResourceState };
   'economy:spend_gold': { owner: 'player' | 'ai'; amount: number };
   'economy:earn_gold': { owner: 'player' | 'ai'; amount: number };
-  'economy:insufficient_funds': { owner: 'player' | 'ai'; resource: 'gold' | 'iron' | 'crystal' | 'aether'; needed: number };
+  'economy:insufficient_funds': { owner: 'player' | 'ai'; resource: keyof ResourceState; needed: number };
 
   // Unit events
   'unit:spawned': { unit: UnitState };
@@ -86,6 +86,14 @@ export interface GameEventMap {
   'game:tick': { tickNumber: number; delta: number };
 
   // UI events
+  // ── Electrical grid ────────────────────────────────────────────────────
+  'power:overload': { owner: 'player' | 'ai'; gridId: string; overflow: number; ratio: number };
+  'power:brownout': { owner: 'player' | 'ai'; gridId: string; satisfaction: number };
+  'power:wire_added': { gearIdA: string; gearIdB: string };
+  'power:wire_broken': { gearIdA: string; gearIdB: string };
+  'power:wire_refused': { reason: string; x: number; y: number };
+  'ui:wire_mode_toggled': { active: boolean };
+
   'ui:gear_palette_select': { gearType: GearType; teeth: number };
   'ui:gear_palette_deselect': {};
   'ui:gear_drag_start': { gearType: GearType; teeth: number };

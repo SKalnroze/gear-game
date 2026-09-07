@@ -50,6 +50,13 @@ const TYPE_COLORS: Record<GearType, number> = {
   saboteur_spawner: 0x884499,
   raider_spawner: 0xffaa33,
   field_medic_spawner: 0x44ffaa,
+  crank:       0xffaa44,
+  solar_panel: 0xffdd66,
+  burner:      0xff6622,
+  battery:     0x44ddaa,
+  power_pole:  0x998866,
+  grid_tie:    0x66ffdd,
+  coal_miner:  0x776655,
 };
 
 /** Short display name for gear types that are too long */

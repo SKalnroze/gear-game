@@ -8,7 +8,10 @@ export type GearType =
   'researcher' |
   'iron_converter' | 'crystal_converter' | 'aether_converter' |
   'crossbow_turret' | 'artillery_turret' | 'minelayer' | 'sentry_gear' |
-  'healer';
+  'healer' |
+  // Electrical
+  'crank' | 'solar_panel' | 'burner' | 'battery' | 'power_pole' | 'grid_tie' |
+  'coal_miner';
 
 /**
  * Gear size tier. Five discrete steps replaced free tooth counts of 5..60 --
@@ -48,6 +51,14 @@ export interface GearState {
   isJammed: boolean;          // true when rotation conflict detected
   crackLevel: number;         // 0–4 visual damage tier (0=pristine, 4=near-destroyed)
   jamStress: number;          // torque magnitude at jam point, drives damage rate
+  /** 0..1 share of its electricity draw this gear is receiving. Written by PowerSystem. */
+  powerSatisfaction?: number;
+  /** Stored electricity (batteries only). */
+  charge?: number;
+  /** Coal buffer (burners only) -- drawn from the owner's stock as it burns. */
+  coalBuffer?: number;
+  /** ms timestamp until which a hand-cranked gear is still generating. */
+  crankUntil?: number;
   ammo?: number;              // current ammo (turret gears only)
   maxAmmo?: number;           // max ammo capacity
   disabledUntil?: number;     // ms timestamp; a Raider-disabled gear produces nothing until then

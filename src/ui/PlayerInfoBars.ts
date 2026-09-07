@@ -13,6 +13,7 @@ const RES_DEFS: { key: keyof ResourceState; icon: string; colorStr: string }[] =
   { key: 'iron',    icon: '■', colorStr: '#aabbcc' },
   { key: 'crystal', icon: '◆', colorStr: '#00ffcc' },
   { key: 'aether',  icon: '✦', colorStr: '#cc44ff' },
+  { key: 'coal',    icon: '▲', colorStr: '#998877' },
 ];
 
 // Layout, stacked directly under BaseHealthBars (which occupies y=4..42).

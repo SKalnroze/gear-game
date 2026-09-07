@@ -232,6 +232,9 @@ export class GearSystem {
   sellGear(gearId: string): number | null {
     const gear = this.world.getGear(gearId);
     if (!gear) return null;
+    // The grid tie is part of the base, not a purchase. Selling it would strip
+    // the only buyer of surplus electricity with no way to build another.
+    if (gear.type === 'grid_tie') return null;
     const refund = Math.ceil(gearPlacementCost(gear.teeth) * 0.5);
     this.removeGear(gearId);
     return refund;

@@ -8,16 +8,23 @@
  */
 
 import { converterOutput } from '../../constants/gear.constants';
-import type { GearBehaviour, StockResource } from '../types';
+import type { GearBehaviour } from '../types';
+
+/**
+ * Resources a converter can turn into gold. Coal is deliberately excluded: it
+ * is feedstock for burners and oilers, and letting it be sold directly would
+ * give the coal chain a way to make gold without ever building a grid.
+ */
+export type ConvertibleResource = 'iron' | 'crystal' | 'aether';
 
 /** Gold produced per unit of input consumed. */
-export const CONVERTER_GOLD_RATE: Record<StockResource, number> = {
+export const CONVERTER_GOLD_RATE: Record<ConvertibleResource, number> = {
   iron: 2,
   crystal: 3,
   aether: 6,
 };
 
-export function converterBehaviour(resource: StockResource): GearBehaviour {
+export function converterBehaviour(resource: ConvertibleResource): GearBehaviour {
   return (ctx) => {
     const amount = converterOutput(ctx.gear.teeth);
     if (ctx.economy.getResources(ctx.owner)[resource] < amount) return;

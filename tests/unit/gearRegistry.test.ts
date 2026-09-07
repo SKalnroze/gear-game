@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { GEAR_BEHAVIOURS } from '../../src/gears/registry';
-import { CONVERTER_GOLD_RATE } from '../../src/gears/behaviours/refinery';
+import { CONVERTER_GOLD_RATE, type ConvertibleResource } from '../../src/gears/behaviours/refinery';
 import { GEAR_DEFINITIONS, turretMaxAmmo, miningOutput, converterOutput } from '../../src/constants/gear.constants';
 import { TIER_TEETH, tierPower } from '../../src/constants/tier.constants';
 import type { GearState, GearType, GearTier } from '../../src/types/gear.types';
@@ -22,7 +22,7 @@ function makeGear(type: GearType, tier: GearTier = 1, over: Partial<GearState> =
  * rule in the game is now exercisable without booting Phaser.
  */
 function makeCtx(gear: GearState, resources: Partial<ResourceState> = {}) {
-  const res: ResourceState = { gold: 100, iron: 0, crystal: 0, aether: 0, ...resources };
+  const res: ResourceState = { gold: 100, iron: 0, crystal: 0, aether: 0, coal: 0, ...resources };
   const gears = new Map<string, GearState>([[gear.id, gear]]);
   const reports: Array<{ text: string; color: number }> = [];
   const events: Array<{ event: string; payload: unknown }> = [];
@@ -157,7 +157,7 @@ describe('miners', () => {
 // ─── Refining ────────────────────────────────────────────────────────────────
 
 describe('converters', () => {
-  const cases: Array<[GearType, StockResource]> = [
+  const cases: Array<[GearType, ConvertibleResource]> = [
     ['iron_converter', 'iron'], ['crystal_converter', 'crystal'], ['aether_converter', 'aether'],
   ];
 

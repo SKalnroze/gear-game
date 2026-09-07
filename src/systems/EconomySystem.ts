@@ -1,7 +1,7 @@
 import { ResourceState } from '../types/economy.types';
 import type { GearState } from '../types/gear.types';
 import { GEAR_BEHAVIOURS } from '../gears/registry';
-import type { GearBehaviourCtx } from '../gears/types';
+import type { GearBehaviourCtx, StockResource } from '../gears/types';
 import { tierPower } from '../constants/tier.constants';
 import { EventBus } from './EventBus';
 import {
@@ -26,10 +26,10 @@ export class EconomySystem {
   private unitSystem: UnitSystem | null = null;
 
   private playerResources: ResourceState = {
-    gold: 30, iron: 0, crystal: 0, aether: 0,
+    gold: 30, iron: 0, crystal: 0, aether: 0, coal: 0,
   };
   private aiResources: ResourceState = {
-    gold: 30, iron: 0, crystal: 0, aether: 0,
+    gold: 30, iron: 0, crystal: 0, aether: 0, coal: 0,
   };
 
   private playerGoldBonusPerSec: number = 0;
@@ -45,8 +45,8 @@ export class EconomySystem {
    * deliberately not recorded here -- the tooltip answers "what is my machine
    * doing for me," not "what did I just spend." */
   private rateSamples: Record<'player' | 'ai', Record<keyof ResourceState, Array<{ t: number; delta: number }>>> = {
-    player: { gold: [], iron: [], crystal: [], aether: [] },
-    ai: { gold: [], iron: [], crystal: [], aether: [] },
+    player: { gold: [], iron: [], crystal: [], aether: [], coal: [] },
+    ai: { gold: [], iron: [], crystal: [], aether: [], coal: [] },
   };
 
   /**
@@ -114,7 +114,7 @@ export class EconomySystem {
     this.practiceMode = enabled;
     if (enabled) {
       // Pre-fill AI with a huge starting pool
-      this.aiResources = { gold: 999999, iron: 999999, crystal: 999999, aether: 999999 };
+      this.aiResources = { gold: 999999, iron: 999999, crystal: 999999, aether: 999999, coal: 999999 };
     }
   }
 
@@ -159,7 +159,7 @@ export class EconomySystem {
 
     if (this.practiceMode) {
       // Keep AI resources pinned to a huge value — effectively infinite
-      this.aiResources = { gold: 999999, iron: 999999, crystal: 999999, aether: 999999 };
+      this.aiResources = { gold: 999999, iron: 999999, crystal: 999999, aether: 999999, coal: 999999 };
     } else {
       const aiGoldGain = BASE_GOLD_PER_SEC + this.aiGoldBonusPerSec;
       this.earnGold('ai', aiGoldGain);
@@ -190,14 +190,14 @@ export class EconomySystem {
     return res.gold >= amount;
   }
 
-  earnResource(owner: 'player' | 'ai', type: 'iron' | 'crystal' | 'aether', amount: number, trackForRate: boolean = true): void {
+  earnResource(owner: 'player' | 'ai', type: StockResource, amount: number, trackForRate: boolean = true): void {
     const res = owner === 'player' ? this.playerResources : this.aiResources;
     res[type] += amount;
     if (trackForRate) this.recordSample(owner, type, amount);
     this.eventBus.emit('economy:resources_changed', { owner, resources: { ...res } });
   }
 
-  spendResource(owner: 'player' | 'ai', type: 'iron' | 'crystal' | 'aether', amount: number, trackForRate: boolean = true): boolean {
+  spendResource(owner: 'player' | 'ai', type: StockResource, amount: number, trackForRate: boolean = true): boolean {
     const res = owner === 'player' ? this.playerResources : this.aiResources;
     if (res[type] < amount) {
       this.eventBus.emit('economy:insufficient_funds', { owner, resource: type, needed: amount });
@@ -209,7 +209,7 @@ export class EconomySystem {
     return true;
   }
 
-  canAffordResource(owner: 'player' | 'ai', type: 'iron' | 'crystal' | 'aether', amount: number): boolean {
+  canAffordResource(owner: 'player' | 'ai', type: StockResource, amount: number): boolean {
     const res = owner === 'player' ? this.playerResources : this.aiResources;
     return res[type] >= amount;
   }

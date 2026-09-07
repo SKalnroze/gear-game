@@ -13,6 +13,7 @@ const MINER_COLORS: Record<StockResource, number> = {
   iron: 0xcc9966,
   crystal: 0x66ccff,
   aether: 0xcc66ff,
+  coal: 0x998877,
 };
 
 export function minerBehaviour(resource: StockResource): GearBehaviour {

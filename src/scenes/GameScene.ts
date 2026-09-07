@@ -30,11 +30,25 @@ import {
   researcherOutput, converterOutput, healerOutput, healerRadius, turretMaxAmmo, turretRange,
 } from '../constants/gear.constants';
 import { tierForTeeth, DEFAULT_TIER } from '../constants/tier.constants';
+import { PowerGraph } from '../world/PowerGraph';
+import { PowerSystem } from '../systems/PowerSystem';
+import { GEAR_BEHAVIOURS } from '../gears/registry';
+import { startCrank } from '../gears/behaviours/power';
+import type { WireResult } from '../world/power.utils';
+
+/** Player-facing reason a wire was refused. */
+const WIRE_REFUSAL_TEXT: Partial<Record<WireResult, string>> = {
+  'out-of-range': 'too far — use a pole',
+  'different-owner': 'not your gear',
+  'not-electrical': 'not electrical',
+  'wire-limit': 'no free terminals',
+};
 import {
   WORLD_WIDTH, WORLD_HEIGHT,
   EDGE_SCROLL_MARGIN, EDGE_SCROLL_SPEED,
   CANVAS_HEIGHT, PANEL_COLLAPSED_H, PANEL_EXPANDED_H,
   PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X, LANE_Y_MIN, LANE_Y_MAX,
+  PLAYER_BASE_X, AI_BASE_X,
 } from '../constants/world.constants';
 import { AI_INITIAL_DECISION_DELAY, REPOSITION_COOLDOWN_MS, CAPACITOR_BURST_ROTATIONS, gearPlacementCost } from '../constants/balance.constants';
 import { GameSoundManager } from '../systems/SoundManager';
@@ -63,6 +77,8 @@ export class GameScene extends Phaser.Scene {
   private gearSystem!: GearSystem;
   private rotationPhysics!: RotationPhysicsSystem;
   private economySystem!: EconomySystem;
+  private powerGraph!: PowerGraph;
+  private powerSystem!: PowerSystem;
   private unitSystem!: UnitSystem;
   private combatSystem!: CombatSystem;
   private winSystem!: WinConditionSystem;
@@ -121,6 +137,9 @@ export class GameScene extends Phaser.Scene {
   private dragStartedAtDownTime: number = -1;
   private placementLabelText: Phaser.GameObjects.Text | null = null;
   private removeMode: boolean = false;
+  /** Wire tool: active mode, and the gear the pending wire starts from. */
+  private wireMode: boolean = false;
+  private wireFromId: string | null = null;
   private asEnemyMode: boolean = false;  // practice only: place gears as enemy owner
   private isPaused: boolean = false;      // pause all game simulation
 
@@ -239,6 +258,11 @@ export class GameScene extends Phaser.Scene {
     this.rotationPhysics = new RotationPhysicsSystem(this.world, this.meshGraph, eventBus, this.gameClock);
     this.economySystem = new EconomySystem(eventBus, this.world);
     this.rotationPhysics.setEconomySystem(this.economySystem);
+    // The wire network is a second graph over the same gears -- authored by the
+    // player rather than derived from geometry. See world/PowerGraph.ts.
+    this.powerGraph = new PowerGraph((gear) => GEAR_BEHAVIOURS[gear.type].power?.role);
+    this.powerSystem = new PowerSystem(eventBus, this.world, this.powerGraph);
+    this.powerSystem.setEconomySystem(this.economySystem);
     if (isPractice) this.economySystem.setPracticeMode(true);
     this.unitSystem = new UnitSystem(eventBus);
     this.unitSystem.setWorld(this.world);
@@ -573,6 +597,8 @@ export class GameScene extends Phaser.Scene {
       this.events.emit('systems_ready', {
         techSystem: this.techSystem,
         economySystem: this.economySystem,
+      powerSystem: this.powerSystem,
+      powerGraph: this.powerGraph,
         playerTech: this.playerTech,
         unitSystem: this.unitSystem,
         winSystem: this.winSystem,
@@ -620,6 +646,8 @@ export class GameScene extends Phaser.Scene {
     this.aiDebugOverlay.destroy();
     this.gameEventLogger.destroy();
     this.gearUnitInteraction.destroy();
+    this.powerSystem.destroy();
+    this.powerGraph.clear();
     this.particleManager.destroy();
     this.floatingTextManager.destroy();
     // Clean up cold zone graphics
@@ -662,6 +690,101 @@ export class GameScene extends Phaser.Scene {
 
       this.gearSystem.tryPlace('motor', DEFAULT_TIER, motorX, laneY, owner, true);
       this.gearSystem.tryPlace('crossbow_turret', DEFAULT_TIER, towerX, laneY, owner, true);
+
+      // The grid tie: the buyer for surplus electricity, standing at the base
+      // wall. Free, unbuildable and unsellable -- selling is something you
+      // reach with cable, not a rule that applies everywhere.
+      const tieX = onRight ? AI_BASE_X - 90 : PLAYER_BASE_X + 90;
+      this.gearSystem.tryPlace('grid_tie', DEFAULT_TIER, tieX, laneY, owner, true);
+    }
+  }
+
+  /** Topmost owned gear under a world point, or null. */
+  private gearAtPoint(x: number, y: number, owner: 'player' | 'ai'): GearState | null {
+    for (const [, gear] of this.world.getAllGears()) {
+      if (gear.owner !== owner) continue;
+      const dx = gear.x - x;
+      const dy = gear.y - y;
+      if (Math.sqrt(dx * dx + dy * dy) < gearRadius(gear.teeth)) return gear;
+    }
+    return null;
+  }
+
+  /**
+   * Wire tool: first click picks the source, second completes or cuts.
+   *
+   * Clicking an already-wired pair cuts that wire, so drawing and cutting are
+   * the same gesture rather than a separate mode to find.
+   */
+  private handleWireClick(x: number, y: number): void {
+    const owner = this._playerOwner();
+    const target = this.gearAtPoint(x, y, owner);
+
+    if (!target) {
+      this.wireFromId = null;  // click on empty ground cancels
+      return;
+    }
+
+    if (!this.wireFromId) {
+      if (!GEAR_BEHAVIOURS[target.type].power) {
+        eventBus.emit('power:wire_refused', { reason: 'not electrical', x, y });
+        return;
+      }
+      this.wireFromId = target.id;
+      return;
+    }
+
+    if (this.wireFromId === target.id) {
+      this.wireFromId = null;  // clicking the source again cancels
+      return;
+    }
+
+    const from = this.world.getGear(this.wireFromId);
+    this.wireFromId = null;
+    if (!from) return;
+
+    if (this.powerGraph.hasWire(from.id, target.id)) {
+      this.powerGraph.removeWire(from.id, target.id);
+      this.powerSystem.markGraphDirty();
+      eventBus.emit('power:wire_broken', { gearIdA: from.id, gearIdB: target.id });
+      return;
+    }
+
+    const result = this.powerGraph.addWire(from, target);
+    if (result === 'ok') {
+      this.powerSystem.markGraphDirty();
+      eventBus.emit('power:wire_added', { gearIdA: from.id, gearIdB: target.id });
+    } else {
+      eventBus.emit('power:wire_refused', { reason: WIRE_REFUSAL_TEXT[result] ?? result, x, y });
+    }
+  }
+
+  /**
+   * Wires, plus the rubber-band preview while one is being drawn.
+   *
+   * Overload is keyed per grid rather than per wire so the whole network pulses
+   * together -- an overloading grid is one fact, not a set of independent ones.
+   */
+  private renderPowerWires(allGears: Map<string, GearState>, now: number): void {
+    const gridHeat = new Map<string, number>();
+    for (const grid of this.powerSystem.getGrids()) {
+      if (grid.overflow <= 0) continue;
+      const ratio = grid.generation > 0 ? grid.overflow / grid.generation : 0;
+      for (const gearId of grid.gearIds) gridHeat.set(gearId, ratio);
+    }
+
+    this.worldRenderer.drawPowerWires(this.powerGraph, allGears, gridHeat, now);
+
+    if (this.wireMode && this.wireFromId) {
+      const from = allGears.get(this.wireFromId);
+      const pointer = this.input.activePointer;
+      if (from) {
+        const target = this.gearAtPoint(pointer.worldX, pointer.worldY, this._playerOwner());
+        const valid = !!target && target.id !== from.id
+          && (this.powerGraph.hasWire(from.id, target.id)
+            || this.powerGraph.checkWire(from, target) === 'ok');
+        this.worldRenderer.drawWirePreview(from, pointer.worldX, pointer.worldY, valid);
+      }
     }
   }
 
@@ -779,8 +902,21 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Listen for remove mode toggled from toolbar
+    eventBus.on('power:wire_refused', ({ reason, x, y }) => {
+      this.showWireRefusal(x, y, reason);
+    });
+
+    eventBus.on('ui:wire_mode_toggled', ({ active }) => {
+      this.wireMode = active;
+      this.wireFromId = null;
+      // The two build modes are mutually exclusive -- holding both would make
+      // a click ambiguous.
+      if (active) this.removeMode = false;
+    });
+
     eventBus.on('ui:remove_mode_toggled', ({ active }) => {
       this.removeMode = active;
+      if (active) { this.wireMode = false; this.wireFromId = null; }
       if (active) {
         this.isDragging = false;
         this.dragGearType = null;
@@ -1115,6 +1251,28 @@ export class GameScene extends Phaser.Scene {
 
       if (pointer.y > this.hudTopY) return; // over panel — panel handles click
 
+      // Wire mode takes priority: while drawing cable, clicks are wire
+      // endpoints, never placements or sales.
+      if (this.wireMode) {
+        this.handleWireClick(pointer.worldX, pointer.worldY);
+        return;
+      }
+
+      // Cranking: the cold-start bootstrap. Clicking a crank spins it by hand
+      // for a few seconds, which is enough to light a first burner when the
+      // grid is dead and there is no other way to get electricity moving.
+      {
+        const crank = this.gearAtPoint(pointer.worldX, pointer.worldY, this._playerOwner());
+        if (crank && crank.type === 'crank' && !this.pickedUpGearId && !this.dragGearType) {
+          startCrank(crank, this.gameClock.now);
+          this.world.updateGear(crank);
+          eventBus.emit('gear:rotation_result', {
+            gearId: crank.id, owner: this._playerOwner(), text: 'CRANK!', color: 0xffaa44,
+          });
+          return;
+        }
+      }
+
       // Remove mode takes priority
       if (this.removeMode) {
         const clickX = pointer.worldX;
@@ -1424,6 +1582,12 @@ export class GameScene extends Phaser.Scene {
 
     // ─── System updates (skipped when paused) ─────────────────────────────
     if (!this.isPaused) {
+      // Power first: motor speed this frame must reflect this frame's
+      // generation, and gold from sold electricity must land in the same frame
+      // it was generated or the HUD rate tooltip shows a sawtooth. The cost is
+      // one frame of coal-to-electricity latency, invisible at 60Hz.
+      this.powerSystem.update(deltaSec, now);
+      if (this.powerSystem.consumePowerDirty()) this.rotationPhysics.markChainsDirty();
       this.rotationPhysics.update(deltaSec);
       this.economySystem.update(now);
       this.unitSystem.update(deltaSec, now, this.projectileSystem);
@@ -1494,6 +1658,7 @@ export class GameScene extends Phaser.Scene {
 
     // ─── Update mesh arcs ─────────────────────────────────────────────────
     this.worldRenderer.drawMeshArcs(this.meshGraph, allGears);
+    this.renderPowerWires(allGears, now);
 
     // ─── AI debug overlay ─────────────────────────────────────────────────
     if (this.aiDebugOverlay.isEnabled()) {
@@ -1546,6 +1711,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Fading "need N more gold" text at the cursor when a placement click fails on cost. */
+  /** Float the reason a wire was refused, where the player clicked. */
+  private showWireRefusal(worldX: number, worldY: number, reason: string): void {
+    const msg = this.add.text(
+      worldX, worldY - 20, reason,
+      { fontSize: '12px', color: '#ff6644', fontFamily: 'monospace' },
+    ).setOrigin(0.5).setDepth(251);
+
+    this.tweens.add({
+      targets: msg,
+      y: worldY - 50,
+      alpha: 0,
+      duration: 1200,
+      ease: 'Cubic.easeOut',
+      onComplete: () => msg.destroy(),
+    });
+  }
+
   private showInsufficientFundsAtCursor(worldX: number, worldY: number, missingGold: number): void {
     const msg = this.add.text(
       worldX, worldY - 20,

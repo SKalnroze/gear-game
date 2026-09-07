@@ -5,6 +5,7 @@ import {
   PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X,
   PLAYER_BASE_X, AI_BASE_X, BASE_WIDTH,
 } from '../constants/world.constants';
+import type { PowerGraph } from './PowerGraph';
 import { GearMeshGraph } from './GearMeshGraph';
 import { GearState } from '../types/gear.types';
 import { gearRadius } from '../constants/gear.constants';
@@ -18,6 +19,13 @@ const COLOR_SNAP_VALID = 0x00ff88;
 const COLOR_SNAP_INVALID = 0xff3333;
 const COLOR_SNAP_RING = 0xffdd00;
 const COLOR_MESH_ARC = 0xffcc00;
+// Wires read cyan-white against the mesh arcs' amber, so the two layers never
+// get confused; overload takes the same hot orange as the heat visuals, since
+// they are the same failure escalating through one pipeline.
+const COLOR_WIRE = 0x66ddff;
+const COLOR_WIRE_OVERLOAD = 0xff6622;
+const COLOR_WIRE_OK = 0x66ff99;
+const COLOR_WIRE_BAD = 0xff4444;
 const COLOR_PLAYER_BASE = 0x0055ff;
 const COLOR_AI_BASE = 0xff2200;
 
@@ -27,6 +35,7 @@ export class WorldRenderer {
   private overlayGraphics: Phaser.GameObjects.Graphics;
   private snapPreviewGraphics: Phaser.GameObjects.Graphics;
   private meshArcGraphics: Phaser.GameObjects.Graphics;
+  private wireGraphics: Phaser.GameObjects.Graphics;
   private ghostGearGraphics: Phaser.GameObjects.Graphics;
   private flashGraphics: Phaser.GameObjects.Graphics;
 
@@ -43,6 +52,9 @@ export class WorldRenderer {
     this.overlayGraphics = scene.add.graphics();
     this.snapPreviewGraphics = scene.add.graphics();
     this.meshArcGraphics = scene.add.graphics();
+    // Above the mesh arcs: an overloading wire is the highest-priority thing on
+    // screen and must never be occluded by the gear train it is feeding.
+    this.wireGraphics = scene.add.graphics().setDepth(2);
     this.ghostGearGraphics = scene.add.graphics();
     this.flashGraphics = scene.add.graphics();
     this.flashGraphics.setDepth(50);
@@ -238,6 +250,60 @@ export class WorldRenderer {
       this.meshArcGraphics.lineTo(b.x, b.y);
       this.meshArcGraphics.strokePath();
     }
+  }
+
+  /**
+   * Draw the wire network.
+   *
+   * Wires read as a distinct layer from mesh arcs -- thicker, warmer, and drawn
+   * on top -- because they are a different kind of fact: a mesh arc is a
+   * consequence of where two gears sit, a wire is something the player
+   * deliberately ran. A grid that is overloading pulses hot along every wire in
+   * it, so the thing that turns red is the thing the player drew.
+   */
+  drawPowerWires(
+    powerGraph: PowerGraph,
+    gears: Map<string, GearState>,
+    gridHeat: Map<string, number>,
+    now: number,
+  ): void {
+    this.wireGraphics.clear();
+
+    for (const wire of powerGraph.getAllWires()) {
+      const a = gears.get(wire.gearIdA);
+      const b = gears.get(wire.gearIdB);
+      if (!a || !b) continue;
+
+      // Both ends are always in the same grid, so either key works.
+      const overload = gridHeat.get(wire.gearIdA) ?? 0;
+      let color = COLOR_WIRE;
+      let width = 2;
+      let alpha = 0.75;
+
+      if (overload > 0) {
+        // Pulse faster the harder it is overloading -- an urgency the player
+        // can read at a glance without reading a number.
+        const pulse = 0.5 + 0.5 * Math.sin(now * 0.006 * (1 + overload * 2));
+        color = COLOR_WIRE_OVERLOAD;
+        width = 2 + 2 * Math.min(1, overload);
+        alpha = 0.6 + 0.4 * pulse;
+      }
+
+      this.wireGraphics.lineStyle(width, color, alpha);
+      this.wireGraphics.beginPath();
+      this.wireGraphics.moveTo(a.x, a.y);
+      this.wireGraphics.lineTo(b.x, b.y);
+      this.wireGraphics.strokePath();
+    }
+  }
+
+  /** Rubber-band preview while the player is drawing a wire. */
+  drawWirePreview(from: GearState, toX: number, toY: number, valid: boolean): void {
+    this.wireGraphics.lineStyle(2, valid ? COLOR_WIRE_OK : COLOR_WIRE_BAD, 0.9);
+    this.wireGraphics.beginPath();
+    this.wireGraphics.moveTo(from.x, from.y);
+    this.wireGraphics.lineTo(toX, toY);
+    this.wireGraphics.strokePath();
   }
 
   drawBases(playerHp: number, playerMaxHp: number, aiHp: number, aiMaxHp: number): void {

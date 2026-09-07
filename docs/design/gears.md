@@ -138,6 +138,13 @@ regardless of its tier, while turrets scaled normally.
 | Saboteur Spawner | factory | 6 | `unlock_saboteur_spawner` | Spawns a Saboteur unit per full rotation (10 gold cost). Fouls an enemy gear's rotation on contact instead of damaging it -- attacks the machine's speed, not its health. |
 | Raider Spawner | factory | 6 | `unlock_raider_spawner` | Spawns a Raider unit per full rotation (10 gold cost). Disables an enemy miner or converter within the lane for a few seconds instead of damaging it. |
 | Field Medic Spawner | factory | 6 | `unlock_field_medic_spawner` | Spawns a Field Medic unit per full rotation (8 gold cost). Marches with the army, healing nearby allied units on a pulse. Never fights. |
+| Crank | power | 5 | _from start_ | Click it to spin it by hand. Output decays over ~6s -- enough to light a burner from a cold start, never enough to run an economy. |
+| Solar Panel | power | 25 | `basic_electricity` | Generates a small trickle of electricity forever, with no fuel. Never enough on its own. |
+| Burner | power | 30 | `basic_electricity` | Burns coal into electricity and waste heat. The workhorse generator -- and the gear most likely to cook itself. |
+| Battery | power | 35 | `basic_electricity` | Stores surplus electricity and gives it back on demand. Storage is what turns an overload into income. |
+| Power Pole | power | 8 | `basic_electricity` | Carries no load of its own -- it just reaches three times further than anything else, and takes twice as many wires. |
+| Grid Tie | power | 0 | _from start_ | The buyer at your base wall. Wire your grid to it and surplus electricity is sold for gold, up to its intake. Cannot be built or sold. |
+| Coal Miner | extraction | 20 | `basic_electricity` | Digs coal, the feedstock for burners and oilers. |
 <!-- END GENERATED: gears.catalogue -->
 
 <!-- BEGIN GENERATED: gears.formulas -->
@@ -333,3 +340,55 @@ An earlier version of the game declared a broader `GearDefinition.synergies` lis
 | **Destruction** | At 0 HP the gear is removed and the chain re-forms around the hole — which may split one chain into two, or strand a section with no motor. |
 | **Selling** | A gear can be sold in SELL mode for half its placement cost, rounded up. |
 | **Burnout** | Overclock only, and recoverable — distinct from destruction. |
+
+---
+
+## The electrical grid
+
+Motors used to be the only source of motion and had no running cost, so a gear train was a one-off purchase with no failure mode to manage. Electricity gives the machine an appetite.
+
+**Generators → batteries → motors**, over wires the player runs by hand. Wiring is a mode: click a gear, click another, and cable is run between them. Clicking an already-wired pair cuts it, so drawing and cutting are one gesture rather than two modes to hunt for.
+
+| Gear | Role |
+|---|---|
+| **Crank** | Click to spin by hand. Output decays across ~6s — enough to light a first burner from a cold start, never enough to underwrite an economy. |
+| **Solar panel** | A small trickle, forever, with no fuel. Never enough on its own. |
+| **Burner** | Coal in, electricity and waste heat out. The workhorse, and the gear most likely to cook itself. |
+| **Battery** | Stores surplus, gives it back on demand. |
+| **Power pole** | Carries no load; spans three times further and takes twice as many wires. |
+| **Grid tie** | The buyer, at your base wall. Free, unbuildable, unsellable. |
+
+### Selling is something you reach, not a rule that applies
+
+Surplus electricity becomes gold only if your network is physically wired to the **grid tie** at your base wall, and only up to its intake. That makes the long cable run back across your own territory part of the cost — and an exposed line an enemy sapper can cut.
+
+It also disposes of an exploit without needing a rule for it. A wire is a graph edge, so connecting to the tie *merges* your network into the tie's component. Splitting your grid into pieces to multiply the sell cap simply disconnects those pieces from the buyer.
+
+### Under-power is safe; over-power burns
+
+A **brownout** — demand above supply — only slows you: every consumer on the grid is served the same fraction, and an unpowered motor still idles rather than bricking, so a bad grid is always recoverable.
+
+An **overload** — generation with nowhere left to go, after consumers, storage and the tie have all taken their share — dumps its surplus into the generators producing it, as heat. Overload and overheating therefore escalate through one pipeline and share one visual language: the player learns "hot is bad" once and it covers both, and the thing that glows is the wire they drew.
+
+That asymmetry is what makes batteries and the run back to the tie worth building rather than optional. Storage is filled *before* anything is sold, so a battery bank genuinely protects you from overload rather than merely earning you less.
+
+<!-- BEGIN GENERATED: power.constants -->
+| Constant | Value | Meaning |
+|---|---|---|
+| `WIRE_BASE_RANGE` | 140 | px an ordinary electrical gear can throw a wire |
+| `POLE_RANGE` | 420 | px a power pole can span -- its entire purpose |
+| `MAX_WIRES_PER_GEAR` / `_POLE` | 4 / 8 | terminals, so the network stays readable |
+| `SOLAR_OUTPUT` | 1 | tier-1 solar generation, per second |
+| `BURNER_OUTPUT` | 6 | tier-1 burner generation, per second |
+| `BURNER_COAL_PER_SEC` | 0.35 | coal a tier-1 burner eats per second |
+| `BURNER_SELF_HEAT` | 4 | heat a running burner adds to itself per second |
+| `CRANK_OUTPUT` | 4 | peak hand-crank output, decaying to zero |
+| `CRANK_WINDOW_MS` | 6000 | ms one crank click lasts |
+| `BATTERY_CAPACITY` | 40 | tier-1 storage |
+| `BATTERY_MAX_DISCHARGE` | 8 | cap on stored power released per second |
+| `MOTOR_DRAW` | 1.5 | electricity a tier-1 motor asks for |
+| `MOTOR_BASELINE` | 1 | torque fraction of an unpowered motor (staged at 1.0 until the grid is playable) |
+| `TIE_INTAKE` | 12 | surplus the grid tie buys per second |
+| `GOLD_PER_ELECTRICITY` | 0.35 | gold per unit of electricity sold |
+| `OVERLOAD_HEAT_PER_UNIT` | 3 | heat per unit of surplus with nowhere to go |
+<!-- END GENERATED: power.constants -->

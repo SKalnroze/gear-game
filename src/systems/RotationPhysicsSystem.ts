@@ -3,6 +3,8 @@ import { World } from '../world/World';
 import { GearMeshGraph } from '../world/GearMeshGraph';
 import { EventBus } from './EventBus';
 import { GEAR_DEFINITIONS, gearInertia, motorTorque, motorOutput, crackLevelFor } from '../constants/gear.constants';
+import { motorPowerFactor } from '../world/power.utils';
+import { MOTOR_BASELINE } from '../constants/power.constants';
 import {
   AMPLIFIER_CHAIN_MULTIPLIER,
   COMBO_CHAIN_MIN_GEARS,
@@ -73,6 +75,29 @@ export class RotationPhysicsSystem {
   // Optional economy ref (set after construction) -- capacitor bursts credit
   // gold directly through it, once it is wired up.
   private economySystem: EconomySystem | null = null;
+
+  /**
+   * Torque a motor actually delivers, after electricity.
+   *
+   * An unpowered motor is not bricked -- it idles at MOTOR_BASELINE, so a
+   * blackout slows you rather than ending the run. Power scales it back up to
+   * full. This is the trade that replaced the old size-costs-speed penalty:
+   * tier buys strength, electricity buys speed.
+   */
+  private poweredTorque(gear: GearState): number {
+    return motorTorque(gear.teeth) * motorPowerFactor(gear.powerSatisfaction ?? 0, MOTOR_BASELINE);
+  }
+
+  /**
+   * Force a chain re-solve because motor power changed.
+   *
+   * Called only when a motor's QUANTISED satisfaction actually moved -- see
+   * SATISFACTION_STEPS. Torque feeds an O(V+E) double BFS, so a continuously
+   * drifting grid would otherwise rebuild every chain every frame.
+   */
+  markChainsDirty(): void {
+    this.rebuildChains();
+  }
 
   private readonly onMeshUpdated = () => this.rebuildChains();
   private readonly onGearPlaced = ({ gear }: { gear: GearState }) => {
@@ -182,7 +207,7 @@ export class RotationPhysicsSystem {
       const correctedMotorOmega = this.computeChainPhysics(chainGearIds, chainGears, allGears, gear.owner);
 
       // Pass 2: Propagate torque with jam detection
-      const mTorque = motorTorque(gear.teeth);
+      const mTorque = this.poweredTorque(gear);
       gear.angularVelocity = correctedMotorOmega;
       gear.torqueOutput = mTorque;
       gear.isSpinning = true;
@@ -300,6 +325,10 @@ export class RotationPhysicsSystem {
     omegaRatios.set(firstMotorId, 1.0);
     queue.push({ id: firstMotorId, ratio: 1.0 });
     const localVisited = new Set<string>([firstMotorId]);
+    // Set, not the array: this is the inner loop of a BFS that now re-runs
+    // whenever grid power changes, and `chainGearIds.includes` made it O(n^2)
+    // per chain.
+    const chainMembers = new Set(chainGearIds);
 
     // BFS to compute ratio for each gear relative to motor
     while (queue.length > 0) {
@@ -310,7 +339,7 @@ export class RotationPhysicsSystem {
       for (const nId of this.meshGraph.getNeighbors(currentId)) {
         if (localVisited.has(nId)) continue;
         const neighbor = allGears.get(nId);
-        if (!neighbor || !chainGearIds.includes(nId)) continue;
+        if (!neighbor || !chainMembers.has(nId)) continue;
 
         const neighborRatio = currentRatio * (current.teeth / neighbor.teeth);
         omegaRatios.set(nId, neighborRatio);
@@ -332,7 +361,7 @@ export class RotationPhysicsSystem {
 
       if (g.type === 'motor' && !g.isBurntOut) {
         // Motor torque is scaled by its omega ratio at the reference frame (power conservation: P = τ × ω)
-        totalMotorTorque += motorTorque(g.teeth) * (omegaRatios.get(gId) ?? 1.0);
+        totalMotorTorque += this.poweredTorque(g) * (omegaRatios.get(gId) ?? 1.0);
       }
       if (g.type === 'amplifier' && !g.isBurntOut) {
         amplifierCount++;

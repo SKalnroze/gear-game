@@ -14,6 +14,10 @@
 
 import type { GearBehaviourRegistry, GearBehaviourSpec } from './types';
 import { minerBehaviour } from './behaviours/extraction';
+import { crankBehaviour, initBattery, initBurner } from './behaviours/power';
+import {
+  SOLAR_OUTPUT, BURNER_OUTPUT, CRANK_OUTPUT, BATTERY_CAPACITY, MOTOR_DRAW, TIE_INTAKE,
+} from '../constants/power.constants';
 import { converterBehaviour } from './behaviours/refinery';
 import {
   ammoGear, CROSSBOW_AMMO, ARTILLERY_AMMO, MINELAYER_AMMO,
@@ -34,7 +38,30 @@ const factory: GearBehaviourSpec = { category: 'factory' };
 
 export const GEAR_BEHAVIOURS: GearBehaviourRegistry = {
   // ── Chain shaping ──────────────────────────────────────────────────────
-  motor: inert('power'),
+  // A motor is the grid's only consumer today: electricity buys rotation speed,
+  // which is the trade that replaced size-costs-speed.
+  motor: { category: 'power', power: { role: 'consumer', draws: MOTOR_DRAW } },
+
+  // ── Electrical ─────────────────────────────────────────────────────────
+  crank: {
+    category: 'power',
+    power: { role: 'generator', generates: CRANK_OUTPUT },
+    onRotation: crankBehaviour,
+  },
+  solar_panel: { category: 'power', power: { role: 'generator', generates: SOLAR_OUTPUT } },
+  burner: {
+    category: 'power',
+    power: { role: 'generator', generates: BURNER_OUTPUT },
+    onPlace: initBurner,
+  },
+  battery: {
+    category: 'power',
+    power: { role: 'battery', stores: BATTERY_CAPACITY },
+    onPlace: initBattery,
+  },
+  power_pole: { category: 'power', power: { role: 'pole' } },
+  grid_tie: { category: 'power', power: { role: 'tie', buys: TIE_INTAKE } },
+  coal_miner: { category: 'extraction', onRotation: minerBehaviour('coal') },
   amplifier: inert('structural'),
   capacitor: inert('structural'),
   overclock: inert('structural'),

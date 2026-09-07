@@ -45,6 +45,7 @@ async function loadConstants() {
     export * as balance from ${JSON.stringify(join(ROOT, 'src/constants/balance.constants.ts'))};
     export * as world from ${JSON.stringify(join(ROOT, 'src/constants/world.constants.ts'))};
     export * as gearRegistry from ${JSON.stringify(join(ROOT, 'src/gears/registry.ts'))};
+    export * as power from ${JSON.stringify(join(ROOT, 'src/constants/power.constants.ts'))};
     export * as tier from ${JSON.stringify(join(ROOT, 'src/constants/tier.constants.ts'))};
     export * as unitUtils from ${JSON.stringify(join(ROOT, 'src/systems/unit.utils.ts'))};
   `.replace(/\\/g, '\\\\'));
@@ -91,7 +92,7 @@ function table(headers, rows) {
  * @returns {Record<string, string>}
  */
 function buildBlocks(m) {
-  const { gear, unit, tech, ability, balance, world, tier, gearRegistry, unitUtils } = m;
+  const { gear, unit, tech, ability, balance, world, tier, power, gearRegistry, unitUtils } = m;
   /** @type {Record<string, string>} */
   const blocks = {};
 
@@ -339,6 +340,29 @@ function buildBlocks(m) {
         num(tier.tierCostFactor(n)),
       ];
     }),
+  );
+
+  // Electrical grid -------------------------------------------------------
+  blocks['power.constants'] = table(
+    ['Constant', 'Value', 'Meaning'],
+    [
+      ['`WIRE_BASE_RANGE`', num(power.WIRE_BASE_RANGE), 'px an ordinary electrical gear can throw a wire'],
+      ['`POLE_RANGE`', num(power.POLE_RANGE), 'px a power pole can span -- its entire purpose'],
+      ['`MAX_WIRES_PER_GEAR` / `_POLE`', `${num(power.MAX_WIRES_PER_GEAR)} / ${num(power.MAX_WIRES_PER_POLE)}`, 'terminals, so the network stays readable'],
+      ['`SOLAR_OUTPUT`', num(power.SOLAR_OUTPUT), 'tier-1 solar generation, per second'],
+      ['`BURNER_OUTPUT`', num(power.BURNER_OUTPUT), 'tier-1 burner generation, per second'],
+      ['`BURNER_COAL_PER_SEC`', num(power.BURNER_COAL_PER_SEC), 'coal a tier-1 burner eats per second'],
+      ['`BURNER_SELF_HEAT`', num(power.BURNER_SELF_HEAT), 'heat a running burner adds to itself per second'],
+      ['`CRANK_OUTPUT`', num(power.CRANK_OUTPUT), 'peak hand-crank output, decaying to zero'],
+      ['`CRANK_WINDOW_MS`', num(power.CRANK_WINDOW_MS), 'ms one crank click lasts'],
+      ['`BATTERY_CAPACITY`', num(power.BATTERY_CAPACITY), 'tier-1 storage'],
+      ['`BATTERY_MAX_DISCHARGE`', num(power.BATTERY_MAX_DISCHARGE), 'cap on stored power released per second'],
+      ['`MOTOR_DRAW`', num(power.MOTOR_DRAW), 'electricity a tier-1 motor asks for'],
+      ['`MOTOR_BASELINE`', num(power.MOTOR_BASELINE), 'torque fraction of an unpowered motor (staged at 1.0 until the grid is playable)'],
+      ['`TIE_INTAKE`', num(power.TIE_INTAKE), 'surplus the grid tie buys per second'],
+      ['`GOLD_PER_ELECTRICITY`', num(power.GOLD_PER_ELECTRICITY), 'gold per unit of electricity sold'],
+      ['`OVERLOAD_HEAT_PER_UNIT`', num(power.OVERLOAD_HEAT_PER_UNIT), 'heat per unit of surplus with nowhere to go'],
+    ],
   );
 
   return blocks;

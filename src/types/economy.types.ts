@@ -3,6 +3,8 @@ export interface ResourceState {
   iron: number;
   crystal: number;
   aether: number;
+  /** Feedstock for burners (electricity) and oilers. Mined, never passive. */
+  coal: number;
 }
 
 export interface ResourceDelta {
@@ -10,4 +12,5 @@ export interface ResourceDelta {
   iron?: number;
   crystal?: number;
   aether?: number;
+  coal?: number;
 }

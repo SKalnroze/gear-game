@@ -44,6 +44,7 @@ async function loadConstants() {
     export * as ability from ${JSON.stringify(join(ROOT, 'src/constants/ability.constants.ts'))};
     export * as balance from ${JSON.stringify(join(ROOT, 'src/constants/balance.constants.ts'))};
     export * as world from ${JSON.stringify(join(ROOT, 'src/constants/world.constants.ts'))};
+    export * as gearRegistry from ${JSON.stringify(join(ROOT, 'src/gears/registry.ts'))};
     export * as tier from ${JSON.stringify(join(ROOT, 'src/constants/tier.constants.ts'))};
     export * as unitUtils from ${JSON.stringify(join(ROOT, 'src/systems/unit.utils.ts'))};
   `.replace(/\\/g, '\\\\'));
@@ -90,7 +91,7 @@ function table(headers, rows) {
  * @returns {Record<string, string>}
  */
 function buildBlocks(m) {
-  const { gear, unit, tech, ability, balance, world, tier, unitUtils } = m;
+  const { gear, unit, tech, ability, balance, world, tier, gearRegistry, unitUtils } = m;
   /** @type {Record<string, string>} */
   const blocks = {};
 
@@ -99,9 +100,10 @@ function buildBlocks(m) {
   // (divergences #9, #10) -- power was never a stored resource and nothing
   // read the declared synergies, so both fields were pure fiction.
   blocks['gears.catalogue'] = table(
-    ['Gear', 'Gold cost', 'Unlocked by', 'In-game description'],
+    ['Gear', 'Category', 'Gold cost', 'Unlocked by', 'In-game description'],
     Object.values(gear.GEAR_DEFINITIONS).map((d) => [
       title(d.type),
+      gearRegistry.GEAR_BEHAVIOURS[d.type].category,
       num(d.goldCost),
       d.unlockNode ? `\`${d.unlockNode}\`` : '_from start_',
       d.description,

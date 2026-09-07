@@ -1,20 +1,15 @@
 import { ResourceState } from '../types/economy.types';
+import type { GearState } from '../types/gear.types';
+import { GEAR_BEHAVIOURS } from '../gears/registry';
+import type { GearBehaviourCtx } from '../gears/types';
+import { tierPower } from '../constants/tier.constants';
 import { EventBus } from './EventBus';
 import {
   BASE_GOLD_PER_SEC,
   GOLD_TICK_INTERVAL,
 } from '../constants/balance.constants';
 import { World } from '../world/World';
-import {
-  miningOutput,
-  researcherOutput,
-  converterOutput,
-  healerOutput,
-  healerRadius,
-  gearRadius,
-} from '../constants/gear.constants';
 import { UnitSystem } from './UnitSystem';
-import { distance } from '../utils/MathUtils';
 
 /** Window for the HUD's trailing resource-rate tooltip. */
 const RATE_WINDOW_MS = 60000;
@@ -54,6 +49,14 @@ export class EconomySystem {
     ai: { gold: [], iron: [], crystal: [], aether: [] },
   };
 
+  /**
+   * Every completed rotation pays out through the gear behaviour registry.
+   *
+   * This used to be a 150-line `if (gear.type === ...)` chain. It is now a
+   * lookup, because the chain was the reason a new gear type had to be
+   * threaded through five systems by hand -- and the reason two spawners once
+   * shipped completely inert.
+   */
   private readonly onGearFullRotation = ({ gearId, owner }: { gearId: string; owner: 'player' | 'ai' }) => {
     const gear = this.world.getGear(gearId);
     if (!gear) return;
@@ -66,148 +69,28 @@ export class EconomySystem {
       return;
     }
 
-    if (gear.type === 'iron_miner') {
-      const amt = miningOutput(gear.teeth);
-      this.earnResource(owner, 'iron', amt);
-      this.eventBus.emit('gear:rotation_result', { gearId, owner, text: `+${amt.toFixed(1)} iron`, color: 0xcc9966 });
-    } else if (gear.type === 'crystal_miner') {
-      const amt = miningOutput(gear.teeth);
-      this.earnResource(owner, 'crystal', amt);
-      this.eventBus.emit('gear:rotation_result', { gearId, owner, text: `+${amt.toFixed(1)} crystal`, color: 0x66ccff });
-    } else if (gear.type === 'aether_miner') {
-      const amt = miningOutput(gear.teeth);
-      this.earnResource(owner, 'aether', amt);
-      this.eventBus.emit('gear:rotation_result', { gearId, owner, text: `+${amt.toFixed(1)} aether`, color: 0xcc66ff });
-
-    } else if (gear.type === 'researcher') {
-      const amount = researcherOutput(gear.teeth);
-      this.eventBus.emit('gear:research_boost', { owner, amount });
-      this.eventBus.emit('gear:rotation_result', { gearId, owner, text: `+${(amount / 1000).toFixed(1)}s research`, color: 0x88ffee });
-
-    } else if (gear.type === 'iron_converter') {
-      const amt = converterOutput(gear.teeth);
-      const res = owner === 'player' ? this.playerResources : this.aiResources;
-      if (res.iron >= amt) {
-        this.spendResource(owner, 'iron', amt);
-        const goldGained = amt * 2;
-        this.earnGold(owner, goldGained);
-        this.eventBus.emit('gear:rotation_result', { gearId, owner, text: `+${goldGained.toFixed(1)}g`, color: 0xffdd44 });
-      }
-    } else if (gear.type === 'crystal_converter') {
-      const amt = converterOutput(gear.teeth);
-      const res = owner === 'player' ? this.playerResources : this.aiResources;
-      if (res.crystal >= amt) {
-        this.spendResource(owner, 'crystal', amt);
-        const goldGained = amt * 3;
-        this.earnGold(owner, goldGained);
-        this.eventBus.emit('gear:rotation_result', { gearId, owner, text: `+${goldGained.toFixed(1)}g`, color: 0xffdd44 });
-      }
-    } else if (gear.type === 'aether_converter') {
-      const amt = converterOutput(gear.teeth);
-      const res = owner === 'player' ? this.playerResources : this.aiResources;
-      if (res.aether >= amt) {
-        this.spendResource(owner, 'aether', amt);
-        const goldGained = amt * 6;
-        this.earnGold(owner, goldGained);
-        this.eventBus.emit('gear:rotation_result', { gearId, owner, text: `+${goldGained.toFixed(1)}g`, color: 0xffdd44 });
-      }
-
-    } else if (gear.type === 'armored') {
-      // Heal on spin (costs gold)
-      const healAmt = Math.max(1, gear.teeth * 0.3);
-      const goldCost = Math.max(1, Math.round(gear.teeth * 0.1));
-      if (this.canAffordGold(owner, goldCost)) {
-        this.spendGold(owner, goldCost);
-        gear.hp = Math.min(gear.maxHp, gear.hp + healAmt);
-        this.world.updateGear(gear);
-        this.eventBus.emit('gear:rotation_result', { gearId: gear.id, owner, text: `+${healAmt.toFixed(1)} HP`, color: 0x44ff88 });
-      }
-
-    } else if (gear.type === 'spiked') {
-      // Tiny heal on spin (no gold cost)
-      const healAmt = Math.max(0.5, gear.teeth * 0.1);
-      gear.hp = Math.min(gear.maxHp, gear.hp + healAmt);
-      this.world.updateGear(gear);
-      this.eventBus.emit('gear:rotation_result', { gearId: gear.id, owner, text: `+${healAmt.toFixed(1)} HP`, color: 0x88ff44 });
-
-    } else if (gear.type === 'healer') {
-      // Heal nearby friendly gears and units
-      const healAmt = healerOutput(gear.teeth);
-      const radius = healerRadius(gear.teeth);
-
-      // Heal nearby friendly gears
-      for (const [, otherGear] of this.world.getAllGears()) {
-        if (otherGear.id === gear.id) continue;
-        if (otherGear.owner !== owner) continue;
-        const d = distance(gear.x, gear.y, otherGear.x, otherGear.y);
-        if (d <= radius + gearRadius(otherGear.teeth)) {
-          otherGear.hp = Math.min(otherGear.maxHp, otherGear.hp + healAmt);
-          this.world.updateGear(otherGear);
-        }
-      }
-
-      // Heal nearby friendly units
-      if (this.unitSystem) {
-        for (const [, unit] of this.unitSystem.getAllUnits()) {
-          if (unit.owner !== owner) continue;
-          const d = distance(gear.x, gear.y, unit.x, unit.y);
-          if (d <= radius) {
-            unit.hp = Math.min(unit.maxHp, unit.hp + healAmt);
-          }
-        }
-      }
-
-      this.eventBus.emit('gear:rotation_result', { gearId, owner, text: `+${healAmt.toFixed(1)} heal`, color: 0x44ff88 });
-      this.eventBus.emit('gear:healer_pulse', { gearId, x: gear.x, y: gear.y, radius, owner });
-
-    } else if (gear.type === 'sentry_gear') {
-      // Stationary true-sight pulse -- same signal the mobile Sentry unit
-      // emits, so MinelayerSystem's reveal logic only needs to listen once.
-      const radius = healerRadius(gear.teeth); // reuse the same radius-3x-gear-radius scaling
-      this.eventBus.emit('sentry:pulse', { owner, x: gear.x, y: gear.y, radius });
-      this.eventBus.emit('gear:rotation_result', { gearId, owner, text: 'PULSE', color: 0x66ffcc });
-
-    } else if (gear.type === 'crossbow_turret') {
-      // Buy 1 ammo (2 gold)
-      const ammoCost = 2;
-      const maxAmmo = gear.maxAmmo ?? 3;
-      const currentAmmo = gear.ammo ?? 0;
-      if (currentAmmo < maxAmmo && this.canAffordGold(owner, ammoCost)) {
-        this.spendGold(owner, ammoCost);
-        gear.ammo = currentAmmo + 1;
-        this.world.updateGear(gear);
-        this.eventBus.emit('gear:rotation_result', { gearId, owner, text: `+1 ammo (${gear.ammo}/${maxAmmo})`, color: 0xffdd00 });
-      } else if (currentAmmo >= maxAmmo) {
-        this.eventBus.emit('gear:rotation_result', { gearId, owner, text: 'AMMO FULL', color: 0xffaa00 });
-      }
-    } else if (gear.type === 'artillery_turret') {
-      // Buy 1 ammo shell (6 gold)
-      const ammoCost = 6;
-      const maxAmmo = gear.maxAmmo ?? 3;
-      const currentAmmo = gear.ammo ?? 0;
-      if (currentAmmo < maxAmmo && this.canAffordGold(owner, ammoCost)) {
-        this.spendGold(owner, ammoCost);
-        gear.ammo = currentAmmo + 1;
-        this.world.updateGear(gear);
-        this.eventBus.emit('gear:rotation_result', { gearId, owner, text: `+1 shell (${gear.ammo}/${maxAmmo})`, color: 0xff6600 });
-      } else if (currentAmmo >= maxAmmo) {
-        this.eventBus.emit('gear:rotation_result', { gearId, owner, text: 'AMMO FULL', color: 0xff8800 });
-      }
-    } else if (gear.type === 'minelayer') {
-      // Buy 1 mine shell (5 gold)
-      const ammoCost = 5;
-      const maxAmmo = gear.maxAmmo ?? 3;
-      const currentAmmo = gear.ammo ?? 0;
-      if (currentAmmo < maxAmmo && this.canAffordGold(owner, ammoCost)) {
-        this.spendGold(owner, ammoCost);
-        gear.ammo = currentAmmo + 1;
-        this.world.updateGear(gear);
-        this.eventBus.emit('gear:rotation_result', { gearId, owner, text: `+1 mine (${gear.ammo}/${maxAmmo})`, color: 0xff4488 });
-      } else if (currentAmmo >= maxAmmo) {
-        this.eventBus.emit('gear:rotation_result', { gearId, owner, text: 'AMMO FULL', color: 0xff4488 });
-      }
-    }
+    GEAR_BEHAVIOURS[gear.type].onRotation?.(this.behaviourCtx(gear, owner));
   };
+
+  /**
+   * Build the narrow context a behaviour runs against. Behaviours never see a
+   * system class, so they stay unit-testable against a hand-built fake.
+   */
+  behaviourCtx(gear: GearState, owner: 'player' | 'ai'): GearBehaviourCtx {
+    return {
+      gear,
+      owner,
+      tier: gear.tier,
+      power: tierPower(gear.tier),
+      now: this.now,
+      world: this.world,
+      economy: this,
+      units: this.unitSystem,
+      emit: (event, payload) => this.eventBus.emit(event, payload),
+      report: (text, color) =>
+        this.eventBus.emit('gear:rotation_result', { gearId: gear.id, owner, text, color }),
+    };
+  }
 
   private readonly onEconomySpendGold = ({ owner, amount }: { owner: 'player' | 'ai'; amount: number }) => {
     this.spendGold(owner, amount);

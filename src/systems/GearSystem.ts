@@ -1,9 +1,11 @@
 import { GearState, GearType, GearTier } from '../types/gear.types';
-import { TIER_TEETH } from '../constants/tier.constants';
 import { World } from '../world/World';
 import { GearMeshGraph } from '../world/GearMeshGraph';
 import { EventBus } from './EventBus';
-import { GEAR_DEFINITIONS, GEAR_MESH_TOLERANCE, gearRadius, gearMaxHp, turretMaxAmmo } from '../constants/gear.constants';
+import { GEAR_DEFINITIONS, GEAR_MESH_TOLERANCE, gearRadius, gearMaxHp } from '../constants/gear.constants';
+import { GEAR_BEHAVIOURS } from '../gears/registry';
+import type { GearBehaviourCtx } from '../gears/types';
+import { TIER_TEETH, tierPower } from '../constants/tier.constants';
 import { SNAP_THRESHOLD, PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X } from '../constants/world.constants';
 import { REPOSITION_COOLDOWN_MS, gearPlacementCost } from '../constants/balance.constants';
 import { TechState } from '../types/tech.types';
@@ -101,6 +103,36 @@ export class GearSystem {
   }
 
   /**
+   * Context for a placement-time behaviour hook.
+   *
+   * onPlace only ever initialises fields on the gear being placed, so the
+   * economy and unit ports are stubbed rather than wired: a behaviour that
+   * tried to spend gold at placement time would be a design error, and this
+   * makes it fail loudly instead of quietly charging the player mid-drag.
+   */
+  private placementCtx(gear: GearState, owner: 'player' | 'ai'): GearBehaviourCtx {
+    const refuse = (): never => {
+      throw new Error(`onPlace for '${gear.type}' must not touch the economy`);
+    };
+    return {
+      gear,
+      owner,
+      tier: gear.tier,
+      power: tierPower(gear.tier),
+      now: this.clock.now,
+      world: this.world,
+      economy: {
+        earnGold: refuse, spendGold: refuse, canAffordGold: refuse,
+        earnResource: refuse, spendResource: refuse, getResources: refuse,
+      },
+      units: null,
+      emit: (event, payload) => this.eventBus.emit(event, payload),
+      report: (text, color) =>
+        this.eventBus.emit('gear:rotation_result', { gearId: gear.id, owner, text, color }),
+    };
+  }
+
+  /**
    * Compute the snap position for a gear being dragged at (dragX, dragY).
    * Scans all existing gears for snap candidates within SNAP_THRESHOLD of meshing distance.
    */
@@ -161,11 +193,11 @@ export class GearSystem {
       jamStress: 0,
     };
 
-    // Initialize turret ammo on placement
-    if (type === 'crossbow_turret' || type === 'artillery_turret') {
-      gear.ammo = 0;
-      gear.maxAmmo = turretMaxAmmo(teeth);
-    }
+    // Per-type placement setup (turret/minelayer ammo, buffers) lives with the
+    // rest of that gear's behaviour rather than as a special case here -- the
+    // old inline check covered the two turrets but not the minelayer, whose
+    // maxAmmo was left undefined and silently defaulted to 3 at use.
+    GEAR_BEHAVIOURS[type].onPlace?.(this.placementCtx(gear, owner));
 
     this.world.placeGear(gear);
     this.meshGraph.addGear(gear);

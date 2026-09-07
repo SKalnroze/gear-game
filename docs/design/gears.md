@@ -82,42 +82,62 @@ This is a real design constraint on layout, not an error state — an even ring 
 
 Costs and unlocks for all 33 gear types.
 
+### How a gear type is defined
+
+Everything a gear *does* lives in one place: `src/gears/registry.ts`, a total
+`Record<GearType, GearBehaviourSpec>`. Adding a type to the union without
+deciding what it does is a compile error.
+
+A behaviour is a plain function of a context object — it never touches a system
+class and imports no Phaser, so every payout rule in the game can be exercised
+in a unit test against a hand-built fake context. The ports it receives are
+deliberately narrow, so a behaviour cannot reach into a system and do something
+unexpected.
+
+This replaced a 150-line `if (gear.type === ...)` chain in `EconomySystem`, plus
+further branches in `GearSystem`, `TurretSystem` and `MinelayerSystem`. Nothing
+told you when you had missed one: the Crossbow and Sentry spawners once shipped
+declared, tech-gated, documented and completely inert because a single map entry
+was never added, and the Minelayer's ammo capacity was never initialised at all —
+a `?? 3` fallback at the use site quietly capped every minelayer at three mines
+regardless of its tier, while turrets scaled normally.
+
 <!-- BEGIN GENERATED: gears.catalogue -->
-| Gear | Gold cost | Unlocked by | In-game description |
-|---|---|---|---|
-| Motor | 0 | _from start_ | Drives rotation. Larger motors deliver more torque, but every gear meshed on the chain slows it down. |
-| Amplifier | 0 | `basic_amplifier` | Multiplies the whole chain torque by 1.4x -- the chain spins faster, so everything on it happens more often. |
-| Capacitor | 0 | `basic_capacitor` | Stores rotations and pays out a gold burst every 8th -- 2.5x the chain output. |
-| Overclock | 10 | `basic_overclock` | +50% torque/omega to adjacent gears. Runs 10s, burns out for 5s, then restarts. |
-| Spiked | 0 | `spiked_gears` | Damages units on contact. Damage = \|omega\| × spikeDamage(teeth). |
-| Armored | 0 | `armored_gears` | Blocks unit movement. HP scales with teeth². Must be destroyed to pass. |
-| Iron Miner | 0 | `unlock_iron_mining` | Generates iron per full rotation. Output scales with teeth. |
-| Crystal Miner | 0 | `unlock_crystal_mining` | Generates crystal per full rotation. Output scales with teeth. |
-| Aether Miner | 0 | `unlock_aether_mining` | Generates aether per full rotation. Output scales with teeth. |
-| Infantry Spawner | 5 | _from start_ | Spawns an Infantry unit per full rotation (5 gold cost). |
-| Artillery Spawner | 8 | `unlock_artillery_spawner` | Spawns an Artillery unit per full rotation (8 gold cost). |
-| Cavalry Spawner | 12 | `unlock_cavalry_spawner` | Spawns a Cavalry unit per full rotation (12 gold cost). |
-| Slime Spawner | 5 | `unlock_slime_spawner` | Spawns a Slime unit per full rotation (2 gold cost -- cheap and spammable). Slimes deal no damage and never stop to fight; they pile up and physically clog the lane, then burst into a slowing puddle on death. |
-| Crossbow Spawner | 6 | `unlock_crossbow_spawner` | Spawns a Crossbow unit per full rotation (6 gold cost). Ranged skirmisher: same per-hit damage as Infantry, lower DPS, stops and shoots instead of closing to melee. |
-| Sentry Spawner | 8 | `unlock_sentry` | Spawns a Sentry unit per full rotation (10 gold cost). Pulses true-sight as it marches, revealing hidden enemy mines early. |
-| Iron Guard Spawner | 8 | `unlock_iron_guard_spawner` | Spawns an Iron Guard unit per full rotation (8 iron cost). |
-| Crystal Sentinel Spawner | 6 | `unlock_crystal_sentinel_spawner` | Spawns a Crystal Sentinel unit per full rotation (6 crystal cost). |
-| Aether Phantom Spawner | 5 | `unlock_aether_phantom_spawner` | Spawns an Aether Phantom unit per full rotation (5 aether cost). |
-| Researcher | 0 | _from start_ | Advances current research on each full rotation. Larger gears research faster. |
-| Iron Converter | 0 | `iron_to_gold` | Converts iron into gold on each full rotation. Larger gears convert more. |
-| Crystal Converter | 0 | `crystal_to_gold` | Converts crystal into gold on each full rotation at a favorable rate. |
-| Aether Converter | 0 | `aether_to_gold` | Converts aether into gold on each full rotation at the best rate. |
-| Crossbow Turret | 5 | `crossbow_turret_tech` | Defensive turret. Each rotation buys 1 ammo bolt (2 gold). Fires quickly at nearby enemies; low damage, medium range. |
-| Artillery Turret | 8 | `artillery_turret_tech` | Heavy turret. Each rotation buys 1 ammo shell (6 gold). Fires slowly with AoE; high damage, long range. |
-| Minelayer | 6 | `unlock_minelayer` | Each rotation buys 1 mine shell (5 gold). Lobs a mine into a zone ahead of it; mines arm after a short delay, then hide from the enemy until triggered. |
-| Healer | 0 | `healer_gear_tech` | Emits a healing aura on each full rotation. Heals nearby friendly gears and units. Aura size and healing scale with gear size. |
-| Sentry Gear | 6 | `unlock_sentry` | Pulses true-sight on each full rotation, revealing hidden enemy mines within its radius early. Stationary counter to the Minelayer. |
-| Relief Valve | 8 | `unlock_relief_valve` | A clutch built to take a jam for the chain instead of breaking. Sharply reduces its own jam damage, and softens jam damage on a meshed neighbour too. |
-| Sapper Spawner | 6 | `unlock_sapper_spawner` | Spawns a Sapper unit per full rotation (9 gold cost). Weak against other units, but its hits against gears count for 6x -- built to breach a turtled defense. |
-| Skirmish Diver Spawner | 6 | `unlock_skirmish_diver_spawner` | Spawns a Skirmish Diver unit per full rotation (9 gold cost). Fast flanker that punishes Artillery, Crystal Sentinel and Crossbow for stopping to shoot -- loses hard to anything that can also close on it. |
-| Saboteur Spawner | 6 | `unlock_saboteur_spawner` | Spawns a Saboteur unit per full rotation (10 gold cost). Fouls an enemy gear's rotation on contact instead of damaging it -- attacks the machine's speed, not its health. |
-| Raider Spawner | 6 | `unlock_raider_spawner` | Spawns a Raider unit per full rotation (10 gold cost). Disables an enemy miner or converter within the lane for a few seconds instead of damaging it. |
-| Field Medic Spawner | 6 | `unlock_field_medic_spawner` | Spawns a Field Medic unit per full rotation (8 gold cost). Marches with the army, healing nearby allied units on a pulse. Never fights. |
+| Gear | Category | Gold cost | Unlocked by | In-game description |
+|---|---|---|---|---|
+| Motor | power | 0 | _from start_ | Drives rotation. Larger motors deliver more torque, but every gear meshed on the chain slows it down. |
+| Amplifier | structural | 0 | `basic_amplifier` | Multiplies the whole chain torque by 1.4x -- the chain spins faster, so everything on it happens more often. |
+| Capacitor | structural | 0 | `basic_capacitor` | Stores rotations and pays out a gold burst every 8th -- 2.5x the chain output. |
+| Overclock | structural | 10 | `basic_overclock` | +50% torque/omega to adjacent gears. Runs 10s, burns out for 5s, then restarts. |
+| Spiked | structural | 0 | `spiked_gears` | Damages units on contact. Damage = \|omega\| × spikeDamage(teeth). |
+| Armored | structural | 0 | `armored_gears` | Blocks unit movement. HP scales with teeth². Must be destroyed to pass. |
+| Iron Miner | extraction | 0 | `unlock_iron_mining` | Generates iron per full rotation. Output scales with teeth. |
+| Crystal Miner | extraction | 0 | `unlock_crystal_mining` | Generates crystal per full rotation. Output scales with teeth. |
+| Aether Miner | extraction | 0 | `unlock_aether_mining` | Generates aether per full rotation. Output scales with teeth. |
+| Infantry Spawner | factory | 5 | _from start_ | Spawns an Infantry unit per full rotation (5 gold cost). |
+| Artillery Spawner | factory | 8 | `unlock_artillery_spawner` | Spawns an Artillery unit per full rotation (8 gold cost). |
+| Cavalry Spawner | factory | 12 | `unlock_cavalry_spawner` | Spawns a Cavalry unit per full rotation (12 gold cost). |
+| Slime Spawner | factory | 5 | `unlock_slime_spawner` | Spawns a Slime unit per full rotation (2 gold cost -- cheap and spammable). Slimes deal no damage and never stop to fight; they pile up and physically clog the lane, then burst into a slowing puddle on death. |
+| Crossbow Spawner | factory | 6 | `unlock_crossbow_spawner` | Spawns a Crossbow unit per full rotation (6 gold cost). Ranged skirmisher: same per-hit damage as Infantry, lower DPS, stops and shoots instead of closing to melee. |
+| Sentry Spawner | factory | 8 | `unlock_sentry` | Spawns a Sentry unit per full rotation (10 gold cost). Pulses true-sight as it marches, revealing hidden enemy mines early. |
+| Iron Guard Spawner | factory | 8 | `unlock_iron_guard_spawner` | Spawns an Iron Guard unit per full rotation (8 iron cost). |
+| Crystal Sentinel Spawner | factory | 6 | `unlock_crystal_sentinel_spawner` | Spawns a Crystal Sentinel unit per full rotation (6 crystal cost). |
+| Aether Phantom Spawner | factory | 5 | `unlock_aether_phantom_spawner` | Spawns an Aether Phantom unit per full rotation (5 aether cost). |
+| Researcher | support | 0 | _from start_ | Advances current research on each full rotation. Larger gears research faster. |
+| Iron Converter | refinery | 0 | `iron_to_gold` | Converts iron into gold on each full rotation. Larger gears convert more. |
+| Crystal Converter | refinery | 0 | `crystal_to_gold` | Converts crystal into gold on each full rotation at a favorable rate. |
+| Aether Converter | refinery | 0 | `aether_to_gold` | Converts aether into gold on each full rotation at the best rate. |
+| Crossbow Turret | defense | 5 | `crossbow_turret_tech` | Defensive turret. Each rotation buys 1 ammo bolt (2 gold). Fires quickly at nearby enemies; low damage, medium range. |
+| Artillery Turret | defense | 8 | `artillery_turret_tech` | Heavy turret. Each rotation buys 1 ammo shell (6 gold). Fires slowly with AoE; high damage, long range. |
+| Minelayer | defense | 6 | `unlock_minelayer` | Each rotation buys 1 mine shell (5 gold). Lobs a mine into a zone ahead of it; mines arm after a short delay, then hide from the enemy until triggered. |
+| Healer | support | 0 | `healer_gear_tech` | Emits a healing aura on each full rotation. Heals nearby friendly gears and units. Aura size and healing scale with gear size. |
+| Sentry Gear | support | 6 | `unlock_sentry` | Pulses true-sight on each full rotation, revealing hidden enemy mines within its radius early. Stationary counter to the Minelayer. |
+| Relief Valve | structural | 8 | `unlock_relief_valve` | A clutch built to take a jam for the chain instead of breaking. Sharply reduces its own jam damage, and softens jam damage on a meshed neighbour too. |
+| Sapper Spawner | factory | 6 | `unlock_sapper_spawner` | Spawns a Sapper unit per full rotation (9 gold cost). Weak against other units, but its hits against gears count for 6x -- built to breach a turtled defense. |
+| Skirmish Diver Spawner | factory | 6 | `unlock_skirmish_diver_spawner` | Spawns a Skirmish Diver unit per full rotation (9 gold cost). Fast flanker that punishes Artillery, Crystal Sentinel and Crossbow for stopping to shoot -- loses hard to anything that can also close on it. |
+| Saboteur Spawner | factory | 6 | `unlock_saboteur_spawner` | Spawns a Saboteur unit per full rotation (10 gold cost). Fouls an enemy gear's rotation on contact instead of damaging it -- attacks the machine's speed, not its health. |
+| Raider Spawner | factory | 6 | `unlock_raider_spawner` | Spawns a Raider unit per full rotation (10 gold cost). Disables an enemy miner or converter within the lane for a few seconds instead of damaging it. |
+| Field Medic Spawner | factory | 6 | `unlock_field_medic_spawner` | Spawns a Field Medic unit per full rotation (8 gold cost). Marches with the army, healing nearby allied units on a pulse. Never fights. |
 <!-- END GENERATED: gears.catalogue -->
 
 <!-- BEGIN GENERATED: gears.formulas -->

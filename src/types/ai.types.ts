@@ -32,7 +32,7 @@ export type ThreatLevel = 'critical' | 'danger' | 'normal' | 'winning';
 /** Randomly assigned play-style bias — stable per game instance */
 export type AIPersonality = 'rusher' | 'economist' | 'turtle' | 'balanced';
 
-export type AIDecisionType = 'place_gear' | 'reposition_gear' | 'idle';
+export type AIDecisionType = 'place_gear' | 'place_generator' | 'reposition_gear' | 'idle';
 
 export interface AIDecision {
   type: AIDecisionType;
@@ -41,6 +41,12 @@ export interface AIDecision {
   teeth?: number;
   x?: number;
   y?: number;
+  /**
+   * For place_generator: the gear to run cable to once placed. Placing and
+   * wiring are one decision because a generator nobody wired to anything is
+   * just an expensive ornament.
+   */
+  wireToId?: string;
   // For reposition_gear:
   gearId?: string;
   /** Human-readable explanation of why this decision was made */

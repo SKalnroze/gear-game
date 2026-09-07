@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { World } from '../../src/world/World';
 import { GearMeshGraph } from '../../src/world/GearMeshGraph';
+import { PowerGraph } from '../../src/world/PowerGraph';
+import { PowerSystem } from '../../src/systems/PowerSystem';
+import { GEAR_BEHAVIOURS } from '../../src/gears/registry';
 import { GearSystem } from '../../src/systems/GearSystem';
 import { EconomySystem } from '../../src/systems/EconomySystem';
 import { WinConditionSystem } from '../../src/systems/WinConditionSystem';
@@ -47,6 +50,7 @@ interface Rig {
   rotationPhysics: RotationPhysicsSystem;
   techSystem: TechSystem;
   ai: AIController;
+  powerSystem: PowerSystem;
 }
 
 function makeRig(profile: AIStrategyProfile, personality: AIPersonality | 'random' = 'balanced'): Rig {
@@ -67,12 +71,21 @@ function makeRig(profile: AIStrategyProfile, personality: AIPersonality | 'rando
   const winSystem = new WinConditionSystem(bus, false);
   const techSystem = new TechSystem(bus, economySystem, unitSystem, rotationPhysics, winSystem, playerTech, aiTech, clock);
 
+  // The AI must have a power grid, exactly as GameScene gives it one. Without
+  // it every motor idles at MOTOR_BASELINE forever, no chain ever matures, and
+  // the AI bootstraps new chains without bound -- which is a real failure mode,
+  // but not the configuration the game actually ships.
+  const powerGraph = new PowerGraph((gear) => GEAR_BEHAVIOURS[gear.type].power?.role);
+  const powerSystem = new PowerSystem(bus, world, powerGraph);
+  powerSystem.setEconomySystem(economySystem);
+
   const ai = new AIController(
     bus, gearSystem, economySystem, unitSystem, winSystem, rotationPhysics,
     world, meshGraph, profile, personality, techSystem, 'ai', clock,
   );
+  ai.setPowerGrid(powerGraph, powerSystem);
 
-  return { clock, world, economySystem, rotationPhysics, techSystem, ai };
+  return { clock, world, economySystem, rotationPhysics, techSystem, ai, powerSystem };
 }
 
 /**
@@ -88,6 +101,10 @@ function makeRig(profile: AIStrategyProfile, personality: AIPersonality | 'rando
  */
 function tick(rig: Rig): void {
   rig.clock.advance(500);
+  // Power first, exactly as GameScene orders it -- motor torque this step must
+  // reflect this step's generation.
+  rig.powerSystem.update(0.5, rig.clock.now);
+  if (rig.powerSystem.consumePowerDirty()) rig.rotationPhysics.markChainsDirty();
   rig.rotationPhysics.update(0.5);
   rig.economySystem.update(rig.clock.now);
   rig.economySystem.earnGold('ai', 5);
@@ -140,7 +157,12 @@ describe('AIController chain-count growth (proves the fixed-cap-plateau fix)', (
     expect(finalCount).toBeGreaterThan(5);
     // And it must be actual growth over time, not just a higher fixed number.
     expect(finalCount).toBeGreaterThan(countAt2Min);
-  }, 20_000);
+    // 90s, not 20s: the AI now builds a generator alongside roughly every motor
+    // and PowerSystem solves every grid each tick, so a 30-minute hard-AI
+    // simulation moves about twice the gears it used to through a sim whose
+    // cost is superlinear in gear count. The wall time is the test doing more
+    // work, not the AI misbehaving -- chain growth itself is asserted above.
+  }, 90_000);
 
   it('easy AI also grows past its own old fixed cap of 2, just more slowly than hard', () => {
     const rig = makeRig('easy', 'balanced');

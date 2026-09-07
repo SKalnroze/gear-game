@@ -63,6 +63,12 @@ function makeGear(
     x,
     y,
     owner: 'player',
+    // Fully powered by default. These tests are about torque, gear ratios and
+    // inertia; leaving power unset would silently run every one of them against
+    // a motor idling at MOTOR_BASELINE and quietly change what they measure.
+    // The power response itself is covered in power.utils.test.ts, and by the
+    // dedicated cases at the bottom of this file.
+    powerSatisfaction: 1,
     angularVelocity: 0,
     currentAngle: 0,
     accumulatedAngle: 0,
@@ -902,5 +908,42 @@ describe('RotationPhysicsSystem', () => {
       r.physics.destroy();
       expect(r.offCalls.sort()).toEqual(['gear:mesh_updated', 'gear:placed', 'gear:removed']);
     });
+  });
+});
+
+// ─── Electricity ─────────────────────────────────────────────────────────────
+
+describe('electricity drives chain speed', () => {
+  it('an unpowered motor turns, but far slower than a powered one', () => {
+    const powered = rig([makeGear('m', 0, 0, T1, 'motor')]);
+    const starved = rig([makeGear('m', 0, 0, T1, 'motor', { powerSatisfaction: 0 })]);
+
+    const fast = Math.abs(powered.world.getGear('m')!.angularVelocity);
+    const slow = Math.abs(starved.world.getGear('m')!.angularVelocity);
+
+    // Idling, not bricked -- "under-power is safe" is what makes a bad grid
+    // recoverable rather than a dead run.
+    expect(slow).toBeGreaterThan(0);
+    expect(starved.world.getGear('m')!.isSpinning).toBe(true);
+    // ...but electricity has to be worth building for.
+    expect(fast / slow).toBeGreaterThan(3);
+  });
+
+  it('speed rises with power satisfaction', () => {
+    const omegaAt = (satisfaction: number) => {
+      const { world } = rig([makeGear('m', 0, 0, T1, 'motor', { powerSatisfaction: satisfaction })]);
+      return Math.abs(world.getGear('m')!.angularVelocity);
+    };
+    expect(omegaAt(0.5)).toBeGreaterThan(omegaAt(0));
+    expect(omegaAt(1)).toBeGreaterThan(omegaAt(0.5));
+  });
+
+  it('a starved motor still drives the gears meshed to it, just slowly', () => {
+    const { world } = rig([
+      makeGear('m', 0, 0, T1, 'motor', { powerSatisfaction: 0 }),
+      makeGear('b', gearRadius(T1) * 2, 0, T1, 'armored'),
+    ]);
+    expect(world.getGear('b')!.isSpinning).toBe(true);
+    expect(Math.abs(world.getGear('b')!.angularVelocity)).toBeGreaterThan(0);
   });
 });

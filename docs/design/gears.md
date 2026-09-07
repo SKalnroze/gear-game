@@ -138,13 +138,13 @@ regardless of its tier, while turrets scaled normally.
 | Saboteur Spawner | factory | 6 | `unlock_saboteur_spawner` | Spawns a Saboteur unit per full rotation (10 gold cost). Fouls an enemy gear's rotation on contact instead of damaging it -- attacks the machine's speed, not its health. |
 | Raider Spawner | factory | 6 | `unlock_raider_spawner` | Spawns a Raider unit per full rotation (10 gold cost). Disables an enemy miner or converter within the lane for a few seconds instead of damaging it. |
 | Field Medic Spawner | factory | 6 | `unlock_field_medic_spawner` | Spawns a Field Medic unit per full rotation (8 gold cost). Marches with the army, healing nearby allied units on a pulse. Never fights. |
-| Crank | power | 5 | _from start_ | Click it to spin it by hand. Output decays over ~6s -- enough to light a burner from a cold start, never enough to run an economy. |
-| Solar Panel | power | 25 | `basic_electricity` | Generates a small trickle of electricity forever, with no fuel. Never enough on its own. |
-| Burner | power | 30 | `basic_electricity` | Burns coal into electricity and waste heat. The workhorse generator -- and the gear most likely to cook itself. |
-| Battery | power | 35 | `basic_electricity` | Stores surplus electricity and gives it back on demand. Storage is what turns an overload into income. |
-| Power Pole | power | 8 | `basic_electricity` | Carries no load of its own -- it just reaches three times further than anything else, and takes twice as many wires. |
+| Crank | power | 4 | _from start_ | Click it to spin it by hand. Output decays over ~6s -- enough to light a burner from a cold start, never enough to run an economy. |
+| Solar Panel | power | 12 | `basic_electricity` | Generates a small trickle of electricity forever, with no fuel. Never enough on its own. |
+| Burner | power | 18 | `basic_electricity` | Burns coal into electricity and waste heat. The workhorse generator -- and the gear most likely to cook itself. |
+| Battery | power | 20 | `basic_electricity` | Stores surplus electricity and gives it back on demand. Storage is what turns an overload into income. |
+| Power Pole | power | 5 | `basic_electricity` | Carries no load of its own -- it just reaches three times further than anything else, and takes twice as many wires. |
 | Grid Tie | power | 0 | _from start_ | The buyer at your base wall. Wire your grid to it and surplus electricity is sold for gold, up to its intake. Cannot be built or sold. |
-| Coal Miner | extraction | 20 | `basic_electricity` | Digs coal, the feedstock for burners and oilers. |
+| Coal Miner | extraction | 14 | `basic_electricity` | Digs coal, the feedstock for burners and oilers. |
 <!-- END GENERATED: gears.catalogue -->
 
 <!-- BEGIN GENERATED: gears.formulas -->
@@ -372,13 +372,19 @@ An **overload** — generation with nowhere left to go, after consumers, storage
 
 That asymmetry is what makes batteries and the run back to the tie worth building rather than optional. Storage is filled *before* anything is sold, so a battery bank genuinely protects you from overload rather than merely earning you less.
 
+### Starting with a working grid
+
+Both sides open with a solar panel already wired to their starting motor. Motors idle at `MOTOR_BASELINE` without power, so an opening position with no generation would be an unexplained crawl — and the first thing a player should see is the mechanic *working*, with something to copy rather than a rule to read.
+
+The AI plays the same way, and gets no free power: a starved motor is its highest-priority build, and it places a generator and runs cable exactly as a player would. A generator is priced below its motor so powering what you have is an obvious yes rather than a choice between running your machine and building the next one.
+
 <!-- BEGIN GENERATED: power.constants -->
 | Constant | Value | Meaning |
 |---|---|---|
 | `WIRE_BASE_RANGE` | 140 | px an ordinary electrical gear can throw a wire |
 | `POLE_RANGE` | 420 | px a power pole can span -- its entire purpose |
 | `MAX_WIRES_PER_GEAR` / `_POLE` | 4 / 8 | terminals, so the network stays readable |
-| `SOLAR_OUTPUT` | 1 | tier-1 solar generation, per second |
+| `SOLAR_OUTPUT` | 2 | tier-1 solar generation, per second |
 | `BURNER_OUTPUT` | 6 | tier-1 burner generation, per second |
 | `BURNER_COAL_PER_SEC` | 0.35 | coal a tier-1 burner eats per second |
 | `BURNER_SELF_HEAT` | 4 | heat a running burner adds to itself per second |
@@ -387,7 +393,7 @@ That asymmetry is what makes batteries and the run back to the tie worth buildin
 | `BATTERY_CAPACITY` | 40 | tier-1 storage |
 | `BATTERY_MAX_DISCHARGE` | 8 | cap on stored power released per second |
 | `MOTOR_DRAW` | 1.5 | electricity a tier-1 motor asks for |
-| `MOTOR_BASELINE` | 1 | torque fraction of an unpowered motor (staged at 1.0 until the grid is playable) |
+| `MOTOR_BASELINE` | 0.15 | torque fraction of an unpowered motor (staged at 1.0 until the grid is playable) |
 | `TIE_INTAKE` | 12 | surplus the grid tie buys per second |
 | `GOLD_PER_ELECTRICITY` | 0.35 | gold per unit of electricity sold |
 | `OVERLOAD_HEAT_PER_UNIT` | 3 | heat per unit of surplus with nowhere to go |

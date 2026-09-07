@@ -5,7 +5,7 @@ import {
 } from '../../src/world/power.utils';
 import {
   WIRE_BASE_RANGE, POLE_RANGE, MAX_WIRES_PER_GEAR, MAX_WIRES_PER_POLE,
-  MOTOR_BASELINE, MOTOR_BASELINE_TARGET, SATISFACTION_STEPS,
+  MOTOR_BASELINE, SATISFACTION_STEPS,
 } from '../../src/constants/power.constants';
 import { TIER_TEETH } from '../../src/constants/tier.constants';
 import type { GearState } from '../../src/types/gear.types';
@@ -202,10 +202,7 @@ describe('solveGrid', () => {
 // ─── Motor response ──────────────────────────────────────────────────────────
 
 describe('motor power response', () => {
-  // Tests use MOTOR_BASELINE_TARGET, the value the curve is designed around.
-  // MOTOR_BASELINE itself is staged at 1.0 until the grid is playable, and
-  // asserting against it would make these tests pass trivially.
-  const B = MOTOR_BASELINE_TARGET;
+  const B = MOTOR_BASELINE;
 
   it('an unpowered motor still idles rather than bricking', () => {
     expect(motorPowerFactor(0, B)).toBe(B);
@@ -230,9 +227,10 @@ describe('motor power response', () => {
     expect(motorPowerFactor(-5, B)).toBe(B);
   });
 
-  it('the staged baseline is a no-op, so nothing depends on the grid yet', () => {
-    expect(MOTOR_BASELINE).toBe(1.0);
-    expect(motorPowerFactor(0, MOTOR_BASELINE)).toBe(1.0);
+  it('electricity is a real multiplier, not a rounding difference', () => {
+    // If baseline crept back toward 1 the grid would still "work" and every
+    // test would still pass, while the mechanic quietly stopped mattering.
+    expect(motorPowerFactor(1, B) / motorPowerFactor(0, B)).toBeGreaterThan(3);
   });
 });
 

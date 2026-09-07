@@ -296,6 +296,7 @@ export class GameScene extends Phaser.Scene {
         this.gameClock,
       );
       this.aiController.setAbilitySystem(this.aiAbilitySystem);
+      this.aiController.setPowerGrid(this.powerGraph, this.powerSystem);
     } else {
       this.aiController = null;
     }
@@ -308,6 +309,7 @@ export class GameScene extends Phaser.Scene {
         this.gameClock,
       );
       this.playerAIController.setAbilitySystem(this.abilitySystem);
+      this.playerAIController.setPowerGrid(this.powerGraph, this.powerSystem);
     } else {
       this.playerAIController = null;
     }
@@ -688,7 +690,7 @@ export class GameScene extends Phaser.Scene {
       // Motor sits behind the tower, i.e. further from the enemy/lane centre.
       const motorX = onRight ? towerX + meshGap : towerX - meshGap;
 
-      this.gearSystem.tryPlace('motor', DEFAULT_TIER, motorX, laneY, owner, true);
+      const motor = this.gearSystem.tryPlace('motor', DEFAULT_TIER, motorX, laneY, owner, true);
       this.gearSystem.tryPlace('crossbow_turret', DEFAULT_TIER, towerX, laneY, owner, true);
 
       // The grid tie: the buyer for surplus electricity, standing at the base
@@ -696,6 +698,20 @@ export class GameScene extends Phaser.Scene {
       // reach with cable, not a rule that applies everywhere.
       const tieX = onRight ? AI_BASE_X - 90 : PLAYER_BASE_X + 90;
       this.gearSystem.tryPlace('grid_tie', DEFAULT_TIER, tieX, laneY, owner, true);
+
+      // A starting panel, already wired to the starting motor.
+      //
+      // Motors idle at MOTOR_BASELINE without power, so an opening position
+      // with no generation at all would be a slow, unexplained crawl. Shipping
+      // one working generator-and-wire pair means the very first thing a player
+      // sees is the mechanic working, and gives them something to copy rather
+      // than a rule to read.
+      const panelX = onRight ? motorX + 70 : motorX - 70;
+      const panel = this.gearSystem.tryPlace('solar_panel', DEFAULT_TIER, panelX, laneY - 60, owner, true);
+      if (motor && panel) {
+        this.powerGraph.addWire(panel, motor);
+        this.powerSystem.markGraphDirty();
+      }
     }
   }
 

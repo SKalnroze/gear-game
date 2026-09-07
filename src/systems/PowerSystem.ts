@@ -25,7 +25,7 @@ import { solveGrid, quantiseSatisfaction, type BatteryState } from '../world/pow
 import {
   SOLAR_OUTPUT, BURNER_COAL_PER_SEC, BURNER_SELF_HEAT, CRANK_OUTPUT, CRANK_WINDOW_MS,
   BATTERY_MAX_DISCHARGE, GOLD_PER_ELECTRICITY, OVERLOAD_HEAT_PER_UNIT,
-  GRID_EVENT_INTERVAL_MS,
+  GRID_EVENT_INTERVAL_MS, POWER_REBUILD_INTERVAL_MS,
 } from '../constants/power.constants';
 
 /** Per-grid readout, for the HUD and for debugging. */
@@ -63,6 +63,8 @@ export class PowerSystem {
    * an O(V+E) double BFS every single frame.
    */
   private powerDirty = false;
+  private lastRebuildAt = Number.NEGATIVE_INFINITY;
+  private now = 0;
 
   constructor(eventBus: EventBus, world: World, powerGraph: PowerGraph) {
     this.eventBus = eventBus;
@@ -113,11 +115,19 @@ export class PowerSystem {
     this.gridsDirty = true;
   }
 
-  /** True when a motor's power changed enough that chains must be re-solved. */
+  /**
+   * True when a motor's power changed enough that chains must be re-solved.
+   *
+   * Rate-limited: the flag is held rather than dropped, so a change is never
+   * lost -- it is just applied on the next slot. See POWER_REBUILD_INTERVAL_MS
+   * for why frame-rate rebuilds are not affordable.
+   */
   consumePowerDirty(): boolean {
-    const was = this.powerDirty;
+    if (!this.powerDirty) return false;
+    if (this.now - this.lastRebuildAt < POWER_REBUILD_INTERVAL_MS) return false;
+    this.lastRebuildAt = this.now;
     this.powerDirty = false;
-    return was;
+    return true;
   }
 
   /** Heat owed to a gear this tick (burner self-heat plus its share of overload). */
@@ -133,6 +143,7 @@ export class PowerSystem {
 
   update(dt: number, now: number): void {
     if (dt <= 0) return;
+    this.now = now;
     this.pendingHeat.clear();
 
     const allGears = this.world.getAllGears();

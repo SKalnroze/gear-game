@@ -224,12 +224,14 @@ test.describe('electrical grid', () => {
     expect(after).toBe(0);
   });
 
-  test('a coal miner fills the coal stock', async ({ page }) => {
-    // Tier 1 (8 teeth, radius 20) so the chain is light and turns quickly --
-    // coal only accrues on a COMPLETED rotation, and a heavy tier-3 pair needs
-    // over three seconds to get through its first 2*PI.
-    await place(page, 'motor', 1, 300, 700);
+  test('a powered coal miner fills the coal stock', async ({ page }) => {
+    // The whole loop in one test: electricity turns the motor, the motor turns
+    // the miner, the miner produces. Tier 1 keeps the chain light so it gets
+    // through a full rotation quickly.
+    const motor = await place(page, 'motor', 1, 300, 700);
     await place(page, 'coal_miner', 1, 340, 700);
+    const solar = await place(page, 'solar_panel', 1, 300, 790);
+    expect(await wire(page, solar, motor)).toBe('ok');
 
     // Coal only accrues on a COMPLETED rotation, so wait on simulated time.
     await advanceGameMs(page, 6000);
@@ -239,6 +241,32 @@ test.describe('electrical grid', () => {
       return scene.economySystem.getResources('player').coal;
     });
     expect(coal).toBeGreaterThan(0);
+  });
+
+  /**
+   * The core trade of the redesign, end to end: electricity buys speed. An
+   * unwired motor still turns -- under-power is safe -- but slowly enough that
+   * building a grid is obviously worth it.
+   */
+  test('an unwired motor turns far slower than a wired one', async ({ page }) => {
+    const wiredMotor = await place(page, 'motor', 1, 300, 700);
+    const solar = await place(page, 'solar_panel', 1, 300, 790);
+    await wire(page, solar, wiredMotor);
+    // Well clear of the free starting defenses, which sit mid-lane around x=700.
+    const loneMotor = await place(page, 'motor', 1, 250, 1050);
+
+    await advanceGameMs(page, 2000);
+
+    const speeds = await page.evaluate(([a, b]) => {
+      const scene = (window as any).game.scene.getScene('GameScene');
+      return {
+        wired: Math.abs(scene.world.getGear(a).angularVelocity),
+        lone: Math.abs(scene.world.getGear(b).angularVelocity),
+      };
+    }, [wiredMotor, loneMotor] as const);
+
+    expect(speeds.lone).toBeGreaterThan(0);          // idling, not bricked
+    expect(speeds.wired / speeds.lone).toBeGreaterThan(3);
   });
 
   test('a match with electrical gears runs without page errors', async ({ page }) => {

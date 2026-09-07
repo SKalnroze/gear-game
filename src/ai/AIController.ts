@@ -17,11 +17,34 @@ import { AIActionBudget } from './AIActionBudget';
 import { computePosture, roleCapFromPosture, StrategicPosture } from './AIStrategicPlanner';
 import { AbilitySystem } from '../systems/AbilitySystem';
 import { AI_POLL_INTERVAL, AI_APM, AI_ACTION_BUDGET_CAPACITY, gearPlacementCost } from '../constants/balance.constants';
-import { gearRadius } from '../constants/gear.constants';
-import { tierForTeeth } from '../constants/tier.constants';
+import { gearRadius, GEAR_DEFINITIONS } from '../constants/gear.constants';
+import { tierForTeeth, TIER_TEETH, DEFAULT_TIER } from '../constants/tier.constants';
+import type { PowerGraph } from '../world/PowerGraph';
+import type { PowerSystem } from '../systems/PowerSystem';
+import { WIRE_BASE_RANGE } from '../constants/power.constants';
+
+/**
+ * Satisfaction at which the AI stops adding generators to a motor. Not 1.0:
+ * quantisation and shared grids mean the last sliver is expensive to chase and
+ * worth almost nothing.
+ */
+const POWER_SATISFIED_ENOUGH = 0.9;
+
+/**
+ * How many starved motors to consider per call, and how often to look at all.
+ *
+ * Each candidate costs a placement probe, and a probe is a ring of up to 16
+ * `world.canPlace` calls -- each of which scans every gear. Considering every
+ * starved motor made power provisioning O(motors x gears) on EVERY decision,
+ * which took a long hard-AI match from 2.4s to over 3 minutes. Looking at a few
+ * candidates occasionally finds the same generators a beat later and costs
+ * nothing measurable.
+ */
+const POWER_CANDIDATES_PER_CALL = 3;
+const POWER_CHECK_INTERVAL_MS = 2000;
 import { TECH_NODES } from '../constants/tech.constants';
 import { TechNode } from '../types/tech.types';
-import { randomChoice } from '../utils/MathUtils';
+import { randomChoice, distance } from '../utils/MathUtils';
 import { byPhase, assessThreatLevel as assessThreatLevelPure, weightedRandomPick, AI_BIAS_STRENGTH } from './ai.utils';
 import { RotationPhysicsSystem } from '../systems/RotationPhysicsSystem';
 import { TechSystem } from '../systems/TechSystem';
@@ -56,6 +79,13 @@ export class AIController {
   private rotationPhysics: RotationPhysicsSystem;
   private world: World;
   private meshGraph: GearMeshGraph;
+  /**
+   * The wire network. Optional so the many existing call sites (and the unit
+   * tests that construct a controller directly) keep working; an AI without it
+   * simply never provisions power.
+   */
+  private powerGraph: PowerGraph | null = null;
+  private powerSystem: PowerSystem | null = null;
   private techSystem: TechSystem | null = null;
 
   readonly owner: 'player' | 'ai';
@@ -725,6 +755,12 @@ export class AIController {
       p.phase === 'bootstrap' || p.phase === 'spawn',
     );
 
+    // Power before anything else. A starved motor makes every gear on its chain
+    // slower, so a generator is worth more than another gear on a chain that is
+    // already crawling -- and unlike a gear, it fixes what is already built.
+    const power = this.provisionPower();
+    if (power) return this.withReason(power, `power up starved motor ${power.wireToId}`);
+
     // Bootstrap a new chain BEFORE doing expand-phase work on existing ones.
     // When every combat chain is in expand/full phase, we have spare capacity — start the
     // next chain now rather than piling more motors into chains that are already running.
@@ -766,7 +802,7 @@ export class AIController {
         continue;
       }
 
-      const unlockedTeeth = this.ownTech()?.unlockedTeeth ?? [10];
+      const unlockedTeeth = this.unlockedTierTeeth();
       const addition = AIChainPlanner.findBestAddition(
         chain, this.strategyProfile, this.owner,
         this.world, this.meshGraph, this.economySystem,
@@ -941,12 +977,85 @@ export class AIController {
   }
 
   /** Place the first motor of a brand-new chain near the given origin. */
+  /**
+   * Sizes the AI may build, as REAL tier tooth counts.
+   *
+   * Everything downstream -- placement spacing, cost, the chain planner --
+   * derives geometry from these numbers, and `tryPlace` resolves whatever it is
+   * handed to the nearest tier. Reading `unlockedTeeth` raw anywhere means the
+   * planner can compute a radius for a size that does not exist, place gears too
+   * far apart to mesh, and then bootstrap dead one-gear chains forever. One
+   * snapping accessor is what keeps planned size and placed size the same
+   * number.
+   */
+  private unlockedTierTeeth(): number[] {
+    const raw = this.ownTech()?.unlockedTeeth ?? [TIER_TEETH[DEFAULT_TIER]];
+    return [...new Set(raw.map(t => TIER_TEETH[tierForTeeth(t)]))].sort((a, b) => a - b);
+  }
+
+  setPowerGrid(powerGraph: PowerGraph, powerSystem: PowerSystem): void {
+    this.powerGraph = powerGraph;
+    this.powerSystem = powerSystem;
+  }
+
+  /**
+   * Keep the AI's motors fed.
+   *
+   * Motors idle at MOTOR_BASELINE without electricity, so an AI that never
+   * built a generator would run its whole economy at a fraction speed and
+   * simply lose -- the gating has to apply to both sides or it is not a
+   * mechanic, it is a handicap.
+   *
+   * The AI plays the same way a player does: it notices a starved motor, puts a
+   * generator next to it, and runs cable. It does not get free power.
+   */
+  private lastPowerCheckAt = NEVER;
+
+  private provisionPower(): AIDecision | null {
+    if (!this.powerGraph) return null;
+    if (this.clock.now - this.lastPowerCheckAt < POWER_CHECK_INTERVAL_MS) return null;
+    this.lastPowerCheckAt = this.clock.now;
+
+    // Solar is the fallback because it needs no fuel; a burner is better value
+    // but only once there is coal to feed it.
+    const hasCoal = this.economySystem.getResources(this.owner).coal > 0;
+    const genType: GearType = hasCoal ? 'burner' : 'solar_panel';
+    const cost = GEAR_DEFINITIONS[genType].goldCost;
+    if (!this.economySystem.canAffordGold(this.owner, cost)) return null;
+
+    const teeth = TIER_TEETH[DEFAULT_TIER];
+    let probed = 0;
+
+    for (const [, gear] of this.world.getAllGears()) {
+      if (gear.owner !== this.owner || gear.type !== 'motor') continue;
+      // Near enough is good enough. Chasing the last few percent would have the
+      // AI spend its whole economy topping up motors that are already running
+      // at full speed for all practical purposes.
+      if ((gear.powerSatisfaction ?? 0) >= POWER_SATISFIED_ENOUGH) continue;
+      if (this.powerGraph.isAtWireLimit(gear)) continue;
+
+      if (++probed > POWER_CANDIDATES_PER_CALL) break;
+
+      const pos = this.findPlacementNear(gear.x, gear.y, teeth);
+      if (!pos) continue;
+      // Only worth placing if the cable will actually reach.
+      if (distance(pos.x, pos.y, gear.x, gear.y) > WIRE_BASE_RANGE) continue;
+
+      return {
+        type: 'place_generator', gearType: genType, teeth,
+        x: pos.x, y: pos.y, wireToId: gear.id,
+      };
+    }
+    return null;
+  }
+
   private bootstrapNewChain(origin: { x: number; y: number }): AIDecision | null {
-    const unlocked = this.ownTech()?.unlockedTeeth ?? [10];
+    const unlocked = this.unlockedTierTeeth();
     const gold = this.economySystem.getResources(this.owner).gold;
     const target = AIChainPlanner.selectTeeth(this.strategyProfile, gold, unlocked, 'motor');
-    const teethList = [...unlocked].filter(t => t <= target).sort((a, b) => b - a);
-    if (!teethList.includes(10)) teethList.push(10);
+    const teethList = unlocked.filter(t => t <= target).sort((a, b) => b - a);
+    const fallback = TIER_TEETH[DEFAULT_TIER];
+    if (!teethList.includes(fallback)) teethList.push(fallback);
 
     for (const t of teethList) {
       if (!this.economySystem.canAffordGold(this.owner, this.getGearPlacementCost(t))) continue;
@@ -1419,6 +1528,36 @@ export class AIController {
 
   private executeDecision(decision: AIDecision): void {
     switch (decision.type) {
+      case 'place_generator': {
+        if (!decision.gearType || !decision.teeth || decision.x === undefined
+            || decision.y === undefined || !decision.wireToId || !this.powerGraph) break;
+        const cost = GEAR_DEFINITIONS[decision.gearType].goldCost;
+        if (!this.economySystem.spendGold(this.owner, cost, false)) break;
+
+        const placed = this.gearSystem.tryPlace(
+          decision.gearType, tierForTeeth(decision.teeth), decision.x, decision.y, this.owner, true,
+        );
+        const target = this.world.getGear(decision.wireToId);
+        if (!placed || !target) {
+          this.economySystem.earnGold(this.owner, cost, false);
+          this.log(`generator placement refused @ ${decision.x},${decision.y} — refunded ${cost}g`);
+          break;
+        }
+
+        // A generator that never got wired is dead weight, so undo the whole
+        // decision rather than leaving one stranded.
+        const wired = this.powerGraph.addWire(placed, target);
+        if (wired !== 'ok') {
+          this.gearSystem.removeGear(placed.id);
+          this.economySystem.earnGold(this.owner, cost, false);
+          this.log(`generator wire refused (${wired}) — rolled back, refunded ${cost}g`);
+          break;
+        }
+        this.powerSystem?.markGraphDirty();
+        this.log(`powered ${decision.wireToId} with a ${decision.gearType}`);
+        break;
+      }
+
       case 'place_gear': {
         if (!decision.gearType || !decision.teeth || decision.x === undefined || decision.y === undefined) break;
         const cost = this.getGearPlacementCost(decision.teeth);

@@ -36,8 +36,18 @@ export const MAX_WIRES_PER_POLE = 8;
 
 // ─── Generation ──────────────────────────────────────────────────────────────
 
-/** Solar: small, free, weather-proof, and never enough on its own. */
-export const SOLAR_OUTPUT = 1;
+/**
+ * Solar: free and fuel-less, and sized so ONE panel fully feeds ONE tier-1
+ * motor with a little to spare.
+ *
+ * That ratio is deliberate. At less than a motor's draw, a panel can never
+ * satisfy anything on its own, so the only sensible move is to stack panels
+ * until the numbers happen to work -- which reads as broken rather than as a
+ * decision. Covering exactly one small motor makes solar the honest baseline:
+ * fine for one gear, hopeless for a real machine, which is what pushes the
+ * player toward coal and burners.
+ */
+export const SOLAR_OUTPUT = 2;
 
 /** Burner: the workhorse. Turns coal into electricity and waste heat. */
 export const BURNER_OUTPUT = 6;
@@ -65,21 +75,17 @@ export const BATTERY_MAX_DISCHARGE = 8;
 export const MOTOR_DRAW = 1.5;
 
 /**
- * What an unpowered motor still manages. Motors are not bricked by a blackout --
- * they idle, slowly. This is what keeps a bad grid recoverable instead of a
- * dead run.
+ * What an unpowered motor still manages.
  *
- * STAGED AT 1.0. The grid is wired up and solving, but nothing depends on it
- * yet: dropping this to its intended 0.15 before the grid tie, the wire tool
- * and AI grid-building all exist would leave every unwired motor -- which is
- * every motor in an opening position, and every motor the AI builds -- running
- * at 15% speed with no way to fix it. Lowered to 0.15 in the same change that
- * gives both players a grid to build.
+ * Motors are not bricked by a blackout -- they idle. That is deliberate and
+ * load-bearing: it is what makes a bad grid recoverable rather than a dead run,
+ * and it is the whole content of "under-power is safe."
+ *
+ * Both sides get a generator already wired to their starting motor, and the AI
+ * treats a starved motor as its highest-priority build, so neither player is
+ * ever stuck at baseline with no way out.
  */
-export const MOTOR_BASELINE = 1.0;
-
-/** The value MOTOR_BASELINE becomes once the grid is playable. */
-export const MOTOR_BASELINE_TARGET = 0.15;
+export const MOTOR_BASELINE = 0.15;
 
 /**
  * Largest tier a motor can drive on baseline power alone. Above this, the grid
@@ -125,3 +131,18 @@ export const GRID_EVENT_INTERVAL_MS = 250;
  * only changes when it meaningfully changes, so a settled grid costs nothing.
  */
 export const SATISFACTION_STEPS = 32;
+
+/**
+ * Minimum game-time gap between power-triggered chain rebuilds.
+ *
+ * Quantising satisfaction stops a *drifting* grid from rebuilding every frame,
+ * but it does nothing while the grid is genuinely changing -- batteries
+ * charging, a generator coming online, the AI building. Each rebuild is an
+ * O(V+E) pass plus per-chain physics, and letting that run at frame rate made a
+ * 30-minute hard-AI simulation 13x slower.
+ *
+ * Motor torque does not need sub-frame precision: a few hundred milliseconds
+ * between a panel being wired and the chain speeding up is imperceptible, and
+ * mesh changes still rebuild immediately. Only the power path is throttled.
+ */
+export const POWER_REBUILD_INTERVAL_MS = 250;

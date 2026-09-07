@@ -448,32 +448,38 @@ export const GEAR_DEFINITIONS: Record<GearType, GearDefinition> = {
   },
 
   // ─── Electrical ────────────────────────────────────────────────────────
+  //
+  // Priced against a tier-1 gear (14g). A generator has to be cheap enough that
+  // powering a motor is an obvious yes rather than a choice between running the
+  // machine you have and building the next one -- at 25g a panel cost nearly
+  // twice its motor, and an AI that dutifully powered everything simply stopped
+  // expanding.
   crank: {
     type: 'crank',
-    goldCost: 5,
+    goldCost: 4,
     description: 'Click it to spin it by hand. Output decays over ~6s -- enough to light a burner from a cold start, never enough to run an economy.',
   },
   solar_panel: {
     type: 'solar_panel',
-    goldCost: 25,
+    goldCost: 12,
     description: 'Generates a small trickle of electricity forever, with no fuel. Never enough on its own.',
     unlockNode: 'basic_electricity',
   },
   burner: {
     type: 'burner',
-    goldCost: 30,
+    goldCost: 18,
     description: 'Burns coal into electricity and waste heat. The workhorse generator -- and the gear most likely to cook itself.',
     unlockNode: 'basic_electricity',
   },
   battery: {
     type: 'battery',
-    goldCost: 35,
+    goldCost: 20,
     description: 'Stores surplus electricity and gives it back on demand. Storage is what turns an overload into income.',
     unlockNode: 'basic_electricity',
   },
   power_pole: {
     type: 'power_pole',
-    goldCost: 8,
+    goldCost: 5,
     description: 'Carries no load of its own -- it just reaches three times further than anything else, and takes twice as many wires.',
     unlockNode: 'basic_electricity',
   },
@@ -484,7 +490,7 @@ export const GEAR_DEFINITIONS: Record<GearType, GearDefinition> = {
   },
   coal_miner: {
     type: 'coal_miner',
-    goldCost: 20,
+    goldCost: 14,
     description: 'Digs coal, the feedstock for burners and oilers.',
     unlockNode: 'basic_electricity',
   },

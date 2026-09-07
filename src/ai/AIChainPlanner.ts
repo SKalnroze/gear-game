@@ -10,6 +10,7 @@ import { UNIT_DEFINITIONS } from '../constants/unit.constants';
 import { UnitType } from '../types/unit.types';
 import { LANE_Y_MIN, LANE_Y_MAX } from '../constants/world.constants';
 import { weightedRandomPick, AI_BIAS_STRENGTH } from './ai.utils';
+import { TIER_TEETH, tierForTeeth } from '../constants/tier.constants';
 
 const LANE_CENTER_Y = (LANE_Y_MIN + LANE_Y_MAX) / 2;
 
@@ -267,7 +268,10 @@ export class AIChainPlanner {
     const gold = economySystem.getResources(owner).gold;
     const teeth = AIChainPlanner.selectTeeth(profile, gold, unlockedTeeth, gearType, context.preferSwarmSpawners ?? false);
 
-    const teethCandidates = [...unlockedTeeth].filter(t => t <= teeth).sort((a, b) => b - a);
+    // Snapped, like selectTeeth: a candidate that is not a real tier size would
+    // have its spacing computed from a radius no gear actually has.
+    const teethCandidates = [...new Set(unlockedTeeth.map(t => TIER_TEETH[tierForTeeth(t)]))]
+      .filter(t => t <= teeth).sort((a, b) => b - a);
     if (!teethCandidates.includes(10)) teethCandidates.push(10);
 
     for (const t of teethCandidates) {
@@ -737,6 +741,18 @@ export class AIChainPlanner {
    * caller still falls back to smaller/cheaper sizes if this one doesn't
    * fit or isn't affordable.
    */
+  /**
+   * Pick a gear size for the AI to build.
+   *
+   * The result is always snapped to a REAL tier tooth count. Sizes are discrete
+   * now, and `tryPlace` resolves whatever it is handed to the nearest tier -- so
+   * an AI that planned around a tooth count no tier actually has would compute
+   * its spacing from the wrong radius and place gears that never mesh. That
+   * exact mismatch (planning at 10 teeth, placing at 8) left two thirds of a
+   * hard AI's gears unmeshed and had it bootstrap hundreds of dead one-gear
+   * chains. Snapping here, at the single funnel every size flows through, is
+   * what makes planned size and placed size the same number by construction.
+   */
   static selectTeeth(
     profile: AIStrategyProfile,
     gold: number,
@@ -744,7 +760,9 @@ export class AIChainPlanner {
     gearType: GearType,
     preferSwarmSpawners = false,
   ): number {
-    if (unlockedTeeth.length === 0) return DEFAULT_TEETH;
+    const snap = (t: number) => TIER_TEETH[tierForTeeth(t)];
+    if (unlockedTeeth.length === 0) return snap(DEFAULT_TEETH);
+    unlockedTeeth = [...new Set(unlockedTeeth.map(snap))];
     const affordable = unlockedTeeth.filter(t => gold >= placementCost(t));
     const pool = affordable.length > 0 ? affordable : unlockedTeeth;
     if (pool.length === 1) return pool[0];

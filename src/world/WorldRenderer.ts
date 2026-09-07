@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import {
   WORLD_WIDTH, WORLD_HEIGHT,
-  LANE_Y_MIN, LANE_Y_MAX,
   PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X,
   PLAYER_BASE_X, AI_BASE_X, BASE_WIDTH,
 } from '../constants/world.constants';
@@ -129,20 +128,8 @@ export class WorldRenderer {
       g.fillRect(PLAYER_ZONE_MAX_X, 0, AI_ZONE_MIN_X - PLAYER_ZONE_MAX_X, WORLD_HEIGHT);
     }
 
-    // Lane band
-    g.fillStyle(COLOR_LANE, 0.85);
-    g.fillRect(0, LANE_Y_MIN, WORLD_WIDTH, LANE_Y_MAX - LANE_Y_MIN);
-
-    // Lane band borders — subtle neon green
-    g.lineStyle(1.5, 0x44ff88, 0.25);
-    g.beginPath();
-    g.moveTo(0, LANE_Y_MIN);
-    g.lineTo(WORLD_WIDTH, LANE_Y_MIN);
-    g.strokePath();
-    g.beginPath();
-    g.moveTo(0, LANE_Y_MAX);
-    g.lineTo(WORLD_WIDTH, LANE_Y_MAX);
-    g.strokePath();
+    // No lane band any more: the whole arena is the fighting ground, so
+    // drawing a corridor would promise cover that does not exist.
 
     // Zone boundary lines — neon
     g.lineStyle(1.5, 0x00ffcc, 0.4);

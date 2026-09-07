@@ -3,7 +3,7 @@ import type { GearState, GearType } from '../types/gear.types';
 import { EventBus } from './EventBus';
 import { UNIT_DEFINITIONS } from '../constants/unit.constants';
 import { gearRadius, crackLevelFor, DEFAULT_TEETH } from '../constants/gear.constants';
-import { WORLD_WIDTH, LANE_Y_MIN, LANE_Y_MAX } from '../constants/world.constants';
+import { WORLD_WIDTH, PLAY_Y_MIN, PLAY_Y_MAX, SPAWN_Y_MARGIN } from '../constants/world.constants';
 import { randomInt } from '../utils/MathUtils';
 import { World } from '../world/World';
 import { EconomySystem } from './EconomySystem';
@@ -18,7 +18,6 @@ import {
   marchDirection,
   spawnX,
   hasReachedEnemyBase,
-  gearInLane,
   computeAttackCooldown,
   computeChargeDamage,
 } from './unit.utils';
@@ -277,7 +276,7 @@ export class UnitSystem {
 
     const startX = spawnX(owner, this.playerRight);
     const margin = 20;
-    const y = randomInt(LANE_Y_MIN + margin, LANE_Y_MAX - margin);
+    const y = randomInt(PLAY_Y_MIN + SPAWN_Y_MARGIN + margin, PLAY_Y_MAX - SPAWN_Y_MARGIN - margin);
 
     const hp = Math.round(scaled.hp * (1 + hpBonus));
     const unit: UnitState = {
@@ -529,7 +528,6 @@ export class UnitSystem {
         if (gear.owner === unit.owner) continue;
         if (gear.hp <= 0 || gear.isBurntOut) continue;
         if (!isInFront(unit, gear.x, this.playerRight)) continue;
-        if (!gearInLane(gear.y)) continue;
         const d2 = sqrDist(unit.x, unit.y, gear.x, gear.y);
         if (d2 < nearestGearDist2) {
           nearestGearDist2 = d2;
@@ -601,7 +599,6 @@ export class UnitSystem {
       if (gear.owner === unit.owner) continue;
       if (gear.hp <= 0 || gear.isBurntOut) continue; // never chase a dead or burnt-out gear
       if (!isInFront(unit, gear.x, this.playerRight)) continue; // don't chase gears behind
-      if (!gearInLane(gear.y)) continue; // melee can't reach gears outside lane
       const d2 = sqrDist(unit.x, unit.y, gear.x, gear.y);
       if (d2 < nearestGearDist2) {
         nearestGearDist2 = d2;
@@ -699,7 +696,7 @@ export class UnitSystem {
         && sqrDist(unit.x, unit.y, u.x, u.y) <= senseRange2,
     );
     const hasForwardGear = Array.from(allGears.values()).some(
-      g => g.owner !== unit.owner && isInFront(unit, g.x, this.playerRight) && gearInLane(g.y)
+      g => g.owner !== unit.owner && isInFront(unit, g.x, this.playerRight)
         && sqrDist(unit.x, unit.y, g.x, g.y) <= senseRange2,
     );
 
@@ -751,7 +748,6 @@ export class UnitSystem {
     // Check for contact with enemy gear (in lane) — also triggers retreat
     for (const [, gear] of allGears) {
       if (gear.owner === unit.owner) continue;
-      if (!gearInLane(gear.y)) continue;
       const d = distance(unit.x, unit.y, gear.x, gear.y);
       const contactDist = unit.size + gearRadius(gear.teeth) + MELEE_CONTACT_DIST;
       if (d <= contactDist) {
@@ -910,7 +906,6 @@ export class UnitSystem {
         if (gear.owner === unit.owner) continue;
         if (gear.hp <= 0 || gear.isBurntOut) continue;
         if (!isInFront(unit, gear.x, this.playerRight)) continue;
-        if (!gearInLane(gear.y)) continue;
         const d = distance(unit.x, unit.y, gear.x, gear.y);
         if (d < detectRange && d < targetDist) {
           targetDist = d;
@@ -1049,7 +1044,6 @@ export class UnitSystem {
       if (gear.owner === unit.owner) continue;
       if (gear.hp <= 0 || gear.isBurntOut) continue;
       if (!isInFront(unit, gear.x, this.playerRight)) continue;
-      if (!gearInLane(gear.y)) continue;
       const d2 = sqrDist(unit.x, unit.y, gear.x, gear.y);
       if (d2 < nearestDist2) {
         nearestDist2 = d2;
@@ -1143,7 +1137,6 @@ export class UnitSystem {
       if (gear.hp <= 0 || gear.isBurntOut) continue;
       if (!RAIDER_TARGET_TYPES.has(gear.type)) continue;
       if (!isInFront(unit, gear.x, this.playerRight)) continue;
-      if (!gearInLane(gear.y)) continue;
       const d2 = sqrDist(unit.x, unit.y, gear.x, gear.y);
       if (d2 < nearestDist2) {
         nearestDist2 = d2;
@@ -1257,7 +1250,6 @@ export class UnitSystem {
       if (gear.owner === unit.owner) continue;
       if (gear.hp <= 0 || gear.isBurntOut) continue; // never chase a dead or burnt-out gear
       if (!isInFront(unit, gear.x, playerRight)) continue;
-      if (!gearInLane(gear.y)) continue;
       const d2 = sqrDist(unit.x, unit.y, gear.x, gear.y);
       if (d2 < nearestGearDist2) {
         nearestGearDist2 = d2;

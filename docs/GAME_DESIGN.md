@@ -29,7 +29,7 @@ Three conventions:
 
 Gear Game is a strategy game where **you do not command an army — you build the machine that produces one.** Two players face each other across an arena, each with a build zone and a base. You place interlocking gears; meshed gears form a chain; a chain driven by a motor turns; and every full rotation of a gear is an event — a unit spawned, ore mined, research advanced, a turret reloaded. Victory comes from having engineered a better machine, not from out-clicking your opponent.
 
-The fantasy is the satisfaction of a contraption you designed running without you: watching a chain you laid out an hour ago still turning, still throwing units down the lane.
+The fantasy is the satisfaction of a contraption you designed running without you: watching a chain you laid out an hour ago still turning, still throwing units at the enemy.
 
 ## Design pillars
 
@@ -66,7 +66,7 @@ Low actions-per-minute by design. Decisions are made in the build, and their con
                                         spawn / mine / research │
                                                     │           │
                                                     ▼           │
-                                    units march down the lane   │
+                                    units march across the arena │
                                                     │           │
                                                     ▼           │
                                   damage the enemy base ────────┘
@@ -77,7 +77,8 @@ A match ends when one base reaches 0 HP. There is no timer and no alternative vi
 
 ## The match at a glance
 
-- **Arena.** 2800 × 1575 px. A build zone on the left, a build zone on the right, an 880 px no-man's-land between them, and a horizontal **lane band** through the middle where units walk and where gears can be reached by the enemy.
+- **Arena.** 3600 × 1575 px. A build zone on the left, a build zone on the right, and a 1680 px no-man's-land between them. There is no lane: the whole height is fighting ground, every gear is reachable, and the only cover is distance and whatever you build in front of it.
+- **Home zone.** Where you may place gears *freely*. A gear that meshes with one of your own is legal anywhere, so a machine can be physically extended across no-man's-land one gear at a time — expensive, fragile, and attackable at every link.
 - **Sides.** Either side may be a human or an AI, chosen per slot in the lobby. Both AI is *spectate*; both human is *practice*.
 - **Openings.** Both sides start with 30 gold, +2 gold/sec, and three unlocked gears: motor, infantry spawner, researcher. Everything else is behind research.
 - **Ending.** Bases start at 100 HP. Only a unit that walks into a base damages it.
@@ -85,14 +86,15 @@ A match ends when one base reaches 0 HP. There is no timer and no alternative vi
 <!-- BEGIN GENERATED: world.constants -->
 | Constant | Value | Meaning |
 |---|---|---|
-| `WORLD_WIDTH` | 2800 | arena width, px |
+| `WORLD_WIDTH` | 3600 | arena width, px |
 | `WORLD_HEIGHT` | 1575 | arena height, px |
 | `PLAYER_ZONE_MAX_X` | 960 | right edge of the left build zone |
-| `AI_ZONE_MIN_X` | 1840 | left edge of the right build zone |
-| `LANE_Y_MIN` | 525 | top of the lane band |
-| `LANE_Y_MAX` | 1050 | bottom of the lane band |
+| `AI_ZONE_MIN_X` | 2640 | left edge of the right build zone |
+| `PLAY_Y_MIN` | 0 | top of the playable band -- the whole arena, no lane |
+| `PLAY_Y_MAX` | 1575 | bottom of the playable band |
+| `SPAWN_Y_MARGIN` | 60 | keeps a spawned unit clear of the arena edge |
 | `PLAYER_BASE_X` | 20 | left base centre |
-| `AI_BASE_X` | 2780 | right base centre |
+| `AI_BASE_X` | 3580 | right base centre |
 | `SNAP_THRESHOLD` | 40 | mesh snap grab distance, px |
 <!-- END GENERATED: world.constants -->
 
@@ -112,7 +114,7 @@ These words are used precisely throughout the design and the code. Where the cod
 | **Rotation** | One full 2π turn of a gear. The atomic unit of game time — every production event fires on one. |
 | **Jam** | Two meshed gears required to turn in opposing directions, which happens when a chain contains an odd cycle. Both stop and take stress damage until one breaks. |
 | **Burnout** | An overclock gear's enforced downtime after its boost window. Distinct from destruction — it recovers. |
-| **Lane band** | The horizontal strip units traverse. Gears outside it cannot be hit by marching units. |
+| **Home zone** | Where an owner may place gears freely. Attaching to an owned gear extends a machine beyond it. |
 | **Zone** | The region a side may build in. Distinct from *side*: which half of the map a player occupies. |
 | **Spawner** | A gear that produces one unit per rotation, paid for in that unit's resource. The **only** way units enter the game. |
 | **Owner vs side** | *Owner* (`'player'` / `'ai'`) says whose a thing is. *Side* says which half of the map they hold. The lobby can seat a human on either side, so these are independent — code that conflates them is a bug. |

@@ -352,4 +352,50 @@ test.describe('electrical grid', () => {
     expect(oil.neighbour).toBeGreaterThan(0);
   });
 
+
+  /**
+   * The map's headline rule, through the real placement path: a home zone is
+   * only where you may place FREELY, and a machine can be walked out past it
+   * one meshing gear at a time.
+   */
+  test('a gear chain can creep out of the home zone, link by link', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const scene = (window as any).game.scene.getScene('GameScene');
+      const zoneMax = 960;
+      const R = 20;                      // tier-1 radius
+      const y = 300;                     // clear of the starting defenses
+
+      // Unattached, well past the zone edge: refused.
+      const floating = scene.gearSystem.tryPlace('motor', 1, zoneMax + 300, y, 'player', true);
+
+      // Anchor inside the zone, then walk outward one meshing gear at a time.
+      let x = zoneMax - R;
+      scene.gearSystem.tryPlace('motor', 1, x, y, 'player', true);
+      let links = 0;
+      for (let i = 0; i < 6; i++) {
+        x += R * 2;
+        if (scene.gearSystem.tryPlace('armored', 1, x, y, 'player', true)) links++;
+      }
+
+      return { floatingRefused: floating === null, links, reachedX: x, zoneMax };
+    });
+
+    expect(result.floatingRefused).toBe(true);
+    expect(result.links).toBe(6);
+    // Genuinely out in no-man's-land, not just over the line.
+    expect(result.reachedX).toBeGreaterThan(result.zoneMax + 200);
+  });
+
+  test('gears can be built at the very top and bottom -- no safe band left', async ({ page }) => {
+    const placed = await page.evaluate(() => {
+      const scene = (window as any).game.scene.getScene('GameScene');
+      return {
+        top: !!scene.gearSystem.tryPlace('motor', 1, 400, 60, 'player', true),
+        bottom: !!scene.gearSystem.tryPlace('motor', 1, 400, 1500, 'player', true),
+      };
+    });
+    expect(placed.top).toBe(true);
+    expect(placed.bottom).toBe(true);
+  });
+
 });

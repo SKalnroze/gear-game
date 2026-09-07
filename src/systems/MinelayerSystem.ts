@@ -7,7 +7,7 @@ import { distance } from '../utils/MathUtils';
 import { computeDamage } from '../constants/unit.constants';
 import { minelayerFireZoneRange, mineRadius, mineDamage, crackLevelFor } from '../constants/gear.constants';
 import { marchDirection } from './unit.utils';
-import { LANE_Y_MIN, LANE_Y_MAX } from '../constants/world.constants';
+import { PLAY_Y_MIN, PLAY_Y_MAX } from '../constants/world.constants';
 
 const MINELAYER_COOLDOWN_MS = 3000;
 /** Arm delay after landing -- visible while arming, hidden from the enemy afterward. */
@@ -170,7 +170,7 @@ export class MinelayerSystem {
     for (let attempt = 0; attempt < MAX_LOCATION_ATTEMPTS; attempt++) {
       const dist = minGap + Math.random() * (range - minGap);
       const x = gear.x + dir * dist;
-      const y = Math.max(LANE_Y_MIN, Math.min(LANE_Y_MAX, gear.y + (Math.random() * 2 - 1) * halfHeight));
+      const y = Math.max(PLAY_Y_MIN, Math.min(PLAY_Y_MAX, gear.y + (Math.random() * 2 - 1) * halfHeight));
 
       let clear = true;
       for (const [, mine] of this.mines) {

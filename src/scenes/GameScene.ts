@@ -47,7 +47,7 @@ import {
   WORLD_WIDTH, WORLD_HEIGHT,
   EDGE_SCROLL_MARGIN, EDGE_SCROLL_SPEED,
   CANVAS_HEIGHT, PANEL_COLLAPSED_H, PANEL_EXPANDED_H,
-  PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X, LANE_Y_MIN, LANE_Y_MAX,
+  PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X,
   PLAYER_BASE_X, AI_BASE_X,
 } from '../constants/world.constants';
 import { AI_INITIAL_DECISION_DELAY, REPOSITION_COOLDOWN_MS, CAPACITOR_BURST_ROTATIONS, gearPlacementCost } from '../constants/balance.constants';
@@ -680,7 +680,7 @@ export class GameScene extends Phaser.Scene {
    * start) since these are a starting bonus, not a purchase.
    */
   private placeStartingDefenses(): void {
-    const laneY = (LANE_Y_MIN + LANE_Y_MAX) / 2;
+    const laneY = WORLD_HEIGHT / 2;
     // Motor and tower must sit exactly meshing-distance apart (sum of their
     // radii) so the tower is actually driven by the motor from the start.
     const meshGap = gearRadius(DEFAULT_TEETH) * 2;

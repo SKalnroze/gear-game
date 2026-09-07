@@ -182,13 +182,31 @@ describe('AIChainPlanner.scorePlacement', () => {
     expect(inLaneScore).toBeGreaterThan(offLaneScore);
   });
 
-  it('economy-role chains prefer off-lane over in-lane (safety from combat)', () => {
+  /**
+   * There is no lane any more, so there is no off-lane safe ground -- economy
+   * chains used to be pushed into the top and bottom thirds purely because
+   * units could not reach there. Distance from the front is the only cover they
+   * get now, so that is what the score has to reward.
+   */
+  it('economy-role chains prefer positions further back from the front', () => {
     const econPlan = makePlan(['m1'], world, 'economy');
-    const inLaneY = 787;
-    const offLaneY = 300;
-    const inLaneScore = AIChainPlanner.scorePlacement(1100, inLaneY, 10, 'researcher', econPlan, world, new GearMeshGraph(), 'ai');
-    const offLaneScore = AIChainPlanner.scorePlacement(1100, offLaneY, 10, 'researcher', econPlan, world, new GearMeshGraph(), 'ai');
-    expect(offLaneScore).toBeGreaterThan(inLaneScore);
+    // Owner is 'ai', which fights leftward, so higher x is further from the front.
+    const backScore = AIChainPlanner.scorePlacement(1200, 700, 10, 'researcher', econPlan, world, new GearMeshGraph(), 'ai');
+    const frontScore = AIChainPlanner.scorePlacement(900, 700, 10, 'researcher', econPlan, world, new GearMeshGraph(), 'ai');
+    expect(backScore).toBeGreaterThan(frontScore);
+  });
+
+  it('no longer treats the old lane band as special ground', () => {
+    const econPlan = makePlan(['m1'], world, 'economy');
+    const at = (y: number) =>
+      AIChainPlanner.scorePlacement(1100, y, 10, 'researcher', econPlan, world, new GearMeshGraph(), 'ai');
+    // Crossing the old middle-third boundary at y=525 used to flip a scoring
+    // branch worth 6 points. Score still varies with y, but smoothly -- the
+    // step across the old edge should look like any other 10px step.
+    const acrossOldEdge = Math.abs(at(520) - at(530));
+    const elsewhere = Math.abs(at(300) - at(310));
+    expect(acrossOldEdge).toBeLessThan(1);
+    expect(acrossOldEdge).toBeCloseTo(elsewhere, 1);
   });
 });
 

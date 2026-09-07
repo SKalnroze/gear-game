@@ -50,7 +50,7 @@ import { RotationPhysicsSystem } from '../systems/RotationPhysicsSystem';
 import { TechSystem } from '../systems/TechSystem';
 import {
   AI_ZONE_MIN_X, WORLD_WIDTH, WORLD_HEIGHT,
-  PLAYER_ZONE_MAX_X, LANE_Y_MIN, LANE_Y_MAX,
+  PLAYER_ZONE_MAX_X,
 } from '../constants/world.constants';
 
 // ThreatLevel is defined in ai.types.ts and re-exported for backwards compatibility
@@ -952,13 +952,18 @@ export class AIController {
   }
 
   /**
-   * Pick an origin for a defense chain — placed IN the unit lane, front 55% of zone,
-   * so gears form a physical barrier that enemy units must fight through.
+   * Pick an origin for a defense chain -- front 55% of zone, so gears form a
+   * physical barrier enemy units must fight through.
+   *
+   * Units now attack from anywhere in the arena rather than down a central
+   * corridor, so a defensive line has no single row to sit on. Origins spread
+   * across most of the height instead, and each chain grows compactly around
+   * its own origin.
    */
   private pickDefenseChainOrigin(): { x: number; y: number } | null {
     const MIN_ORIGIN_DIST = 180;
-    const laneCenter = (LANE_Y_MIN + LANE_Y_MAX) / 2;
-    const laneSpread = (LANE_Y_MAX - LANE_Y_MIN) * 0.75;
+    const laneCenter = WORLD_HEIGHT / 2;
+    const laneSpread = WORLD_HEIGHT * 0.7;
 
     const zoneMinX = this.onRight ? AI_ZONE_MIN_X + 60 : 60;
     const zoneMaxX = this.onRight ? WORLD_WIDTH - 60 : PLAYER_ZONE_MAX_X - 60;
@@ -1089,7 +1094,7 @@ export class AIController {
    */
   private pickNewChainOrigin(): { x: number; y: number } | null {
     const MIN_ORIGIN_DIST = 250;
-    const laneY = (LANE_Y_MIN + LANE_Y_MAX) / 2;
+    const midY = WORLD_HEIGHT / 2;
 
     const zoneMinX = this.onRight ? AI_ZONE_MIN_X + 60 : 60;
     const zoneMaxX = this.onRight ? WORLD_WIDTH - 60 : PLAYER_ZONE_MAX_X - 60;
@@ -1105,16 +1110,14 @@ export class AIController {
       for (let i = 0; i < 14; i++) {
         const xRangeRatio = i < 9 ? 0.6 : 1.0; // first 9 tries favour front
         const x = zoneMinX + Math.random() * zoneW * xRangeRatio;
-        // 40% chance to prefer off-lane (above or below), rest near lane
-        const y = Math.random() < 0.40
-          ? (Math.random() < 0.5
-              ? LANE_Y_MIN - 20 - Math.random() * 70   // above lane
-              : LANE_Y_MAX + 20 + Math.random() * 70)  // below lane
-          : laneY + (Math.random() - 0.5) * 110;
+        // Spread across the full height. The old code deliberately aimed for
+        // the top and bottom thirds because units could not reach there; with
+        // no lane, that is just a worse spread.
+        const y = midY + (Math.random() - 0.5) * WORLD_HEIGHT * 0.8;
         if (this.isOriginFarEnough(x, y, MIN_ORIGIN_DIST)) return { x, y };
       }
     } else {
-      // Hard: evenly spaced within front 65% of zone, strongly prefer off-lane.
+      // Hard: evenly spaced within front 65% of zone, spread over the height.
       // Slice count is capped by how many MIN_ORIGIN_DIST-wide bands actually fit --
       // posture.capacity can grow well past what the zone can spatially hold (up to
       // 18 late-game), and dividing by the raw capacity would shrink slices below the
@@ -1129,12 +1132,7 @@ export class AIController {
 
       for (let i = 0; i < 12; i++) {
         const x = sliceStart + Math.random() * sliceW;
-        // 55% off-lane (above or below), 45% near lane as fallback
-        const y = Math.random() < 0.55
-          ? (Math.random() < 0.5
-              ? LANE_Y_MIN - 30 - Math.random() * 80   // above lane
-              : LANE_Y_MAX + 30 + Math.random() * 80)  // below lane
-          : laneY + (Math.random() - 0.5) * 140;
+        const y = midY + (Math.random() - 0.5) * WORLD_HEIGHT * 0.85;
         if (this.isOriginFarEnough(x, y, MIN_ORIGIN_DIST)) return { x, y };
       }
       // Fallback

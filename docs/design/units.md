@@ -222,7 +222,9 @@ The matrix is applied everywhere damage is dealt, not just inside `CombatSystem`
 
 ## Movement and the lane
 
-Units walk along the **lane band**, the horizontal strip through the middle of the arena. Gears outside the band cannot be reached by marching units, which makes vertical placement a real defensive choice: build in the lane for spikes and turrets to bite, build outside it to keep your economy safe.
+Units walk across the **whole arena**. There is no lane and no safe strip: every gear can be reached by marching units, wherever it sits.
+
+The lane band used to run through the vertical middle, and the top and bottom thirds were dead ground — anything you wanted protected went there, which made vertical placement a formality rather than a decision. Now the only cover a gear has is distance from the front and whatever you build in front of it, so a defensive line has to actually cover the ground it is defending.
 
 Direction is derived from which half of the map a side occupies, never from its owner label — the lobby can seat a human on either side, and every directional decision (march, targeting, base arrival) must agree. A unit reaching the enemy base deals its base damage and is consumed.
 
@@ -272,7 +274,7 @@ Small spawners get a second, independent reason to lean smaller still: combat he
 
 ### Zoning
 
-Chain placement follows the same lane geometry a human should: **defense chains sit in the lane band**, where marching units actually walk, built as a barrier the enemy must fight through rather than route around; **economy and spawner-heavy combat chains sit off-lane**, in the back of the zone, out of marching units' reach. This was already true before this pass for the (fixed, capped) defense/economy roles; what's new is that it now scales with the posture's role weights instead of stopping at one or two chains of each kind regardless of how large the economy has grown.
+Chain placement follows the same geometry a human should: **defense chains spread across the height**, near the front of the zone, built as a barrier the enemy must fight through; **economy chains sit at the back**, as far from the fighting as the zone allows. Distance from the front is the only cover anything gets now — the AI used to push economy chains into the top and bottom thirds specifically because units could not reach there, and that bias is gone with the ground it relied on.
 
 ### Personality
 

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { World } from '../../src/world/World';
 import type { GearState } from '../../src/types/gear.types';
 import { gearRadius, GEAR_MESH_TOLERANCE } from '../../src/constants/gear.constants';
-import { PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X, LANE_Y_MIN, LANE_Y_MAX } from '../../src/constants/world.constants';
+import { PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X, WORLD_WIDTH } from '../../src/constants/world.constants';
 import { tierForTeeth, TIER_TEETH } from '../../src/constants/tier.constants';
 
 // Helper to build a minimal GearState
@@ -53,7 +53,7 @@ describe('World', () => {
     });
 
     it('AI gear within AI zone → allowed', () => {
-      expect(world.canPlace(2000, 700, 10, 'ai')).toBe(true);
+      expect(world.canPlace(AI_ZONE_MIN_X + 200, 700, 10, 'ai')).toBe(true);
     });
 
     it('AI gear below AI_ZONE_MIN_X → blocked', () => {
@@ -257,6 +257,73 @@ describe('World', () => {
       world.clear();
       expect([...world.getAllGears()]).toHaveLength(0);
       expect([...world.getAllUnits()]).toHaveLength(0);
+    });
+  });
+
+  // ── The attach rule ────────────────────────────────────────────────────────
+  //
+  // A home zone is only where you may place FREELY. A gear that meshes with one
+  // of your own is legal anywhere, so a machine can be physically extended
+  // across no-man's-land one gear at a time -- expensive, fragile, and
+  // attackable at every link, which is the point.
+
+  describe('canPlace — attaching outside the home zone', () => {
+    /** Two tier-1 gears mesh when their centres are exactly 2 x radius apart. */
+    const R = gearRadius(10);
+
+    it('refuses an unattached gear beyond the zone', () => {
+      expect(world.canPlace(PLAYER_ZONE_MAX_X + 300, 700, 10, 'player')).toBe(false);
+    });
+
+    it('allows one that meshes with an owned gear just inside the zone', () => {
+      world.placeGear(makeGear('anchor', PLAYER_ZONE_MAX_X, 700, 10, 'player'));
+      expect(world.canPlace(PLAYER_ZONE_MAX_X + R * 2, 700, 10, 'player')).toBe(true);
+    });
+
+    it('lets a chain creep further with each link', () => {
+      let x = PLAYER_ZONE_MAX_X;
+      world.placeGear(makeGear('a0', x, 700, 10, 'player'));
+      for (let i = 1; i <= 5; i++) {
+        x += R * 2;
+        expect(world.canPlace(x, 700, 10, 'player')).toBe(true);
+        world.placeGear(makeGear(`a${i}`, x, 700, 10, 'player'));
+      }
+      // Genuinely out in no-man's-land by now.
+      expect(x).toBeGreaterThan(PLAYER_ZONE_MAX_X + R * 8);
+    });
+
+    it('does not let you attach to the ENEMY machine', () => {
+      world.placeGear(makeGear('enemy', AI_ZONE_MIN_X, 700, 10, 'ai'));
+      expect(world.canPlace(AI_ZONE_MIN_X - R * 2, 700, 10, 'player')).toBe(false);
+    });
+
+    it('still refuses a position that geometrically overlaps', () => {
+      world.placeGear(makeGear('anchor', 500, 700, 10, 'player'));
+      expect(world.canPlace(505, 700, 10, 'player')).toBe(false);
+    });
+
+    it('near-miss contact does not count as attached', () => {
+      world.placeGear(makeGear('anchor', PLAYER_ZONE_MAX_X, 700, 10, 'player'));
+      // Well beyond meshing distance: no cable of gears, no permission.
+      expect(world.canPlace(PLAYER_ZONE_MAX_X + R * 4, 700, 10, 'player')).toBe(false);
+    });
+  });
+
+  describe('full-height arena', () => {
+    it('places at the very top and bottom -- there is no safe band left', () => {
+      expect(world.canPlace(500, 40, 10, 'player')).toBe(true);
+      expect(world.canPlace(500, 1500, 10, 'player')).toBe(true);
+    });
+  });
+
+  describe('map dimensions', () => {
+    it('leaves a wide neutral gap between the two zones', () => {
+      expect(AI_ZONE_MIN_X - PLAYER_ZONE_MAX_X).toBeGreaterThan(1500);
+    });
+
+    it('keeps the zones the width they were', () => {
+      expect(PLAYER_ZONE_MAX_X).toBe(960);
+      expect(WORLD_WIDTH - AI_ZONE_MIN_X).toBe(960);
     });
   });
 });

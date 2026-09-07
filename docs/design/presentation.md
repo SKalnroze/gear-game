@@ -22,7 +22,7 @@ Two consequences shape everything below:
 | Factory and automation games (*Factorio*, *Zachtronics* puzzles) | The core pleasure: build a contraption, watch it run without you, feel responsible for its output |
 | Mechanical watch movements | The visual vocabulary — meshing wheels, exposed mechanism, everything visible |
 | Neon / synthwave interface art | The palette and the glow treatment; luminous strokes on near-black |
-| Tower defence lane games | The lane band and base-attack structure — the part of the ancestry the design has otherwise moved away from |
+| Tower defence lane games | The base-attack structure — the part of the ancestry the design has otherwise moved away from. The lane itself is gone. |
 
 ---
 

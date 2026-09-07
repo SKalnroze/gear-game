@@ -10,14 +10,12 @@ import {
   homeBaseX,
   spawnX,
   hasReachedEnemyBase,
-  gearInLane,
   computeAttackCooldown,
   computeChargeDamage,
   TYPE_MASS_MULT,
 } from '../../src/systems/unit.utils';
 import { PLAYER_BASE_X, AI_BASE_X } from '../../src/constants/world.constants';
 import { UNIT_DEFINITIONS } from '../../src/constants/unit.constants';
-import { LANE_Y_MIN, LANE_Y_MAX } from '../../src/constants/world.constants';
 import type { UnitState } from '../../src/types/unit.types';
 import { tierPower, tierRangeFactor, tierCostFactor, TIER_TEETH } from '../../src/constants/tier.constants';
 
@@ -218,30 +216,6 @@ describe('isInFront', () => {
 });
 
 // ─── gearInLane ───────────────────────────────────────────────────────────────
-
-describe('gearInLane', () => {
-  it('y exactly at LANE_Y_MIN → true (boundary included)', () => {
-    expect(gearInLane(LANE_Y_MIN)).toBe(true);
-  });
-
-  it('y exactly at LANE_Y_MAX → true (boundary included)', () => {
-    expect(gearInLane(LANE_Y_MAX)).toBe(true);
-  });
-
-  it('y inside lane → true', () => {
-    expect(gearInLane((LANE_Y_MIN + LANE_Y_MAX) / 2)).toBe(true);
-  });
-
-  it('y above lane (y < LANE_Y_MIN) → false', () => {
-    expect(gearInLane(LANE_Y_MIN - 1)).toBe(false);
-  });
-
-  it('y below lane (y > LANE_Y_MAX) → false', () => {
-    expect(gearInLane(LANE_Y_MAX + 1)).toBe(false);
-  });
-});
-
-// ─── computeAttackCooldown ────────────────────────────────────────────────────
 
 describe('computeAttackCooldown', () => {
   it('size=12 (10-tooth gear) → 1000ms', () => {

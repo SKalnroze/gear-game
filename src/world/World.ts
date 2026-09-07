@@ -2,7 +2,7 @@ import { GearState } from '../types/gear.types';
 import { UnitState } from '../types/unit.types';
 import { gearRadius, GEAR_MESH_TOLERANCE } from '../constants/gear.constants';
 import { PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X } from '../constants/world.constants';
-import { distance } from '../utils/MathUtils';
+import { distance, gearsAreMeshing } from '../utils/MathUtils';
 
 /**
  * Pixel-based world model.
@@ -58,17 +58,11 @@ export class World {
   canPlaceExcluding(x: number, y: number, teeth: number, owner: GearState['owner'], excludeGearId: string | undefined): boolean {
     const myRadius = gearRadius(teeth);
 
-    // Zone check – owner must stay on their side.  When the player is on
-    // the right side we simply swap the restrictions.
-    if (!this.playerOnRight) {
-      if (owner === 'player' && x > PLAYER_ZONE_MAX_X) return false;
-      if (owner === 'ai' && x < AI_ZONE_MIN_X) return false;
-    } else {
-      if (owner === 'player' && x < AI_ZONE_MIN_X) return false;
-      if (owner === 'ai' && x > PLAYER_ZONE_MAX_X) return false;
-    }
+    let attached = false;
 
-    // Overlap check — reject only true geometric overlap, not meshing contact
+    // Overlap check — reject only true geometric overlap, not meshing contact.
+    // The same pass answers whether this position meshes with one of the
+    // owner's existing gears, which is what lets a machine extend past its zone.
     for (const [id, existing] of this.gears) {
       if (id === excludeGearId) continue;
       const exRadius = gearRadius(existing.teeth);
@@ -76,9 +70,30 @@ export class World {
       if (d < (myRadius + exRadius) - GEAR_MESH_TOLERANCE) {
         return false;
       }
+      if (!attached && existing.owner === owner
+          && gearsAreMeshing(x, y, myRadius, existing.x, existing.y, exRadius, GEAR_MESH_TOLERANCE)) {
+        attached = true;
+      }
     }
 
+    // Zone check — the home zone is only where you may place FREELY.
+    //
+    // A gear that meshes with one of your own is legal anywhere, so a machine
+    // can be physically extended across no-man's-land one gear at a time. That
+    // is deliberate: a gear train reaching for the enemy base is an expensive,
+    // fragile strategy, attackable at every link, and it is the most literal
+    // possible expression of a game about building a mechanism. The zone stops
+    // you teleporting gears to the far side; it does not stop you building
+    // there.
+    if (!attached && !this.inHomeZone(x, owner)) return false;
+
     return true;
+  }
+
+  /** Whether x is inside this owner's free-placement zone. */
+  private inHomeZone(x: number, owner: GearState['owner']): boolean {
+    const ownerOnRight = this.playerOnRight ? owner === 'player' : owner === 'ai';
+    return ownerOnRight ? x >= AI_ZONE_MIN_X : x <= PLAYER_ZONE_MAX_X;
   }
 
   placeGear(gear: GearState): void {

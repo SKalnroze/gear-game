@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
 import { UnitState, UnitType } from '../types/unit.types';
-import { WORLD_WIDTH, LANE_Y_MIN, LANE_Y_MAX } from '../constants/world.constants';
+import { WORLD_WIDTH, PLAY_Y_MIN, PLAY_Y_MAX } from '../constants/world.constants';
 
 /**
  * Real rigidbody movement and collision for units, via Matter.js.
@@ -148,7 +148,7 @@ export class UnitPhysicsWorld {
       if (!body) continue;
 
       const x = Math.max(0, Math.min(WORLD_WIDTH, body.position.x));
-      const y = Math.max(LANE_Y_MIN, Math.min(LANE_Y_MAX, body.position.y));
+      const y = Math.max(PLAY_Y_MIN, Math.min(PLAY_Y_MAX, body.position.y));
       if (x !== body.position.x || y !== body.position.y) {
         Matter.Body.setPosition(body, { x, y });
       }

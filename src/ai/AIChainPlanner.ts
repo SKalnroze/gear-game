@@ -8,11 +8,9 @@ import { gearRadius, motorOutput, GEAR_MESH_TOLERANCE, DEFAULT_TEETH } from '../
 import { AMPLIFIER_CHAIN_MULTIPLIER, gearPlacementCost as placementCost } from '../constants/balance.constants';
 import { UNIT_DEFINITIONS } from '../constants/unit.constants';
 import { UnitType } from '../types/unit.types';
-import { LANE_Y_MIN, LANE_Y_MAX } from '../constants/world.constants';
 import { weightedRandomPick, AI_BIAS_STRENGTH } from './ai.utils';
 import { TIER_TEETH, tierForTeeth } from '../constants/tier.constants';
 
-const LANE_CENTER_Y = (LANE_Y_MIN + LANE_Y_MAX) / 2;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -633,11 +631,16 @@ export class AIChainPlanner {
       score += Math.max(0, frontDelta) * 0.05;
     }
 
-    // Lane proximity — role-based
-    const inLane = y >= LANE_Y_MIN && y <= LANE_Y_MAX;
+    // Role-based positioning.
+    //
+    // There is no lane any more, so there is no such thing as off-lane safe
+    // ground -- the old scoring here spent a lot of effort pushing economy
+    // chains into the top and bottom thirds precisely because units could not
+    // reach them there. Now everything is reachable, and position is only about
+    // what a chain is FOR: defense wants to stand between the enemy and the
+    // base, economy wants to be far from the fighting, combat wants to be near
+    // where its units will spawn.
     if (plan.role === 'defense') {
-      score += inLane ? 12 : -10;   // strongly prefer in-lane
-
       // Directional bias: armored/spiked/turrets toward enemy; motors toward back.
       // towardEnemy > 0 means the candidate is closer to the enemy than the chain origin.
       const towardEnemy = owner === 'ai'
@@ -650,13 +653,17 @@ export class AIChainPlanner {
       } else if (gearType === 'motor') {
         score -= towardEnemy * 0.08;  // motors prefer the back (power from behind)
       }
-      // Penalize vertical spread — defense chains should grow horizontally along lane
-      score -= Math.abs(y - LANE_CENTER_Y) * 0.06;
+      // Keep a defensive line compact around its own origin rather than
+      // smearing it across the full height, where it would stop a fraction of
+      // whatever came through.
+      score -= Math.abs(y - plan.origin.y) * 0.06;
     } else if (plan.role === 'economy') {
-      score += inLane ? -4 : 2;     // prefer off-lane (safe from units)
+      // Distance from the front is the only cover economy gears get now.
+      const backward = owner === 'ai' ? x - plan.origin.x : plan.origin.x - x;
+      score += Math.max(0, backward) * 0.04;
     } else {
-      // combat: gentle proximity bonus toward lane edge (off-lane but close)
-      score += Math.max(0, 80 - Math.abs(y - LANE_CENTER_Y)) * 0.012;
+      // Combat: stay compact so a chain reads as one machine.
+      score -= Math.abs(y - plan.origin.y) * 0.02;
     }
 
     // Compactness penalty

@@ -51,7 +51,7 @@ Derived from the two lobby slots rather than chosen from a list, so the mode is 
 
 ## The in-match HUD
 
-**Intent.** Show the state of the machine and the match without occluding the arena, and put every build action within one click. The lane band runs through the vertical middle of the screen, so the HUD lives at the very top and the very bottom.
+**Intent.** Show the state of the machine and the match without occluding the arena, and put every build action within one click. Play fills the whole arena vertically, so the HUD lives at the very top and the very bottom and keeps the middle clear.
 
 | Element | Position | Shows |
 |---|---|---|

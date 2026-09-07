@@ -14,7 +14,6 @@ import {
   CAVALRY_CHARGE_DAMAGE_DIVISOR,
 } from '../constants/balance.constants';
 import {
-  LANE_Y_MIN, LANE_Y_MAX,
   PLAYER_BASE_X, AI_BASE_X,
   PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X,
 } from '../constants/world.constants';
@@ -201,11 +200,6 @@ export function isInFront(unit: UnitState, targetX: number, playerRight: boolean
   return marchDirection(unit.owner, playerRight) > 0
     ? targetX >= unit.x
     : targetX <= unit.x;
-}
-
-/** Returns true if a gear at gearY overlaps the lane band (melee reachability). */
-export function gearInLane(gearY: number): boolean {
-  return gearY >= LANE_Y_MIN && gearY <= LANE_Y_MAX;
 }
 
 // ─── Combat formulas ──────────────────────────────────────────────────────────

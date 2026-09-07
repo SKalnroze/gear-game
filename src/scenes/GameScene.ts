@@ -29,6 +29,7 @@ import {
   motorOutput, motorTorque, spikeDamage, miningOutput,
   researcherOutput, converterOutput, healerOutput, healerRadius, turretMaxAmmo, turretRange,
 } from '../constants/gear.constants';
+import { tierForTeeth, DEFAULT_TIER } from '../constants/tier.constants';
 import {
   WORLD_WIDTH, WORLD_HEIGHT,
   EDGE_SCROLL_MARGIN, EDGE_SCROLL_SPEED,
@@ -213,6 +214,7 @@ export class GameScene extends Phaser.Scene {
     // so the camera can scroll freely when zoomed out
 
     // ─── Initialize data model ───────────────────────────────────────────
+    // Tier 1 is free; tiers 2-5 come from the Gear Precision line.
     this.playerTech = { researched: new Set(), queue: [], unlockedTeeth: [DEFAULT_TEETH] };
     this.aiTech = { researched: new Set(), queue: [], unlockedTeeth: [DEFAULT_TEETH] };
     // One time base for the whole simulation: stops on pause, scales with game speed.
@@ -350,6 +352,29 @@ export class GameScene extends Phaser.Scene {
           beamG.strokePath();
         },
         onComplete: () => beamG.destroy(),
+      });
+    });
+
+    // Mobile crossbow -- brief bolt-line flash, quicker/thinner than the cold beam
+    eventBus.on('crossbow_bolt:fired', ({ srcX, srcY, dstX, dstY }: { srcX: number; srcY: number; dstX: number; dstY: number }) => {
+      const boltG = this.add.graphics().setDepth(148);
+      const data = { alpha: 0.9 };
+      const draw = () => {
+        boltG.clear();
+        boltG.lineStyle(2, 0xccaa66, data.alpha);
+        boltG.beginPath();
+        boltG.moveTo(srcX, srcY);
+        boltG.lineTo(dstX, dstY);
+        boltG.strokePath();
+      };
+      draw();
+      this.tweens.add({
+        targets: data,
+        alpha: 0,
+        duration: 150,
+        ease: 'Cubic.easeOut',
+        onUpdate: draw,
+        onComplete: () => boltG.destroy(),
       });
     });
 
@@ -635,8 +660,8 @@ export class GameScene extends Phaser.Scene {
       // Motor sits behind the tower, i.e. further from the enemy/lane centre.
       const motorX = onRight ? towerX + meshGap : towerX - meshGap;
 
-      this.gearSystem.tryPlace('motor', DEFAULT_TEETH, motorX, laneY, owner, true);
-      this.gearSystem.tryPlace('crossbow_turret', DEFAULT_TEETH, towerX, laneY, owner, true);
+      this.gearSystem.tryPlace('motor', DEFAULT_TIER, motorX, laneY, owner, true);
+      this.gearSystem.tryPlace('crossbow_turret', DEFAULT_TIER, towerX, laneY, owner, true);
     }
   }
 
@@ -1004,13 +1029,13 @@ export class GameScene extends Phaser.Scene {
         const def = GEAR_DEFINITIONS[this.dragGearType];
         if (isPractice && this.asEnemyMode) {
           // Practice "as enemy" — free placement, no tech check
-          this.gearSystem.tryPlace(this.dragGearType, this.dragGearTeeth, snap.x, snap.y, 'ai', true);
+          this.gearSystem.tryPlace(this.dragGearType, tierForTeeth(this.dragGearTeeth), snap.x, snap.y, 'ai', true);
         } else {
           // Normal placement: pay gold, respect tech
           const cost = gearPlacementCost(this.dragGearTeeth);
           if (def && this.economySystem.canAffordGold('player', cost)) {
             const placed = this.gearSystem.tryPlace(
-              this.dragGearType, this.dragGearTeeth, snap.x, snap.y, 'player',
+              this.dragGearType, tierForTeeth(this.dragGearTeeth), snap.x, snap.y, 'player',
             );
             if (placed) {
               this.economySystem.spendGold('player', cost, false);

@@ -34,5 +34,5 @@ export interface TechState {
   inProgress?: TechNodeId;
   progressStartedAt?: number;
   queue: TechNodeId[];
-  unlockedTeeth: number[];  // teeth counts available to player (starts as [10])
+  unlockedTeeth: number[];  // tier tooth counts available (starts as [TIER_TEETH[1]])
 }

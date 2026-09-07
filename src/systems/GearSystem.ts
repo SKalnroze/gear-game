@@ -1,4 +1,5 @@
-import { GearState, GearType } from '../types/gear.types';
+import { GearState, GearType, GearTier } from '../types/gear.types';
+import { TIER_TEETH } from '../constants/tier.constants';
 import { World } from '../world/World';
 import { GearMeshGraph } from '../world/GearMeshGraph';
 import { EventBus } from './EventBus';
@@ -122,7 +123,7 @@ export class GearSystem {
    */
   tryPlace(
     type: GearType,
-    teeth: number,
+    tier: GearTier,
     x: number,
     y: number,
     owner: 'player' | 'ai',
@@ -131,12 +132,17 @@ export class GearSystem {
     const def = GEAR_DEFINITIONS[type];
     if (!def) return null;
     if (!ignoreTechCheck && !this.isUnlocked(type, owner)) return null;
+
+    // Tier is the authored size; teeth are derived from it and kept on state
+    // only because geometry (radius, meshing, spatial grid) still reads them.
+    const teeth = TIER_TEETH[tier];
     if (!this.world.canPlace(x, y, teeth, owner)) return null;
 
     const maxHp = gearMaxHp(teeth, type);
     const gear: GearState = {
       id: nextGearId(),
       type,
+      tier,
       teeth,
       x,
       y,

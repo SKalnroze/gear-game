@@ -1,41 +1,81 @@
 import Matter from 'matter-js';
-import { GearDefinition, GearType } from '../types/gear.types';
+import { GearDefinition, GearType, GearTier } from '../types/gear.types';
+import {
+  TIER_TEETH, tierPower, tierRangeFactor, tierForTeeth, DEFAULT_TIER, MAX_TIER,
+} from './tier.constants';
 import {
   UNIT_SIZE_TEETH_MULT, CROSSBOW_RANGE_MULT, ARTILLERY_RANGE_MULT,
   CROSSBOW_TURRET_RANGE_FRACTION, ARTILLERY_TURRET_RANGE_FRACTION,
 } from './balance.constants';
 
-// ─── Teeth-based sizing ───────────────────────────────────────────────────────
+// ─── Tier-based sizing ───────────────────────────────────────────────────────
+//
+// Every "how strong is this gear" number below is `BASE × tierPower(tier)`,
+// where BASE is the value the old formula produced at DEFAULT_TEETH (10). That
+// keeps the opening game feeling exactly as it did while making each tier step
+// a clean ×1.5 across the board. The old file had six independent `teeth × k`
+// formulas that were free to drift apart from one another; there is now one
+// curve and six base constants.
+//
+// The functions still take `teeth` so the call sites did not all have to change
+// at once. They resolve it to a tier immediately. Once `teeth` leaves GearState
+// these signatures take a GearTier directly.
 
 /** Radius = teeth × GEAR_MODULE */
 export const GEAR_MODULE = 2.5;
-export const DEFAULT_TEETH = 10;
-export const MIN_TEETH = 5;
-export const MAX_TEETH = 60;
+export const DEFAULT_TEETH = TIER_TEETH[DEFAULT_TIER];
+/** Teeth of the largest gear that can exist -- used to size spatial-grid cells. */
+export const MAX_GEAR_TEETH = TIER_TEETH[MAX_TIER];
 
 /** Compute gear radius from teeth count */
 export function gearRadius(teeth: number): number {
   return teeth * GEAR_MODULE;
 }
 
-/** Motor output per full rotation -- feeds the chain's capacitor burst yield, not a stored resource. */
-export function motorOutput(teeth: number): number {
-  return teeth * 0.4;
+/** Radius for a tier, the preferred form. */
+export function tierRadius(tier: GearTier): number {
+  return gearRadius(TIER_TEETH[tier]);
 }
 
-/** Motor drive torque */
+// Base values, all calibrated to what the old per-teeth formulas produced at
+// 10 teeth -- the size a match used to open on.
+const MOTOR_OUTPUT_BASE = 4;        // was teeth * 0.4
+export const MOTOR_TORQUE_BASE = 80; // was teeth² * 0.8
+const SPIKE_DAMAGE_BASE = 5;        // was teeth * 0.5
+const GEAR_MAX_HP_BASE = 50;        // was round(teeth² * 0.5)
+const MINING_OUTPUT_BASE = 3;       // was teeth * 0.3
+const RESEARCHER_OUTPUT_BASE = 1500; // ms of research per rotation
+const CONVERTER_OUTPUT_BASE = 2.5;  // was teeth * 0.25
+const HEALER_OUTPUT_BASE = 15;      // was teeth * 1.5
+const TURRET_AMMO_BASE = 5;         // was max(3, round(teeth * 0.5))
+const MINELAYER_ZONE_BASE = 180;
+const MINE_RADIUS_BASE = 30;
+const MINE_DAMAGE_BASE = 30;
+
+/** Motor output per full rotation -- feeds the chain's yield, not a stored resource. */
+export function motorOutput(teeth: number): number {
+  return MOTOR_OUTPUT_BASE * tierPower(tierForTeeth(teeth));
+}
+
+/**
+ * Motor drive torque.
+ *
+ * Scales ×1.5 per tier -- exactly matching gearInertia below, which is what
+ * makes a lone motor of any tier settle at the same omega. Size no longer buys
+ * or costs speed; it buys strength.
+ */
 export function motorTorque(teeth: number): number {
-  return teeth * teeth * 0.8;
+  return MOTOR_TORQUE_BASE * tierPower(tierForTeeth(teeth));
 }
 
 /** Spiked gear damage per second coefficient (multiplied by angular velocity) */
 export function spikeDamage(teeth: number): number {
-  return teeth * 0.5;
+  return SPIKE_DAMAGE_BASE * tierPower(tierForTeeth(teeth));
 }
 
 /** Universal max HP for all gears; armored type gets 3×, spiked gets 0.7× */
 export function gearMaxHp(teeth: number, type: GearType): number {
-  const base = Math.round(teeth * teeth * 0.5);
+  const base = Math.round(GEAR_MAX_HP_BASE * tierPower(tierForTeeth(teeth)));
   if (type === 'armored') return base * 3;
   if (type === 'spiked') return Math.round(base * 0.7);
   return base;
@@ -51,67 +91,76 @@ export function crackLevelFor(hp: number, maxHp: number): number {
   return Math.max(0, Math.min(4, Math.floor(ratio * 5)));
 }
 
-
 /** Mining gear output per full rotation */
 export function miningOutput(teeth: number): number {
-  return teeth * 0.3;
+  return MINING_OUTPUT_BASE * tierPower(tierForTeeth(teeth));
 }
 
 /** Researcher gear: research progress added per full rotation (ms of research time) */
 export function researcherOutput(teeth: number): number {
-  return teeth * 150; // 10-tooth gear: 1500ms per rotation
+  return RESEARCHER_OUTPUT_BASE * tierPower(tierForTeeth(teeth));
 }
 
 /** Converter gear: resources converted per full rotation */
 export function converterOutput(teeth: number): number {
-  return teeth * 0.25;
+  return CONVERTER_OUTPUT_BASE * tierPower(tierForTeeth(teeth));
 }
 
 /** Healer gear: HP healed per full rotation per target */
 export function healerOutput(teeth: number): number {
-  return teeth * 1.5;
+  return HEALER_OUTPUT_BASE * tierPower(tierForTeeth(teeth));
 }
 
-/** Healer gear: aura radius */
+/**
+ * Healer gear: aura radius.
+ * Geometric, not a strength stat -- it stays tied to the gear's actual drawn
+ * size so the aura keeps visually matching the thing casting it.
+ */
 export function healerRadius(teeth: number): number {
   return gearRadius(teeth) * 3;
 }
 
 /** Turret: max ammo capacity */
 export function turretMaxAmmo(teeth: number): number {
-  return Math.max(3, Math.round(teeth * 0.5));
+  return Math.max(3, Math.round(TURRET_AMMO_BASE * tierPower(tierForTeeth(teeth))));
 }
 
 /**
  * Turret attack range -- always a fraction of its mobile counterpart's own
- * attack range (see unit.utils.ts computeScaledStats), never an independent
+ * attack range (see unit.utils.ts computeTierStats), never an independent
  * number. Used to be a flat base (400/250) scaled by sqrt(teeth/10) that
  * hugely outranged the mobile Crossbow/Artillery it's meant to lose to --
  * 250 vs 48, 400 vs 120 at 10 teeth -- backwards from "defense is cheap but
  * falls to ranged pressure." Deriving it this way makes that inversion
  * structurally impossible: whatever the mobile unit's range becomes, the
  * turret's stays a fixed fraction under it.
+ *
+ * Note the tier factor is tierRangeFactor, not tierPower -- range is the
+ * ladder's one deliberate exception, and the mobile units use the same
+ * shallower curve, so the fraction holds at every tier.
  */
 export function turretRange(teeth: number, type: 'crossbow_turret' | 'artillery_turret'): number {
-  const size = Math.max(4, Math.round(teeth * UNIT_SIZE_TEETH_MULT));
-  return type === 'artillery_turret'
-    ? Math.round(size * ARTILLERY_RANGE_MULT * ARTILLERY_TURRET_RANGE_FRACTION)
-    : Math.round(size * CROSSBOW_RANGE_MULT * CROSSBOW_TURRET_RANGE_FRACTION);
+  const tier = tierForTeeth(teeth);
+  const baseSize = Math.max(4, Math.round(TIER_TEETH[1] * UNIT_SIZE_TEETH_MULT));
+  const reach = type === 'artillery_turret'
+    ? baseSize * ARTILLERY_RANGE_MULT * ARTILLERY_TURRET_RANGE_FRACTION
+    : baseSize * CROSSBOW_RANGE_MULT * CROSSBOW_TURRET_RANGE_FRACTION;
+  return Math.round(reach * tierRangeFactor(tier));
 }
 
-/** How far ahead of a minelayer its firing zone reaches, same sqrt-scaling idiom as turretRange. */
+/** How far ahead of a minelayer its firing zone reaches -- a range, so the shallow curve. */
 export function minelayerFireZoneRange(teeth: number): number {
-  return Math.round(180 * Math.sqrt(teeth / 10));
+  return Math.round(MINELAYER_ZONE_BASE * tierRangeFactor(tierForTeeth(teeth)));
 }
 
-/** Mine AoE explosion radius on detonation -- scales with the firing gear's size. */
+/** Mine AoE explosion radius on detonation -- a range, so the shallow curve. */
 export function mineRadius(teeth: number): number {
-  return Math.max(20, Math.round(teeth * 3));
+  return Math.max(20, Math.round(MINE_RADIUS_BASE * tierRangeFactor(tierForTeeth(teeth))));
 }
 
 /** Mine detonation damage -- high, deliberately above the artillery turret's per-hit damage. */
 export function mineDamage(teeth: number): number {
-  return Math.max(15, Math.round(teeth * 3));
+  return Math.max(15, Math.round(MINE_DAMAGE_BASE * tierPower(tierForTeeth(teeth))));
 }
 
 // ─── Physics constants ───────────────────────────────────────────────────────
@@ -119,24 +168,18 @@ export function mineDamage(teeth: number): number {
 export const GEAR_MESH_TOLERANCE = 4;  // pixels
 
 /**
- * Density fed to Matter.js to compute each gear's real rotational inertia
- * from its actual geometry (a solid disk of radius `gearRadius(teeth)`),
- * instead of the old hand-rolled `π·r²·density` "inertia" figure that was
- * really just mass reused as if it were rotational inertia. Real inertia
- * scales with r⁴ (mass ∝ r², inertia ∝ mass·r²), not r² -- which is what
- * makes tooth count cost genuine chain speed now: a reflected-inertia term
- * that used to cancel exactly against the mesh-ratio weighting (the
- * documented "Gear Precision has no trade-off" divergence) no longer does,
- * because real inertia and the ratio² weighting no longer scale the same
- * way. Calibrated so a lone 10-tooth motor's equilibrium omega lands where
- * it always did (~4.07 rad/s) -- the pacing is preserved, only the *shape*
- * of how size costs speed changed, from "not at all" to "quadratically."
+ * Density fed to Matter.js to compute a body's real mass and rotational
+ * inertia from its geometry (a solid disk of radius `gearRadius(teeth)`).
+ *
+ * Retained for UnitPhysicsWorld, which simulates units as genuine Matter
+ * bodies. It is deliberately NO LONGER on the gear rotation path -- see
+ * `gearInertia` below.
  */
 export const INERTIA_DENSITY = 0.000008158;
 
 const gearInertiaCache = new Map<number, { mass: number; inertia: number }>();
 
-/** Real mass and rotational inertia for a `teeth`-sized gear, from Matter.js's own solid-disk physics. */
+/** Real mass and rotational inertia for a `teeth`-sized disk, from Matter.js's own physics. */
 export function gearPhysics(teeth: number): { mass: number; inertia: number } {
   let cached = gearInertiaCache.get(teeth);
   if (!cached) {
@@ -147,9 +190,30 @@ export function gearPhysics(teeth: number): { mass: number; inertia: number } {
   return cached;
 }
 
-/** Real rotational inertia for a `teeth`-sized gear -- see `gearPhysics`. */
+/**
+ * Rotational inertia of a gear, from the TIER LADDER rather than from geometry.
+ *
+ * This function used to return `gearPhysics(teeth).inertia`, i.e. a real solid
+ * disk, whose inertia scales with r⁴ (mass ∝ r², inertia ∝ mass·r²). Motor
+ * torque only scales with r². Since a chain settles at ω = torque / inertia,
+ * that made every large gear catastrophically slow: measured on the real
+ * bodies, a 40-tooth motor span at 0.0159 rad/s against an 8-tooth motor's
+ * 10.08 -- **634× slower**. Size was not a trade-off, it was a punishment, and
+ * the optimal line was to avoid the game's central mechanic entirely.
+ *
+ * Inertia now steps ×1.5 per tier, exactly matching motorTorque, so a lone
+ * motor of any tier settles at the same ~4.07 rad/s. BASE_INERTIA is the old
+ * 10-tooth disk inertia, so tier 1 reproduces the pacing the game already had.
+ *
+ * The trade this replaces r⁴ with: a bigger gear is strictly stronger, costs
+ * more gold, and -- once the power grid lands -- draws far more electricity.
+ * Scarcity moves from physics to the grid, where the player can see and manage
+ * it. Physical realism was buying an unreadable, unwinnable trade-off.
+ */
+export const BASE_INERTIA = 19.6366;
+
 export function gearInertia(teeth: number): number {
-  return gearPhysics(teeth).inertia;
+  return BASE_INERTIA * tierPower(tierForTeeth(teeth));
 }
 
 // ─── Gear definitions (per-type, properties scale with teeth) ────────────────

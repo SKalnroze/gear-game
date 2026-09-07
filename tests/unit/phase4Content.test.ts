@@ -44,7 +44,7 @@ describe('new Phase 4 content sanity', () => {
     unitSystem.setEconomySystem(economySystem);
     const projectileSystem = new ProjectileSystem();
 
-    const gear = gearSystem.tryPlace('motor', 10, 500, 700, 'player', true)!;
+    const gear = gearSystem.tryPlace('motor', 1, 500, 700, 'player', true)!;
     expect(gear).toBeTruthy();
 
     unitSystem.spawnSingleFromGear('ai', 'slime', 10);
@@ -94,8 +94,8 @@ describe('new Phase 4 content sanity', () => {
     const gearSystem = new GearSystem(world, meshGraph, bus, playerTech, aiTech, clock);
     const rotationPhysics = new RotationPhysicsSystem(world, meshGraph, bus, clock);
 
-    const relief = gearSystem.tryPlace('relief_valve', 10, 500, 700, 'player', true)!;
-    const plain = gearSystem.tryPlace('spiked', 10, 600, 700, 'player', true)!;
+    const relief = gearSystem.tryPlace('relief_valve', 1, 500, 700, 'player', true)!;
+    const plain = gearSystem.tryPlace('spiked', 1, 600, 700, 'player', true)!;
     relief.isJammed = true;
     relief.jamStress = 10;
     plain.isJammed = true;

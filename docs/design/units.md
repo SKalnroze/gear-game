@@ -22,16 +22,16 @@ Base values, calibrated at 10 teeth. A spawner's tooth count scales everything.
 | Unit | HP | Speed | Combat dmg | Base dmg | Cost | Range @10t |
 |---|---|---|---|---|---|---|
 | Infantry | 30 | 60 | 5 | 3 | 5 gold | 36 |
-| Artillery | 20 | 40 | 8 | 5 | 8 gold | 120 |
+| Artillery | 20 | 40 | 8 | 5 | 8 gold | 100 |
 | Cavalry | 40 | 90 | 12 | 8 | 12 gold | 36 |
 | Mixed | 35 | 65 | 8 | 10 | 10 gold | 36 |
 | Elite Infantry | 60 | 60 | 10 | 6 | 20 gold | 36 |
-| Elite Artillery | 40 | 40 | 16 | 10 | 25 gold | 120 |
+| Elite Artillery | 40 | 40 | 16 | 10 | 25 gold | 100 |
 | Elite Cavalry | 80 | 90 | 24 | 16 | 30 gold | 36 |
 | Iron Guard | 80 | 35 | 10 | 12 | 8 iron | 36 |
-| Crystal Sentinel | 50 | 55 | 6 | 8 | 6 crystal | 72 |
+| Crystal Sentinel | 50 | 55 | 6 | 8 | 6 crystal | 60 |
 | Aether Phantom | 25 | 100 | 4 | 6 | 5 aether | 36 |
-| Crossbow | 20 | 60 | 5 | 3 | 6 gold | 48 |
+| Crossbow | 20 | 60 | 5 | 3 | 6 gold | 40 |
 | Sentry Unit | 30 | 70 | 2 | 2 | 10 gold | 36 |
 | Slime | 10 | 40 | 0 | 0 | 2 gold | 36 |
 | Sapper | 45 | 35 | 4 | 4 | 9 gold | 36 |
@@ -260,6 +260,16 @@ This is why chain count no longer plateaus: the old model capped total chains at
 
 **Difficulty is an actions-per-minute budget**, not a hidden coin-flip. Every AI-executed action (place a gear, start research, sell, reposition, use an ability) costs from a per-side budget that refills continuously at a fixed rate — easy refills slowest, hard fastest — with a small burst allowance so the AI can spend a run of banked actions at once, the way a person queues up several moves and executes them in a burst. The AI evaluates the board often; what differs by difficulty is purely how much it can *do* about what it sees, which is the same kind of constraint a human's hands are under, not a difference in whether it "notices" a move exists. The old easy-mode behavior — silently discarding over half its decision ticks — was a fake: it looked like incompetence but wasn't a constraint the AI was actually reasoning under. Real placement mistakes exist instead: at low difficulty, the placement search sometimes settles for a valid-but-flawed slot, and occasionally accepts a rotation conflict it would otherwise reject — an actual mis-mesh, seeded and consequential (it can jam), not merely a worse-looking gear. Hard never does either.
 
+### Research priority and gear size: weighted, not deterministic
+
+Two decisions used to be either fully greedy (medium/hard research: always the single highest-scored node) or silently capped regardless of research (gear size: hard-coded to 10/15/20/30 teeth no matter what `gear_precision_1`–`5` had actually unlocked, so a fully-researched hard AI still never touched a 5-tooth or a 40+-tooth gear). Both are now a weighted random pick: every currently-available option — every researchable node, every unlocked tooth size — gets a baseline weight of 1, so nothing is ever fully excluded, plus a bias toward whichever option the AI actually needs more. How hard that bias leans is the difficulty axis (`AI_BIAS_STRENGTH`): easy barely favors its top pick over the rest, hard leans on it heavily without ever making the outcome certain.
+
+For research, "needs more" is the existing ROI/opponent-adaptive score (`getResearchScore`) reused as the bias signal instead of a sort key. Gear-precision research (5/15/20/25/30/35/40/45/50/55/60 teeth) is scored higher once the foundation techs are up, since it stops competing with early economy/combat unlocks for priority.
+
+For gear size, "needs more" depends on the gear's role, because bigger is not simply better everywhere: a spawner produces exactly one unit per rotation regardless of its own size, but a smaller gear meshed against the rest of the chain spins faster (gear-ratio physics — see [Balance](design/balance.md)), so a small spawner has a higher spawn rate and is biased toward the small end of what's unlocked. Every other gear type (motor, miner, converter, researcher, healer, spiked, armored, turret) produces output that scales with its own tooth count while placement cost only grows off a small flat base, so a bigger one is strictly better value once affordable, and is biased toward the large end. This is why a hard AI now visibly builds tiny fast spawners alongside oversized motors and miners once the relevant tech is up, instead of settling on the same 10-20 tooth gears all game.
+
+Small spawners get a second, independent reason to lean smaller still: combat here is strictly 1v1 pairwise (`CombatSystem`), no cleave or splash exists anywhere, and Crossbow specifically fires at 1.8× its normal attack cooldown for the same per-hit damage as Infantry (`UnitSystem.updateCrossbow`). Against a slow-cadence or high-overkill single-target attacker — Cavalry, Crossbow, Artillery, Iron Guard — a wide swarm of cheap units both outnumbers what it can kill per attack window and eats its per-hit overkill for free, the same logic that already motivates the Slime spawner's design ("cheap, spammable... pile up and clog the lane"). When the AI's 30-second read on the opponent's dominant unit says they lean on one of those four (`opponentFavorsSwarmCounter`), spawner-size bias toward the small end is pushed harder still (`AIPlacementContext.preferSwarmSpawners`).
+
 ### Zoning
 
 Chain placement follows the same lane geometry a human should: **defense chains sit in the lane band**, where marching units actually walk, built as a barrier the enemy must fight through rather than route around; **economy and spawner-heavy combat chains sit off-lane**, in the back of the zone, out of marching units' reach. This was already true before this pass for the (fixed, capped) defense/economy roles; what's new is that it now scales with the posture's role weights instead of stopping at one or two chains of each kind regardless of how large the economy has grown.
@@ -277,7 +287,9 @@ Chosen per slot in the lobby, and still meaningfully different — but now expre
 
 **Threat assessment** is percentage-based on base HP and feeds the posture directly (a critical threat pulls weight toward defense/offense and away from economy) as well as shifting research priority — under pressure the AI reprices fortification above everything else. **Weathering a push keeps paying off after the threat passes**: the controller remembers the last time threat was `critical`/`danger` (`recentlyThreatened`, a 25s window) and, once threat eases back to `normal`/`winning`, keeps leaning the posture toward economy (and away from offense) for that window rather than snapping straight back to the personality baseline the instant the pressure is gone — the push bought time, and that time is spent catching the economy up.
 
-**Counter-picking.** It keeps a rolling 45-second window of the units it has seen you spawn and, if one type dominates, researches and builds the spawner that counters it. The counter matrix applies to every unit's attacks, not just melee, so the counter it picks actually counters what it saw.
+**Counter-picking.** It keeps a rolling 45-second window of the units it has seen you spawn and, if one type dominates, researches and builds the spawner that counters it: Cavalry answers Infantry, Artillery answers Cavalry, Crossbow answers Aether Phantom, and Skirmish Diver answers Artillery, Crystal Sentinel or Crossbow — whichever the opponent leans on, since Skirmish Diver beats all three of them. The counter matrix applies to every unit's attacks, not just melee, so the counter it picks actually counters what it saw.
+
+**Roster diversification.** The counter-pick governs a chain's *primary* spawner. Beyond that, a hard-difficulty combat chain still in its `expand` phase works through the rest of the 14-spawner roster as tech allows — Iron Guard, Crystal Sentinel, Aether Phantom, Slime, Sapper, Raider, Sentry, Field Medic, Saboteur — instead of settling permanently on whichever spawner it counter-picked first. It will also deliberately add a converter to an established core-spawner (Infantry/Artillery/Cavalry) chain once all three core spawner techs are researched, flipping that spawner's output to the generalist Mixed unit — reading "a converter is a deliberate placement" the same way a human player would, rather than only reaching Mixed by accident.
 
 `AIEvaluator.ts`, `AIPlanner.ts` and the `AI_STRATEGIES` table described an earlier decision model, superseded by `AIChainPlanner`; confirmed zero references anywhere in `src/` or `tests/` and deleted.
 

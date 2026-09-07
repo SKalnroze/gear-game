@@ -2,14 +2,14 @@ import { GearState } from '../types/gear.types';
 import { UnitState } from '../types/unit.types';
 import { World } from '../world/World';
 import { EventBus } from './EventBus';
-import { gearRadius, spikeDamage, MAX_TEETH, GEAR_MODULE, crackLevelFor } from '../constants/gear.constants';
+import { gearRadius, spikeDamage, MAX_GEAR_TEETH, GEAR_MODULE, crackLevelFor } from '../constants/gear.constants';
 import { ARMORED_DAMAGE_RATE, UNIT_COLLISION_RADIUS, UNIT_GEAR_DAMAGE_RATE } from '../constants/balance.constants';
 import { UNIT_GEAR_DAMAGE_MULT } from '../constants/unit.constants';
 import { distance } from '../utils/MathUtils';
 import { SpatialGrid } from '../utils/SpatialGrid';
 
 /** Cell size = 2× max gear radius so a unit query covers at most 4 cells */
-const GRID_CELL_SIZE = MAX_TEETH * GEAR_MODULE * 2;
+const GRID_CELL_SIZE = MAX_GEAR_TEETH * GEAR_MODULE * 2;
 
 /**
  * Handles all interactions between gears and units in the shared lane band.
@@ -68,7 +68,7 @@ export class GearUnitInteractionSystem {
 
       // Query only gears that could possibly be in contact range
       const unitRadius = unit.size > 0 ? unit.size : UNIT_COLLISION_RADIUS;
-      const queryRadius = unitRadius + MAX_TEETH * GEAR_MODULE;
+      const queryRadius = unitRadius + MAX_GEAR_TEETH * GEAR_MODULE;
       const candidates = this.gearGrid.query(unit.x, unit.y, queryRadius);
 
       for (const gear of candidates) {
@@ -144,7 +144,7 @@ export class GearUnitInteractionSystem {
       if (unit.reachedBase) continue;
 
       const unitRadius = unit.size > 0 ? unit.size : UNIT_COLLISION_RADIUS;
-      const pushQueryRadius = unitRadius + MAX_TEETH * GEAR_MODULE + 10;
+      const pushQueryRadius = unitRadius + MAX_GEAR_TEETH * GEAR_MODULE + 10;
       for (const gear of this.gearGrid.query(unit.x, unit.y, pushQueryRadius)) {
         if (gear.type !== 'armored') continue;
         if (gear.isBurntOut) continue;

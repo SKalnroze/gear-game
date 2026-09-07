@@ -10,12 +10,13 @@ import { SettingsScene } from './scenes/SettingsScene';
 import { UIShowcaseScene } from './scenes/UIShowcaseScene';
 import { AboutScene } from './scenes/AboutScene';
 import { AudioShowcaseScene } from './scenes/AudioShowcaseScene';
+import { TechLayoutEditorScene } from './scenes/TechLayoutEditorScene';
 
 export const GameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: document.body,
   backgroundColor: '#05050f',
-  scene: [BootScene, MenuScene, LobbyScene, GameScene, UIScene, GameOverScene, SettingsScene, UIShowcaseScene, AboutScene, AudioShowcaseScene],
+  scene: [BootScene, MenuScene, LobbyScene, GameScene, UIScene, GameOverScene, SettingsScene, UIShowcaseScene, AboutScene, AudioShowcaseScene, TechLayoutEditorScene],
   plugins: {
     scene: [
       { key: 'rexUI', plugin: UIPlugin, mapping: 'rexUI' },

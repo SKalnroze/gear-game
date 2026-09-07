@@ -81,6 +81,14 @@ export class GameSoundManager {
       }
     });
 
+    bus.on('crossbow_bolt:fired', () => {
+      if (!this._ok) return;
+      const now = Date.now();
+      if (now - this._lastCrystal < 120) return;
+      this._lastCrystal = now;
+      soundManager.playCrystalShardFire();
+    });
+
     bus.on('projectile:hit', ({ aoeRadius }) => {
       if (!this._ok) return;
       if (aoeRadius > 0) {

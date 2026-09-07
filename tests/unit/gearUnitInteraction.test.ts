@@ -4,6 +4,7 @@ import { World } from '../../src/world/World';
 import type { EventBus } from '../../src/systems/EventBus';
 import type { GearState } from '../../src/types/gear.types';
 import type { UnitState } from '../../src/types/unit.types';
+import { tierForTeeth, TIER_TEETH } from '../../src/constants/tier.constants';
 
 /**
  * The grid only rebuilds once per update() call. Two units hitting the same
@@ -41,7 +42,7 @@ function makeBus(world: World) {
 
 function makeGear(id: string, hp: number): GearState {
   return {
-    id, type: 'motor', teeth: 10, x: 0, y: 0, owner: 'ai',
+    id, type: 'motor', tier: 1, teeth: TIER_TEETH[1], x: 0, y: 0, owner: 'ai',
     angularVelocity: 0, currentAngle: 0, accumulatedAngle: 0,
     frictionLoad: 0, torqueOutput: 0, isSpinning: false, isBurntOut: false,
     hp, maxHp: 100, isJammed: false, crackLevel: 0, jamStress: 0,

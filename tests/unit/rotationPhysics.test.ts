@@ -7,6 +7,7 @@ import type { EconomySystem } from '../../src/systems/EconomySystem';
 import { GameClock } from '../../src/systems/GameClock';
 import type { GearState, GearType } from '../../src/types/gear.types';
 import { gearRadius, motorTorque, motorOutput, gearInertia } from '../../src/constants/gear.constants';
+import { tierForTeeth, TIER_TEETH } from '../../src/constants/tier.constants';
 import {
   AMPLIFIER_CHAIN_MULTIPLIER,
   OVERCLOCK_SPEED_BONUS,
@@ -18,6 +19,9 @@ import {
 } from '../../src/constants/balance.constants';
 
 const TWO_PI = Math.PI * 2;
+
+const T1 = TIER_TEETH[1];
+const T3 = TIER_TEETH[3];
 
 interface Emitted { event: string; payload: any }
 
@@ -54,6 +58,7 @@ function makeGear(
   return {
     id,
     type,
+    tier: tierForTeeth(teeth),
     teeth,
     x,
     y,
@@ -155,24 +160,30 @@ describe('RotationPhysicsSystem', () => {
     });
 
     it('omega scales by the inverse tooth ratio', () => {
-      // A 10-tooth motor drives a 20-tooth gear at half the speed, reversed.
+      // A tier-1 motor (8t) drives a tier-3 gear (18t) proportionally slower,
+      // reversed.
       const { world } = rig([
-        makeGear('m', 0, 0, 10, 'motor'),
-        makeGear('b', 75, 0, 20, 'armored'),
+        makeGear('m', 0, 0, T1, 'motor'),
+        makeGear('b', gearRadius(T1) + gearRadius(T3), 0, T3, 'armored'),
       ]);
       const m = world.getGear('m')!.angularVelocity;
       const b = world.getGear('b')!.angularVelocity;
-      expect(b).toBeCloseTo(-(m * 10 / 20), 6);
+      expect(b).toBeCloseTo(-(m * T1 / T3), 6);
 
-      // Chain inertia is ratio-weighted: I_m + I_b * (10/20)^2. Real inertia
-      // (Matter.js, ∝ teeth^4) no longer cancels against the ratio^2
-      // weighting the way the old hand-formula (∝ teeth^2) did -- a bigger
-      // follower now genuinely costs more chain speed, not the same amount
-      // regardless of its size. This is the fix for the documented
-      // "Gear Precision has no trade-off" divergence.
-      const expectedM = motorTorque(10) / (inertiaOf(10) + inertiaOf(20) * 0.25);
-      expect(expectedM).toBeCloseTo(0.8148, 3);
+      // Chain inertia is still ratio-weighted (I_m + I_b * (t_m/t_b)^2), so a
+      // bigger follower genuinely costs chain speed. What changed is the
+      // magnitude: inertia now steps 1.5x per tier instead of scaling with
+      // r^4, so the cost is a real trade-off rather than the 634x cliff that
+      // made every large gear unbuildable.
+      const ratio = T1 / T3;
+      const expectedM = motorTorque(T1) / (inertiaOf(T1) + inertiaOf(T3) * ratio * ratio);
       expect(m).toBeCloseTo(expectedM, 6);
+
+      // The follower costs something, but a lone motor is not orders of
+      // magnitude faster than a loaded one.
+      const lone = motorTorque(T1) / inertiaOf(T1);
+      expect(expectedM).toBeLessThan(lone);
+      expect(expectedM).toBeGreaterThan(lone * 0.5);
     });
 
     it('direction alternates along a three-gear run', () => {

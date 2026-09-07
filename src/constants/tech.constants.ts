@@ -1,5 +1,7 @@
 import { TechNode } from '../types/tech.types';
 
+import { TIER_TEETH } from './tier.constants';
+
 /**
  * All tech nodes.
  * Column assignments (thematic):
@@ -40,20 +42,20 @@ export const TECH_NODES: Record<string, TechNode> = {
   },
   gear_precision_1: {
     id: 'gear_precision_1', name: 'Gear Precision I',
-    description: 'Unlocks 5-tooth and 15-tooth gears.',
+    description: 'Unlocks tier-2 gears (12 teeth). Everything a tier-2 gear does is 1.5x a tier-1 one.',
     tier: 1, goldCost: 40, researchTime: 24000,
     prereqs: [],
-    effects: [{ kind: 'unlock_teeth', teeth: 5 }, { kind: 'unlock_teeth', teeth: 15 }],
+    effects: [{ kind: 'unlock_teeth', teeth: TIER_TEETH[2] }],
     column: 0,
   },
 
   // T2
   gear_precision_2: {
     id: 'gear_precision_2', name: 'Gear Precision II',
-    description: 'Unlocks 20-tooth and 25-tooth gears.',
+    description: 'Unlocks tier-3 gears (18 teeth), 2.25x the strength of tier 1.',
     tier: 2, goldCost: 80, researchTime: 36000,
     prereqs: ['gear_precision_1'],
-    effects: [{ kind: 'unlock_teeth', teeth: 20 }, { kind: 'unlock_teeth', teeth: 25 }],
+    effects: [{ kind: 'unlock_teeth', teeth: TIER_TEETH[3] }],
     column: 0,
   },
   capacitor_upgrade: {
@@ -66,10 +68,10 @@ export const TECH_NODES: Record<string, TechNode> = {
   },
   gear_precision_3: {
     id: 'gear_precision_3', name: 'Gear Precision III',
-    description: 'Unlocks 30-tooth and 35-tooth gears.',
+    description: 'Unlocks tier-4 gears (27 teeth), 3.375x the strength of tier 1.',
     tier: 2, goldCost: 120, researchTime: 45000,
     prereqs: ['gear_precision_2'],
-    effects: [{ kind: 'unlock_teeth', teeth: 30 }, { kind: 'unlock_teeth', teeth: 35 }],
+    effects: [{ kind: 'unlock_teeth', teeth: TIER_TEETH[4] }],
     column: 0,
   },
   extended_overclock: {
@@ -92,10 +94,10 @@ export const TECH_NODES: Record<string, TechNode> = {
   // T3
   gear_precision_4: {
     id: 'gear_precision_4', name: 'Gear Precision IV',
-    description: 'Unlocks 40-tooth and 45-tooth gears.',
+    description: 'Unlocks tier-5 gears (40 teeth), 5.06x the strength of tier 1 -- the top of the ladder.',
     tier: 3, goldCost: 160, researchTime: 60000,
     prereqs: ['gear_precision_3'],
-    effects: [{ kind: 'unlock_teeth', teeth: 40 }, { kind: 'unlock_teeth', teeth: 45 }],
+    effects: [{ kind: 'unlock_teeth', teeth: TIER_TEETH[5] }],
     column: 0,
   },
   super_amplifier: {
@@ -108,14 +110,17 @@ export const TECH_NODES: Record<string, TechNode> = {
   },
   gear_precision_5: {
     id: 'gear_precision_5', name: 'Gear Precision V',
-    description: 'Unlocks 50-tooth, 55-tooth, and 60-tooth gears.',
+    // DIVERGENCE: this node grants nothing. The ladder has four unlockable
+    // tiers (2-5) above the free tier 1, and Gear Precision I-IV now cover all
+    // four, leaving this fifth node with nothing left to hand out. It is kept
+    // for one phase only because the radial tech-tree layout data and its
+    // tests still reference it by id; the tree is rebuilt in phase 7 and this
+    // node is deleted there. TechSystem dedupes unlockedTeeth, so researching
+    // it is harmless -- just a waste of 200 gold.
+    description: 'PLACEHOLDER -- grants nothing. Removed when the tech tree is rebuilt.',
     tier: 3, goldCost: 200, researchTime: 75000,
     prereqs: ['gear_precision_4'],
-    effects: [
-      { kind: 'unlock_teeth', teeth: 50 },
-      { kind: 'unlock_teeth', teeth: 55 },
-      { kind: 'unlock_teeth', teeth: 60 },
-    ],
+    effects: [{ kind: 'unlock_teeth', teeth: TIER_TEETH[5] }],
     column: 0,
   },
   overclock_mastery: {

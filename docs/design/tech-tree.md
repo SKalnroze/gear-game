@@ -49,17 +49,17 @@ The **Gear Precision** line is the backbone: each node unlocks larger tooth coun
 | **Basic Amplifier**<br>`basic_amplifier` | T1 | 20 | 15s | — | `unlock_gear` (gearType=amplifier) |
 | **Basic Capacitor**<br>`basic_capacitor` | T1 | 25 | 18s | — | `unlock_gear` (gearType=capacitor) |
 | **Basic Overclock**<br>`basic_overclock` | T1 | 30 | 21s | — | `unlock_gear` (gearType=overclock) |
-| **Gear Precision I**<br>`gear_precision_1` | T1 | 40 | 24s | — | `unlock_teeth` (teeth=5)<br>`unlock_teeth` (teeth=15) |
+| **Gear Precision I**<br>`gear_precision_1` | T1 | 40 | 24s | — | `unlock_teeth` (teeth=12) |
 | **Relief Valve**<br>`unlock_relief_valve` | T2 | 50 | 30s | `gear_precision_1` | `unlock_gear` (gearType=relief_valve) |
 | **Capacitor Upgrade**<br>`capacitor_upgrade` | T2 | 60 | 36s | `basic_capacitor` | `capacitor_burst_multiplier` (value=1) |
 | **Extended Overclock**<br>`extended_overclock` | T2 | 60 | 36s | `basic_overclock` | `overclock_duration_bonus` (value=5000) |
-| **Gear Precision II**<br>`gear_precision_2` | T2 | 80 | 36s | `gear_precision_1` | `unlock_teeth` (teeth=20)<br>`unlock_teeth` (teeth=25) |
-| **Gear Precision III**<br>`gear_precision_3` | T2 | 120 | 45s | `gear_precision_2` | `unlock_teeth` (teeth=30)<br>`unlock_teeth` (teeth=35) |
+| **Gear Precision II**<br>`gear_precision_2` | T2 | 80 | 36s | `gear_precision_1` | `unlock_teeth` (teeth=18) |
+| **Gear Precision III**<br>`gear_precision_3` | T2 | 120 | 45s | `gear_precision_2` | `unlock_teeth` (teeth=27) |
 | **Combo Chain Bonus**<br>`combo_chain_bonus` | T3 | 110 | 66s | `super_amplifier` | `chain_combo_bonus` (value=0.25) |
 | **Super Amplifier**<br>`super_amplifier` | T3 | 120 | 75s | `gear_precision_3`<br>`power_efficiency_2` | `power_bonus_pct` (value=0.33) |
-| **Gear Precision IV**<br>`gear_precision_4` | T3 | 160 | 60s | `gear_precision_3` | `unlock_teeth` (teeth=40)<br>`unlock_teeth` (teeth=45) |
+| **Gear Precision IV**<br>`gear_precision_4` | T3 | 160 | 60s | `gear_precision_3` | `unlock_teeth` (teeth=40) |
 | **Overclock Mastery**<br>`overclock_mastery` | T3 | 180 | 105s | `extended_overclock` | `overclock_duration_bonus` (value=15000)<br>`enable_ability` (abilityId=overclock_no_burnout) |
-| **Gear Precision V**<br>`gear_precision_5` | T3 | 200 | 75s | `gear_precision_4` | `unlock_teeth` (teeth=50)<br>`unlock_teeth` (teeth=55)<br>`unlock_teeth` (teeth=60) |
+| **Gear Precision V**<br>`gear_precision_5` | T3 | 200 | 75s | `gear_precision_4` | `unlock_teeth` (teeth=40) |
 <!-- END GENERATED: tech.gears -->
 
 `Combo Chain Bonus` (110 gold, 66 s) grants `chain_combo_bonus`: a second, gear-type-agnostic way into the same "big chain spins faster" territory the Amplifier occupies. Any chain of 4+ gears on a side that has researched it gets its total motor torque multiplied by `1 + 0.25`, composing with further Combo Chain research the same way Capacitor Burst and Overclock Duration bonuses do.

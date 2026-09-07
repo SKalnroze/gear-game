@@ -31,11 +31,14 @@ const ROLE_LABEL: Record<string, string> = {
   defense: 'DEF',
 };
 
-const PANEL_W   = 380;
+const PANEL_W   = 460;
 const PANEL_PAD = 8;
 const LINE_H    = 13;
 // Two world labels per chain (header + stats), plus a small margin
 const WORLD_LABEL_POOL = 48;
+
+/** How often (ms) the full debug state is dumped to the console as formatted JSON. */
+const JSON_LOG_INTERVAL_MS = 1000;
 
 // ─── AIDebugOverlay ────────────────────────────────────────────────────────────
 
@@ -44,16 +47,25 @@ const WORLD_LABEL_POOL = 48;
  *
  * World-space layer (follows camera):
  *   • Coloured ring at each chain's origin point
- *   • Two-line label: role/phase/focus on line 1, stats + cost on line 2
+ *   • Two-line label: role/phase/focus on line 1, stats + next-gear want on line 2
  *
  * Screen-space HUD (fixed, top-right corner):
- *   • Threat level, gold, personality, chain summary with costs + focus marker
- *   • Last decision + reasoning
- *   • Active abilities with cooldown timers
+ *   • Threat, gold + income, posture (economy/defense/offense weights + capacity)
+ *   • Action budget (APM pool) and match clock
+ *   • Chain summary with costs, focus marker, and what each chain wants to build next
+ *   • What role the AI would give its NEXT chain, and why
+ *   • Research: current goal, in-progress flag, and the next few queued nodes
+ *   • What it has read about the opponent's unit composition
+ *   • Last decision + reasoning, active abilities with cooldowns
  *   • Works for one or two AIs (spectate mode shows both)
  *
  * Toggle via setEnabled(). Press 'D' in GameScene to toggle.
  * Practice mode enables the overlay automatically.
+ *
+ * While enabled, the full state passed to update() is also dumped to the browser
+ * console as formatted JSON once a second -- a machine-readable feed of "what is
+ * the AI thinking" alongside the human-readable HUD, for anyone digging deeper
+ * than the panel shows.
  */
 export class AIDebugOverlay {
   private readonly scene: Phaser.Scene;
@@ -69,6 +81,7 @@ export class AIDebugOverlay {
   private readonly hudText: Phaser.GameObjects.Text;
 
   private enabled = false;
+  private lastJsonLogAt = 0;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -110,6 +123,8 @@ export class AIDebugOverlay {
       this.worldGfx.clear();
       this.hudBg.clear();
       this.hudText.setText('');
+    } else {
+      this.lastJsonLogAt = 0; // log immediately on the next update() after enabling
     }
   }
 
@@ -130,6 +145,7 @@ export class AIDebugOverlay {
 
     this.drawWorldLayer(states);
     this.drawHud(states);
+    this.maybeLogJson(states);
   }
 
   destroy(): void {
@@ -137,6 +153,20 @@ export class AIDebugOverlay {
     this.hudBg.destroy();
     this.hudText.destroy();
     for (const t of this.worldLabels) t.destroy();
+  }
+
+  // ─── Console JSON feed ────────────────────────────────────────────────────────
+
+  /** Dumps the full debug state to the console as formatted JSON, throttled to once a second. */
+  private maybeLogJson(states: AIDebugState[]): void {
+    const now = Date.now();
+    if (now - this.lastJsonLogAt < JSON_LOG_INTERVAL_MS) return;
+    this.lastJsonLogAt = now;
+    console.log(
+      '%c[AI DEBUG STATE]',
+      'color:#44ff88;font-weight:bold',
+      JSON.stringify(states, null, 2),
+    );
   }
 
   // ─── World-space drawing ─────────────────────────────────────────────────────
@@ -183,7 +213,8 @@ export class AIDebugOverlay {
         const prefix    = isAI ? '▶' : '◀';
         const focusMark = chain.isFocus ? ' ★' : '';
         const line1 = `${prefix} ${roleStr}:${phaseStr}${focusMark}`;
-        const line2 = `${this.statsAbbrev(chain.stats)}  ${chain.totalCost}g  ${chain.gearCount}⚙`;
+        const wantStr = chain.nextGear ? `  →${chain.nextGear}` : '';
+        const line2 = `${this.statsAbbrev(chain.stats)}  ${chain.totalCost}g  ${chain.gearCount}⚙${wantStr}`;
         label.setText(`${line1}\n${line2}`);
         label.setColor(isAI ? '#ffbbbb' : '#bbbbff');
         label.setPosition(x - label.width / 2, y - ringRadius - 28);
@@ -208,15 +239,27 @@ export class AIDebugOverlay {
 
     const lines: string[] = [];
 
-    lines.push('╔═ AI DEBUG (D to toggle) ══════════════════');
+    lines.push('╔═ AI DEBUG (D to toggle) ══════════════════════════════════');
     lines.push('║');
 
     for (const s of states) {
       const ownerTag = s.owner === 'ai' ? '▶ AI' : '◀ Player';
-      lines.push(`║ ${ownerTag} [${s.profile.toUpperCase()}]  personality: ${s.personality}`);
-      lines.push(`║ threat=${s.threat}  gold=${s.gold.toFixed(0)}g  chains=${s.chainCount}`);
+      const elapsedS = (s.matchElapsedMs / 1000).toFixed(0);
+      lines.push(`║ ${ownerTag} [${s.profile.toUpperCase()}]  personality: ${s.personality}  t=${elapsedS}s`);
+      lines.push(`║ threat=${s.threat}${s.recentlyThreatened ? '(recent)' : ''}  gold=${s.gold.toFixed(0)}g (+${s.goldPerSec.toFixed(1)}/s)  chains=${s.chainCount}`);
 
-      // Chain breakdown
+      // Posture: economy/defense/offense weights + chain capacity
+      const p = s.posture;
+      lines.push(`║ posture: eco=${(p.economy * 100).toFixed(0)}% def=${(p.defense * 100).toFixed(0)}% off=${(p.offense * 100).toFixed(0)}%  capacity=${p.capacity}`);
+
+      // Action budget — the real difficulty axis
+      const ab = s.actionBudget;
+      lines.push(`║ budget: ${ab.points.toFixed(1)}/${ab.capacity} pts  (${ab.apm} apm)`);
+
+      // Opponent read
+      lines.push(`║ opponent: dominant=${s.opponent.dominantUnit}  (${s.opponent.sampleCount} seen, 45s window)`);
+
+      // Chain breakdown, including what each chain wants to build next
       for (const c of s.chainSummaries) {
         const phStr    = (PHASE_SHORT[c.phase] ?? c.phase).padEnd(4);
         const roleStr  = (ROLE_LABEL[c.role] ?? c.role.toUpperCase()).padEnd(6);
@@ -224,21 +267,26 @@ export class AIDebugOverlay {
         const costStr  = `${c.totalCost}g`.padStart(5);
         const gearStr  = `${c.gearCount}⚙`.padStart(3);
         const marker   = c.isFocus ? '★' : '·';
-        lines.push(`║  ${marker} ${roleStr} ${phStr} ${abbrev}  ${costStr}  ${gearStr}`);
+        const wantStr  = c.nextGear ? `  wants: ${c.nextGear}` : '  (full)';
+        lines.push(`║  ${marker} ${roleStr} ${phStr} ${abbrev}  ${costStr}  ${gearStr}${wantStr}`);
       }
 
-      if (s.researchGoal) {
-        lines.push(`║ research: ${s.researchGoal}`);
+      // What role the AI would give its next chain, and why
+      lines.push(`║ next chain: ${ROLE_LABEL[s.nextChainRole] ?? s.nextChainRole}`);
+      this.pushWrapped(lines, 'why', s.nextChainRoleReason);
+
+      // Research: current goal + upcoming queue (compact, one line)
+      const progressTag = s.researchInProgress ? ' (researching...)' : '';
+      lines.push(`║ research goal: ${s.researchGoal}${progressTag}`);
+      if (s.researchQueue.length > 0) {
+        const queueStr = s.researchQueue.slice(0, 4).map(q => `${q.name}(${q.goldCost}g)`).join(', ');
+        this.pushWrapped(lines, 'next up', queueStr);
       }
 
       // Last decision + reason
       if (s.lastDecisionType !== 'idle' || s.lastDecisionReason) {
         lines.push(`║ action: ${s.lastDecisionType}`);
-        if (s.lastDecisionReason) {
-          const chunks = this.wrap(s.lastDecisionReason, 40);
-          lines.push(`║   why: ${chunks[0]}`);
-          for (let i = 1; i < chunks.length; i++) lines.push(`║        ${chunks[i]}`);
-        }
+        if (s.lastDecisionReason) this.pushWrapped(lines, 'why', s.lastDecisionReason);
       }
 
       // Abilities
@@ -255,7 +303,7 @@ export class AIDebugOverlay {
       lines.push('║');
     }
 
-    lines.push('╚══════════════════════════════════════════');
+    lines.push('╚══════════════════════════════════════════════════════════');
 
     const panelH = lines.length * LINE_H + PANEL_PAD * 2;
     const totalW = PANEL_W + PANEL_PAD * 2;
@@ -322,22 +370,44 @@ export class AIDebugOverlay {
     if (s.spawnerTypes.length) parts.push(`${s.spawnerTypes.length}Sp`);
     if (s.researcherCount)     parts.push(`${s.researcherCount}R`);
     if (s.minerCount)          parts.push(`${s.minerCount}Mi`);
+    if (s.converterCount)      parts.push(`${s.converterCount}Cv`);
     if (s.healerCount)         parts.push(`${s.healerCount}H`);
     if (s.armoredCount)        parts.push(`${s.armoredCount}Ar`);
     if (s.spikedCount)         parts.push(`${s.spikedCount}Sp!`);
     if (s.overclockCount)      parts.push(`${s.overclockCount}OC`);
     if (s.turretCount)         parts.push(`${s.turretCount}T`);
+    if (s.minelayerCount)      parts.push(`${s.minelayerCount}Mn`);
+    if (s.sentryGearCount)     parts.push(`${s.sentryGearCount}Sn`);
+    if (s.reliefValveCount)    parts.push(`${s.reliefValveCount}RV`);
     return parts.length ? `[${parts.join(' ')}]` : '[]';
   }
 
-  /** Split string into chunks of at most maxLen characters */
+  /**
+   * Push a labelled, word-wrapped line (e.g. "why: ...") onto `lines`, indenting
+   * continuation lines to align under the label instead of re-prefixing it.
+   */
+  private pushWrapped(lines: string[], label: string, text: string, maxLen = 56): void {
+    const chunks = this.wrap(text, maxLen);
+    const indent = ' '.repeat(label.length + 2);
+    lines.push(`║   ${label}: ${chunks[0]}`);
+    for (let i = 1; i < chunks.length; i++) lines.push(`║   ${indent}${chunks[i]}`);
+  }
+
+  /** Split string into chunks of at most maxLen characters, breaking on spaces where possible */
   private wrap(s: string, maxLen: number): string[] {
+    const words = s.split(' ');
     const chunks: string[] = [];
-    let i = 0;
-    while (i < s.length) {
-      chunks.push(s.slice(i, i + maxLen));
-      i += maxLen;
+    let cur = '';
+    for (const w of words) {
+      if (cur.length > 0 && cur.length + 1 + w.length > maxLen) {
+        chunks.push(cur);
+        cur = w;
+      } else {
+        cur = cur.length === 0 ? w : `${cur} ${w}`;
+      }
     }
+    if (cur.length > 0) chunks.push(cur);
     return chunks.length ? chunks : [''];
   }
+
 }

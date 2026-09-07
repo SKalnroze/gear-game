@@ -15,6 +15,7 @@ function makePlan(phase: AIChainPlan['phase'], role: AIChainPlan['role']): AICha
       researcherCount: 0, minerCount: 0, converterCount: 0,
       healerCount: 0, spikedCount: 0, armoredCount: 0,
       overclockCount: 0, turretCount: 0, minelayerCount: 0,
+      sentryGearCount: 0, reliefValveCount: 0,
       spawnerTypes: [], estimatedOutput: 0,
     },
     createdAt: 0,

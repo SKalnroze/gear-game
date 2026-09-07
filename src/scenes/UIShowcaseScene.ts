@@ -27,6 +27,7 @@ import {
 import { NEON, NEON_STR, BG } from '../constants/ui.constants';
 import { GearEntity } from '../entities/Gear';
 import { UnitEntity } from '../entities/Unit';
+import { TIER_TEETH } from '../constants/tier.constants';
 import { GEAR_DEFINITIONS } from '../constants/gear.constants';
 import { UNIT_DEFINITIONS } from '../constants/unit.constants';
 import type { GearState, GearType } from '../types/gear.types';
@@ -816,13 +817,13 @@ export class UIShowcaseScene extends Phaser.Scene {
       return rows * cellH;
     };
 
-    // Gears — one GearEntity per defined GearType, fixed at DEFAULT_TEETH
-    // so every preview renders at the same size regardless of balance values.
+    // Gears — one GearEntity per defined GearType, fixed at tier 1 so every
+    // preview renders at the same size regardless of balance values.
     y = sLabel(y, `GEARS  (${Object.keys(GEAR_DEFINITIONS).length} types, real GearEntity render)`, cStr);
     const gearTypes = Object.keys(GEAR_DEFINITIONS) as GearType[];
     y += grid(gearTypes, 110, 96, 56, (cx, cy, type) => {
       const state: GearState = {
-        id: `showcase_${type}`, type, teeth: 10, x: cx, y: cy,
+        id: `showcase_${type}`, type, tier: 1, teeth: TIER_TEETH[1], x: cx, y: cy,
         owner: 'player', angularVelocity: 0, currentAngle: 0, accumulatedAngle: 0,
         frictionLoad: 0, torqueOutput: 0, isSpinning: false, isBurntOut: false,
         hp: 100, maxHp: 100, isJammed: false, crackLevel: 0, jamStress: 0,

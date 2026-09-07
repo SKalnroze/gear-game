@@ -3,6 +3,7 @@ import { eventBus } from '../systems/EventBus';
 import { GearType } from '../types/gear.types';
 import { TechState } from '../types/tech.types';
 import { GEAR_DEFINITIONS, DEFAULT_TEETH } from '../constants/gear.constants';
+import { tierForTeeth } from '../constants/tier.constants';
 import { gearPlacementCost } from '../constants/balance.constants';
 import { NEON, NEON_STR } from '../constants/ui.constants';
 import { TECH_NODES } from '../constants/tech.constants';
@@ -150,7 +151,7 @@ export class GearGridSection {
     );
     this.container.add(this.barBg);
 
-    const teethLabel = this.scene.add.text(8, TEETH_BAR_H / 2 - 8, 'TEETH SIZE', {
+    const teethLabel = this.scene.add.text(8, TEETH_BAR_H / 2 - 8, 'GEAR TIER', {
       fontSize: '13px', color: '#667788', fontFamily: 'monospace', fontStyle: 'bold',
     });
     this.container.add(teethLabel);
@@ -164,7 +165,7 @@ export class GearGridSection {
     }
     this.container.add(prevBtn);
 
-    this.teethText = this.scene.add.text(144, TEETH_BAR_H / 2 - 9, `${this.selectedTeeth}t`, {
+    this.teethText = this.scene.add.text(144, TEETH_BAR_H / 2 - 9, this.tierLabel(), {
       fontSize: '18px', color: NEON_STR.yellow, fontFamily: 'monospace', fontStyle: 'bold',
     });
     this.container.add(this.teethText);
@@ -402,12 +403,17 @@ export class GearGridSection {
     g.strokeRect(1, 1, TILE_W - 3, TILE_H - 3);
   }
 
+  /** e.g. "T2 · 12t" -- tier is what the player chooses, teeth is the silhouette. */
+  private tierLabel(): string {
+    return `T${tierForTeeth(this.selectedTeeth)} · ${this.selectedTeeth}t`;
+  }
+
   private changeTeethe(delta: number): void {
     const validTeeth = this.playerTech.unlockedTeeth || [DEFAULT_TEETH];
     const currentIdx = validTeeth.indexOf(this.selectedTeeth);
     const newIdx = Phaser.Math.Clamp(currentIdx + delta, 0, validTeeth.length - 1);
     this.selectedTeeth = validTeeth[newIdx];
-    this.teethText.setText(`${this.selectedTeeth}t`);
+    this.teethText.setText(this.tierLabel());
     eventBus.emit('ui:teeth_changed', { teeth: this.selectedTeeth });
 
     // Update all cost texts to reflect new teeth size

@@ -142,7 +142,11 @@ These words are used precisely throughout the design and the code. Where the cod
 
 Places where the implementation does not match the design intent stated in this document. Each is verified against the code, and each is a decision waiting to be made: **fix the code, or change the intent.**
 
-None currently open. The last entry (only units can damage a base) was reconsidered and kept as intentional design — see [Balance](design/balance.md#the-win-condition).
+| # | Divergence | Where | Chapter |
+|---|---|---|---|
+| 1 | **`gear_precision_5` grants nothing.** The tier ladder has four unlockable tiers (2–5) above the free tier 1, and Gear Precision I–IV now cover all four, leaving the fifth node with nothing to hand out. It is kept for one phase only because the radial tech-tree layout data and its tests still reference it by id. Researching it is harmless — `TechSystem` dedupes `unlockedTeeth` — just a waste of 200 gold. Deleted when the tech tree is rebuilt. | `src/constants/tech.constants.ts` (`gear_precision_5`) | [Tech tree](design/tech-tree.md) |
+
+The previous entry (only units can damage a base) was reconsidered and kept as intentional design — see [Balance](design/balance.md#the-win-condition).
 
 ---
 

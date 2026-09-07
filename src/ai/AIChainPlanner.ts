@@ -4,11 +4,12 @@ import { World } from '../world/World';
 import { GearMeshGraph } from '../world/GearMeshGraph';
 import { EconomySystem } from '../systems/EconomySystem';
 import { RotationPhysicsSystem } from '../systems/RotationPhysicsSystem';
-import { gearRadius, motorOutput, GEAR_MESH_TOLERANCE } from '../constants/gear.constants';
+import { gearRadius, motorOutput, GEAR_MESH_TOLERANCE, DEFAULT_TEETH } from '../constants/gear.constants';
 import { AMPLIFIER_CHAIN_MULTIPLIER, gearPlacementCost as placementCost } from '../constants/balance.constants';
 import { UNIT_DEFINITIONS } from '../constants/unit.constants';
 import { UnitType } from '../types/unit.types';
 import { LANE_Y_MIN, LANE_Y_MAX } from '../constants/world.constants';
+import { weightedRandomPick, AI_BIAS_STRENGTH } from './ai.utils';
 
 const LANE_CENTER_Y = (LANE_Y_MIN + LANE_Y_MAX) / 2;
 
@@ -43,6 +44,8 @@ export interface ChainStats {
   overclockCount: number;
   turretCount: number;     // crossbow_turret + artillery_turret combined
   minelayerCount: number;
+  sentryGearCount: number;
+  reliefValveCount: number;
   spawnerTypes: GearType[];
   estimatedOutput: number;
 }
@@ -69,6 +72,16 @@ export interface AIPlacementContext {
   hasAnySpawner: boolean;
   /** Personality multiplier on spawn-reserve gold threshold. Default 1.0. */
   spawnReserveMult?: number;
+  /**
+   * True when the opponent's observed dominant unit is a slow-cadence or
+   * high-overkill single-target attacker (cavalry, crossbow, artillery, iron
+   * guard). Combat here is strictly 1v1 pairwise -- no cleave or splash --
+   * so a wide, cheap swarm both outnumbers what a cooldown-gated attacker
+   * can kill per attack window and eats its per-hit overkill for free.
+   * Pushes spawner-size selection further toward the small end on top of
+   * the baseline spawn-rate bias. Default false.
+   */
+  preferSwarmSpawners?: boolean;
 }
 
 // ─── Gear-type sets ───────────────────────────────────────────────────────────
@@ -76,6 +89,7 @@ export interface AIPlacementContext {
 const SPAWNER_TYPES: GearType[] = [
   'infantry_spawner', 'cavalry_spawner', 'artillery_spawner', 'slime_spawner', 'crossbow_spawner',
   'iron_guard_spawner', 'crystal_sentinel_spawner', 'aether_phantom_spawner', 'sentry_spawner',
+  'sapper_spawner', 'skirmish_diver_spawner', 'saboteur_spawner', 'raider_spawner', 'field_medic_spawner',
 ];
 const MINER_TYPES: GearType[] = ['iron_miner', 'crystal_miner', 'aether_miner'];
 const CONVERTER_TYPES: GearType[] = ['iron_converter', 'crystal_converter', 'aether_converter'];
@@ -93,6 +107,12 @@ function requiredTechForSpawner(spawnerType: GearType): string {
     case 'iron_guard_spawner':       return 'unlock_iron_guard_spawner';
     case 'crystal_sentinel_spawner': return 'unlock_crystal_sentinel_spawner';
     case 'aether_phantom_spawner':   return 'unlock_aether_phantom_spawner';
+    case 'sentry_spawner':           return 'unlock_sentry';
+    case 'sapper_spawner':           return 'unlock_sapper_spawner';
+    case 'skirmish_diver_spawner':   return 'unlock_skirmish_diver_spawner';
+    case 'saboteur_spawner':         return 'unlock_saboteur_spawner';
+    case 'raider_spawner':           return 'unlock_raider_spawner';
+    case 'field_medic_spawner':      return 'unlock_field_medic_spawner';
     default:                         return '';
   }
 }
@@ -215,6 +235,21 @@ export class AIChainPlanner {
     return true;
   }
 
+  /**
+   * Cheap, side-effect-free preview of what pickGearTypeForPhase would choose next for
+   * this chain -- no placement search, so safe to call every frame for the debug overlay.
+   */
+  static previewNextGear(
+    plan: AIChainPlan,
+    profile: AIStrategyProfile,
+    aiResearched: Set<string>,
+    economySystem: EconomySystem,
+    owner: 'player' | 'ai',
+    context: AIPlacementContext,
+  ): GearType | null {
+    return AIChainPlanner.pickGearTypeForPhase(plan, profile, aiResearched, economySystem, owner, context);
+  }
+
   static findBestAddition(
     plan: AIChainPlan,
     profile: AIStrategyProfile,
@@ -230,7 +265,7 @@ export class AIChainPlanner {
     if (!gearType) return null;
 
     const gold = economySystem.getResources(owner).gold;
-    const teeth = AIChainPlanner.selectTeeth(profile, gold, unlockedTeeth);
+    const teeth = AIChainPlanner.selectTeeth(profile, gold, unlockedTeeth, gearType, context.preferSwarmSpawners ?? false);
 
     const teethCandidates = [...unlockedTeeth].filter(t => t <= teeth).sort((a, b) => b - a);
     if (!teethCandidates.includes(10)) teethCandidates.push(10);
@@ -279,6 +314,10 @@ export class AIChainPlanner {
       if (plan.stats.minelayerCount === 0 && aiResearched.has('unlock_minelayer')) return 'minelayer';
       if (plan.stats.healerCount === 0 && aiResearched.has('healer_gear_tech')) return 'healer';
       if (plan.stats.turretCount < 2 && aiResearched.has('artillery_turret_tech')) return 'artillery_turret';
+      // Sentry gear: reveals hidden enemy mines -- the counter to a Minelayer.
+      if (plan.stats.sentryGearCount === 0 && aiResearched.has('unlock_sentry')) return 'sentry_gear';
+      // Relief Valve: takes a jam for the chain instead of the chain breaking.
+      if (plan.stats.reliefValveCount === 0 && aiResearched.has('unlock_relief_valve')) return 'relief_valve';
       // Add more motors only when defensive gears are present and motor cap not reached
       const hasDefensiveContent = plan.stats.turretCount > 0
         || plan.stats.armoredCount > 0 || plan.stats.spikedCount > 0;
@@ -366,19 +405,61 @@ export class AIChainPlanner {
           const tech = requiredTechForSpawner(spawner);
           if (!tech || aiResearched.has(tech)) return spawner;
         }
-        // Natural diversification: add artillery as a secondary spawner once researched.
-        // Artillery provides valuable ranged support alongside any melee spawner.
-        if (!plan.stats.spawnerTypes.includes('artillery_spawner')
-            && plan.stats.spawnerTypes.length > 0
-            && aiResearched.has('unlock_artillery_spawner')) {
-          return 'artillery_spawner';
+        // Mixed unlock: once all 3 core spawner techs exist, a converter placed in a
+        // chain that already runs a core spawner (infantry/artillery/cavalry) flips
+        // that spawner's output to the generalist Mixed unit -- a deliberate
+        // placement, not a byproduct of chain size like the elite upgrade is. Hard
+        // AI only: recognising the combo and acting on it is a judgment call, same
+        // spirit as the other expand-phase upgrades below. Without this, Mixed was
+        // structurally unreachable for the AI -- converters only ever went into
+        // economy-role chains, which never carry a spawner.
+        if (profile === 'hard' && plan.stats.converterCount === 0) {
+          const coreSpawner = plan.stats.spawnerTypes.find(
+            s => s === 'infantry_spawner' || s === 'artillery_spawner' || s === 'cavalry_spawner',
+          );
+          const mixedUnlocked = aiResearched.has('unlock_infantry')
+            && aiResearched.has('unlock_artillery_spawner')
+            && aiResearched.has('unlock_cavalry_spawner');
+          if (coreSpawner && mixedUnlocked) {
+            if (aiResearched.has('iron_to_gold'))    return 'iron_converter';
+            if (aiResearched.has('crystal_to_gold')) return 'crystal_converter';
+            if (aiResearched.has('aether_to_gold'))  return 'aether_converter';
+          }
+        }
+        // Natural diversification: mainstream secondary spawners once a primary
+        // exists, tried in priority order (one per tick, whichever is both
+        // researched and missing). Ranged support first, then the sharpest
+        // counter-pick tool, then a frontline tank.
+        if (plan.stats.spawnerTypes.length > 0) {
+          const SECONDARY_SPAWNERS: GearType[] = [
+            'artillery_spawner', 'skirmish_diver_spawner', 'iron_guard_spawner',
+          ];
+          for (const s of SECONDARY_SPAWNERS) {
+            if (plan.stats.spawnerTypes.includes(s)) continue;
+            const tech = requiredTechForSpawner(s);
+            if (tech && !aiResearched.has(tech)) continue;
+            return s;
+          }
         }
         // Defensive/utility upgrades — hard AI, one of each per chain
         if (profile === 'hard') {
-          if (plan.stats.armoredCount   === 0 && aiResearched.has('armored_gears'))        return 'armored';
-          if (plan.stats.spikedCount    === 0 && aiResearched.has('spiked_gears'))          return 'spiked';
-          if (plan.stats.overclockCount === 0 && aiResearched.has('basic_overclock'))       return 'overclock';
-          if (plan.stats.turretCount    === 0 && aiResearched.has('crossbow_turret_tech'))  return 'crossbow_turret';
+          if (plan.stats.armoredCount     === 0 && aiResearched.has('armored_gears'))        return 'armored';
+          if (plan.stats.spikedCount      === 0 && aiResearched.has('spiked_gears'))          return 'spiked';
+          if (plan.stats.overclockCount   === 0 && aiResearched.has('basic_overclock'))       return 'overclock';
+          if (plan.stats.turretCount      === 0 && aiResearched.has('crossbow_turret_tech'))  return 'crossbow_turret';
+          if (plan.stats.reliefValveCount === 0 && aiResearched.has('unlock_relief_valve'))   return 'relief_valve';
+          // Situational secondary spawners, once the mainstream picks above are covered —
+          // this is what actually makes the rest of the roster reachable for the AI at all.
+          const HARD_SECONDARY_SPAWNERS: GearType[] = [
+            'crystal_sentinel_spawner', 'aether_phantom_spawner', 'slime_spawner',
+            'sapper_spawner', 'raider_spawner', 'sentry_spawner', 'field_medic_spawner', 'saboteur_spawner',
+          ];
+          for (const s of HARD_SECONDARY_SPAWNERS) {
+            if (plan.stats.spawnerTypes.includes(s)) continue;
+            const tech = requiredTechForSpawner(s);
+            if (tech && !aiResearched.has(tech)) continue;
+            return s;
+          }
         }
         // Iron miner for hard AI with multiple motors
         if (profile === 'hard' && aiResearched.has('unlock_iron_mining') && plan.stats.motorCount >= 2) {
@@ -586,6 +667,7 @@ export class AIChainPlanner {
     let motorCount = 0, amplifierCount = 0, capacitorCount = 0, researcherCount = 0;
     let minerCount = 0, converterCount = 0;
     let healerCount = 0, spikedCount = 0, armoredCount = 0, overclockCount = 0, turretCount = 0, minelayerCount = 0;
+    let sentryGearCount = 0, reliefValveCount = 0;
     const spawnerTypes: GearType[] = [];
     let motorOutputSum = 0;
 
@@ -602,6 +684,8 @@ export class AIChainPlanner {
       else if (g.type === 'overclock')                                      { overclockCount++; }
       else if (g.type === 'crossbow_turret' || g.type === 'artillery_turret') { turretCount++; }
       else if (g.type === 'minelayer')                                      { minelayerCount++; }
+      else if (g.type === 'sentry_gear')                                    { sentryGearCount++; }
+      else if (g.type === 'relief_valve')                                   { reliefValveCount++; }
       else if (isMiner(g.type))                                             { minerCount++; }
       else if (isConverter(g.type))                                         { converterCount++; }
       else if (isSpawner(g.type))                                           { spawnerTypes.push(g.type); }
@@ -610,6 +694,7 @@ export class AIChainPlanner {
     return {
       motorCount, amplifierCount, capacitorCount, researcherCount,
       minerCount, converterCount, healerCount, spikedCount, armoredCount, overclockCount, turretCount, minelayerCount,
+      sentryGearCount, reliefValveCount,
       spawnerTypes,
       estimatedOutput: motorOutputSum * Math.pow(AMPLIFIER_CHAIN_MULTIPLIER, amplifierCount),
     };
@@ -625,17 +710,58 @@ export class AIChainPlanner {
     return count === 0 ? { x: 0, y: 0 } : { x: sx / count, y: sy / count };
   }
 
-  private static selectTeeth(profile: AIStrategyProfile, gold: number, unlockedTeeth: number[]): number {
-    const available = [10, 15, 20, 30].filter(t => unlockedTeeth.includes(t));
-    if (available.length === 0) return 10;
-    if (profile === 'easy') return 10;
-    if (profile === 'medium') {
-      const opts = available.filter(t => t <= 15);
-      return (opts.length > 0 && gold >= placementCost(15)) ? Math.max(...opts) : 10;
-    }
-    for (const t of [...available].sort((a, b) => b - a)) {
-      if (gold >= placementCost(t)) return t;
-    }
-    return 10;
+  /**
+   * Pick a target tooth size from everything currently unlocked -- weighted
+   * random, not a fixed table. Every unlocked size gets weight >= 1 (always
+   * pickable), plus a bias toward whichever end of the range actually pays
+   * off for this gear type:
+   *
+   *   - Spawners produce exactly one unit per rotation regardless of size,
+   *     but a smaller gear meshed against the rest of the chain spins
+   *     faster (gear-ratio physics: ratio = driveTeeth / ownTeeth), so a
+   *     small spawner has a higher spawn rate. Bias toward the small end.
+   *     `preferSwarmSpawners` leans this further still: combat here is
+   *     strictly 1v1 pairwise (no cleave/splash), so against a slow-cadence
+   *     or high-overkill single-target opponent (cavalry, crossbow,
+   *     artillery, iron guard) a wide cheap swarm both outnumbers what it
+   *     can kill per attack window and eats its per-hit overkill for free.
+   *   - Everything else (motor torque/output, miner/converter/researcher
+   *     output, healer/spiked output, HP) scales linearly-or-better with
+   *     its own tooth count while placement cost only grows linearly with
+   *     a flat base, so bigger is strictly better value once affordable.
+   *     Bias toward the large end.
+   *
+   * Bias strength scales with difficulty (AI_BIAS_STRENGTH): easy is close
+   * to a flat random pick, hard leans hard toward the theoretically best
+   * size without ever fully excluding the rest. This is a *target* -- the
+   * caller still falls back to smaller/cheaper sizes if this one doesn't
+   * fit or isn't affordable.
+   */
+  static selectTeeth(
+    profile: AIStrategyProfile,
+    gold: number,
+    unlockedTeeth: number[],
+    gearType: GearType,
+    preferSwarmSpawners = false,
+  ): number {
+    if (unlockedTeeth.length === 0) return DEFAULT_TEETH;
+    const affordable = unlockedTeeth.filter(t => gold >= placementCost(t));
+    const pool = affordable.length > 0 ? affordable : unlockedTeeth;
+    if (pool.length === 1) return pool[0];
+
+    const minT = Math.min(...unlockedTeeth);
+    const maxT = Math.max(...unlockedTeeth);
+    const span = Math.max(1, maxT - minT);
+    const favorSmall = isSpawner(gearType);
+    let bias = AI_BIAS_STRENGTH[profile] ?? AI_BIAS_STRENGTH.medium;
+    if (favorSmall && preferSwarmSpawners) bias *= 1.8;
+
+    const weights = pool.map(t => {
+      const norm = (t - minT) / span; // 0 = smallest unlocked, 1 = largest unlocked
+      const preference = favorSmall ? (1 - norm) : norm;
+      return 1 + bias * preference;
+    });
+
+    return weightedRandomPick(pool, weights);
   }
 }

@@ -8,18 +8,42 @@ Gears are the game. Everything a player builds is a gear, and everything the gam
 
 ## What a gear is
 
-A gear has exactly one dial: **teeth**, 5 to 60. Every other property derives from it — radius, health, output, cost, damage. There are no levels, no upgrades on a placed gear, and no stats to allocate. Choosing a tooth count *is* the decision.
+A gear has exactly one dial: its **tier**, 1 to 5. Every other property derives from it — teeth, radius, health, output, cost, damage. There are no levels, no upgrades on a placed gear, and no stats to allocate. Choosing a tier *is* the decision.
 
-Tooth counts are literal. A 10-tooth gear has ten teeth drawn on it and meshes as a ten-toothed wheel would. This is a hard rule: no formula anywhere may approximate or rescale a tooth count.
+**One tier up is a 1.5× upgrade in everything that makes a gear strong.** That single number is the ladder: a tier-3 factory builds units with 2.25× the HP and damage of a tier-1 one; a tier-5 turret hits 5.06× as hard. Tier 1 is free; tiers 2–5 are each unlocked by a Gear Precision tech node.
+
+<!-- BEGIN GENERATED: gears.tiers -->
+| Tier | Teeth | Radius (px) | Strength x | Range x | Cost x |
+|---|---|---|---|---|---|
+| **T1** | 8 | 20 | 1 | 1 | 1 |
+| **T2** | 12 | 30 | 1.5 | 1.15 | 1.6 |
+| **T3** | 18 | 45 | 2.25 | 1.3225 | 2.56 |
+| **T4** | 27 | 67.5 | 3.375 | 1.5209 | 4.096 |
+| **T5** | 40 | 100 | 5.0625 | 1.749 | 6.5536 |
+<!-- END GENERATED: gears.tiers -->
+
+Tooth counts are literal. A 12-tooth gear has twelve teeth drawn on it and meshes as a twelve-toothed wheel would. This is a hard rule: no formula anywhere may approximate or rescale a tooth count.
+
+### Why size stopped being a trap
+
+Inertia used to come from Matter.js's real solid-disk physics, scaling with r⁴, while motor torque only scaled with r². A chain settles at ω = torque / inertia, so large gears were catastrophically slow — measured on the real bodies, a 40-tooth motor turned at 0.0159 rad/s against an 8-tooth motor's 10.08, **634× slower**. Size was not a trade-off, it was a punishment, and optimal play meant avoiding the game's central mechanic.
+
+Inertia now steps ×1.5 per tier, exactly matching torque, so a lone motor of any tier settles at the same ~4.07 rad/s. **Tier buys strength; electricity buys speed.** Scarcity moved from an invisible physics curve to the power grid, where the player can see and manage it.
+
+Two stats deliberately break the ×1.5 rule, and both are called out where they are defined:
+
+- **Range** grows on a shallower ×1.15 per tier. At the full ×1.5 a tier-5 artillery would reach 5.06× as far and shoot across most of the map.
+- **Speed** uses a per-type curve: light units get *faster* with tier (+36% at T5), heavy units get *slower* (−22% at T5). The gap between the fast flanker and the slow wall widens as you climb, which is what keeps tier a choice rather than a default.
 
 <!-- BEGIN GENERATED: gears.physics -->
 | Constant | Value | Meaning |
 |---|---|---|
 | `GEAR_MODULE` | 2.5 | px of radius per tooth |
 | `GEAR_MESH_TOLERANCE` | 4 | px of slack when deciding two gears mesh |
-| `INERTIA_DENSITY` | 0.000008158 | density fed to Matter.js for real gear mass/inertia -- sets chain sluggishness |
-| `MIN_TEETH` / `MAX_TEETH` | 5 / 60 | tooth count bounds |
-| `DEFAULT_TEETH` | 10 | calibration point for every scaling formula |
+| `BASE_INERTIA` | 19.6366 | rotational inertia of a tier-1 gear; steps x1.5 per tier alongside torque, so tier never changes the speed of a lone motor |
+| `INERTIA_DENSITY` | 0.000008158 | density fed to Matter.js for real unit body mass/inertia (no longer on the gear rotation path) |
+| `DEFAULT_TEETH` | 8 | teeth of a tier-1 gear |
+| `MAX_GEAR_TEETH` | 40 | teeth of a tier-5 gear; sizes the collision grid |
 <!-- END GENERATED: gears.physics -->
 
 ### Meshing
@@ -97,9 +121,9 @@ Costs and unlocks for all 33 gear types.
 <!-- END GENERATED: gears.catalogue -->
 
 <!-- BEGIN GENERATED: gears.formulas -->
-| Quantity | Formula | At 10 teeth | Scaling |
+| Quantity | Formula | At 8 teeth | Scaling |
 |---|---|---|---|
-| Radius | `teeth × 2.5` | 25 px | linear |
+| Radius | `teeth × 2.5` | 20 px | linear |
 | Motor output | `teeth × 0.4` | 4 | linear |
 | Motor torque | `teeth² × 0.8` | 80 | quadratic |
 | Spike damage | `teeth × 0.5` | 5 | linear, × spin |
@@ -108,10 +132,10 @@ Costs and unlocks for all 33 gear types.
 | Researcher output | `teeth × 150` ms | 1500 ms | linear |
 | Converter output | `teeth × 0.25` | 2.5 | linear |
 | Healer output | `teeth × 1.5` | 15 | linear |
-| Healer radius | `radius × 3` | 75 px | linear |
+| Healer radius | `radius × 3` | 60 px | linear |
 | Turret ammo | `max(3, round(teeth × 0.5))` | 5 | linear, floor 3 |
-| Crossbow turret range | `size(teeth) × 4 × 0.75` | 36 px | linear -- always 0.75x the mobile Crossbow's own range |
-| Artillery turret range | `size(teeth) × 10 × 0.8` | 96 px | linear -- always 0.8x the mobile Artillery's own range |
+| Crossbow turret range | `size(teeth) × 4 × 0.75` | 30 px | linear -- always 0.75x the mobile Crossbow's own range |
+| Artillery turret range | `size(teeth) × 10 × 0.8` | 80 px | linear -- always 0.8x the mobile Artillery's own range |
 <!-- END GENERATED: gears.formulas -->
 
 ---

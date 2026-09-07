@@ -2,11 +2,13 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { GearMeshGraph } from '../../src/world/GearMeshGraph';
 import type { GearState, GearType } from '../../src/types/gear.types';
 import { gearRadius, GEAR_MESH_TOLERANCE } from '../../src/constants/gear.constants';
+import { tierForTeeth, TIER_TEETH } from '../../src/constants/tier.constants';
 
 function makeGear(id: string, x: number, y: number, teeth: number, type: GearType = 'motor'): GearState {
   return {
     id,
     type,
+    tier: tierForTeeth(teeth),
     teeth,
     x,
     y,

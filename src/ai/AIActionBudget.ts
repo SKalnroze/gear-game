@@ -41,6 +41,15 @@ export class AIActionBudget {
     return this.points;
   }
 
+  get maxCapacity(): number {
+    return this.capacity;
+  }
+
+  /** Actions per minute this budget currently refills at. */
+  get apm(): number {
+    return this.regenPerMs * 60000;
+  }
+
   setApm(apm: number): void {
     this.regenPerMs = apm / 60000;
   }

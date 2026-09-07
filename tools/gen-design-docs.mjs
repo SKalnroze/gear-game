@@ -44,6 +44,7 @@ async function loadConstants() {
     export * as ability from ${JSON.stringify(join(ROOT, 'src/constants/ability.constants.ts'))};
     export * as balance from ${JSON.stringify(join(ROOT, 'src/constants/balance.constants.ts'))};
     export * as world from ${JSON.stringify(join(ROOT, 'src/constants/world.constants.ts'))};
+    export * as tier from ${JSON.stringify(join(ROOT, 'src/constants/tier.constants.ts'))};
     export * as unitUtils from ${JSON.stringify(join(ROOT, 'src/systems/unit.utils.ts'))};
   `.replace(/\\/g, '\\\\'));
 
@@ -89,7 +90,7 @@ function table(headers, rows) {
  * @returns {Record<string, string>}
  */
 function buildBlocks(m) {
-  const { gear, unit, tech, ability, balance, world, unitUtils } = m;
+  const { gear, unit, tech, ability, balance, world, tier, unitUtils } = m;
   /** @type {Record<string, string>} */
   const blocks = {};
 
@@ -315,10 +316,27 @@ function buildBlocks(m) {
     [
       ['`GEAR_MODULE`', num(gear.GEAR_MODULE), 'px of radius per tooth'],
       ['`GEAR_MESH_TOLERANCE`', num(gear.GEAR_MESH_TOLERANCE), 'px of slack when deciding two gears mesh'],
-      ['`INERTIA_DENSITY`', String(gear.INERTIA_DENSITY), 'density fed to Matter.js for real gear mass/inertia -- sets chain sluggishness'],
-      ['`MIN_TEETH` / `MAX_TEETH`', `${num(gear.MIN_TEETH)} / ${num(gear.MAX_TEETH)}`, 'tooth count bounds'],
-      ['`DEFAULT_TEETH`', num(gear.DEFAULT_TEETH), 'calibration point for every scaling formula'],
+      ['`BASE_INERTIA`', num(gear.BASE_INERTIA), 'rotational inertia of a tier-1 gear; steps x1.5 per tier alongside torque, so tier never changes the speed of a lone motor'],
+      ['`INERTIA_DENSITY`', String(gear.INERTIA_DENSITY), 'density fed to Matter.js for real unit body mass/inertia (no longer on the gear rotation path)'],
+      ['`DEFAULT_TEETH`', num(gear.DEFAULT_TEETH), 'teeth of a tier-1 gear'],
+      ['`MAX_GEAR_TEETH`', num(gear.MAX_GEAR_TEETH), 'teeth of a tier-5 gear; sizes the collision grid'],
     ],
+  );
+
+  // Tier ladder ------------------------------------------------------------
+  blocks['gears.tiers'] = table(
+    ['Tier', 'Teeth', 'Radius (px)', 'Strength x', 'Range x', 'Cost x'],
+    Object.keys(tier.TIER_TEETH).map((t) => {
+      const n = Number(t);
+      return [
+        `**T${n}**`,
+        num(tier.TIER_TEETH[n]),
+        num(tier.TIER_TEETH[n] * gear.GEAR_MODULE),
+        num(tier.tierPower(n)),
+        num(tier.tierRangeFactor(n)),
+        num(tier.tierCostFactor(n)),
+      ];
+    }),
   );
 
   return blocks;

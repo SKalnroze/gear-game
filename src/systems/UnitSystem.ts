@@ -22,7 +22,7 @@ import {
   computeAttackCooldown,
   computeChargeDamage,
 } from './unit.utils';
-import { computeDamage, getChainUnitType } from '../constants/unit.constants';
+import { computeDamage, getChainUnitType, UNIT_GEAR_DAMAGE_MULT } from '../constants/unit.constants';
 import { UnitPhysicsWorld } from './UnitPhysicsWorld';
 import { COMBO_CHAIN_MIN_GEARS, CAVALRY_CHARGE_SENSE_RANGE } from '../constants/balance.constants';
 import type { RotationPhysicsSystem } from './RotationPhysicsSystem';
@@ -936,17 +936,51 @@ export class UnitSystem {
       // Slower cadence than Infantry's melee cooldown -- same per-hit
       // damage, lower DPS, per the crossbow's design.
       const cooldown = computeAttackCooldown(unit.size) * 1.8;
-      if (now - unit.lastAttackTime > cooldown && targetUnit) {
-        const dmg = computeDamage(unit.type, targetUnit, unit.baseDamage);
-        targetUnit.hp -= dmg;
+      if (now - unit.lastAttackTime > cooldown) {
         unit.lastAttackTime = now;
-        this.eventBus.emit('unit:damaged', {
-          unitId: targetUnit.id,
-          damage: dmg,
-          x: targetUnit.x,
-          y: targetUnit.y,
+        this.eventBus.emit('crossbow_bolt:fired', {
+          owner: unit.owner,
+          srcX: unit.x,
+          srcY: unit.y,
+          dstX: targetX,
+          dstY: targetY,
         });
-        if (targetUnit.hp <= 0) targetUnit.hp = 0;
+
+        if (targetUnit) {
+          const dmg = computeDamage(unit.type, targetUnit, unit.baseDamage);
+          targetUnit.hp -= dmg;
+          this.eventBus.emit('unit:damaged', {
+            unitId: targetUnit.id,
+            damage: dmg,
+            x: targetUnit.x,
+            y: targetUnit.y,
+          });
+          if (targetUnit.hp <= 0) targetUnit.hp = 0;
+        } else {
+          // Target is an enemy gear -- same instant hitscan, no melee
+          // contact required (unlike Infantry, which must walk into the
+          // gear itself for GearUnitInteractionSystem to apply damage).
+          const gearDmgMult = UNIT_GEAR_DAMAGE_MULT[unit.type] ?? 1;
+          const dmg = unit.baseDamage * gearDmgMult;
+          for (const [, gear] of allGears) {
+            if (gear.x !== targetX || gear.y !== targetY) continue;
+            if (gear.hp <= 0 || gear.isBurntOut) continue;
+            const wasAlive = gear.hp > 0;
+            gear.hp = Math.max(0, gear.hp - dmg);
+            gear.crackLevel = crackLevelFor(gear.hp, gear.maxHp);
+            this.world?.updateGear(gear);
+            this.eventBus.emit('gear:damaged', {
+              gearId: gear.id,
+              damage: dmg,
+              remainingHp: gear.hp,
+              source: 'combat',
+            });
+            if (wasAlive && gear.hp <= 0) {
+              this.eventBus.emit('gear:destroyed', { gearId: gear.id, owner: gear.owner, cause: 'combat' });
+            }
+            break;
+          }
+        }
       }
     } else {
       const dx = targetX - unit.x;
@@ -1744,7 +1778,13 @@ export class UnitSystem {
     if (!gear) return;
 
     // Map spawner gear types to unit types
-    const spawnerMap: { [key: string]: UnitType } = {
+    // Partial<Record<GearType, ...>> rather than an index signature: a loose
+    // `{ [key: string]: UnitType }` accepts keys that are not gear types at
+    // all, so renaming or deleting a spawner gear silently leaves a dead entry
+    // here and the gear spawns nothing. That exact bug shipped once already --
+    // see the crossbow/sentry note below. The typed key makes the compiler
+    // catch it.
+    const spawnerMap: Partial<Record<GearType, UnitType>> = {
       infantry_spawner: 'infantry',
       artillery_spawner: 'artillery',
       cavalry_spawner: 'cavalry',

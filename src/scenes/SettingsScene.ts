@@ -75,6 +75,11 @@ export class SettingsScene extends NeonSceneBase {
       NEON.magenta, NEON_STR.magenta, 'AUDIO SHOWCASE', 14,
       () => this.scene.start('AudioShowcaseScene')));
 
+    const toolsY = stack.push(LAYOUT.BTN_H, LAYOUT.GAP);
+    this.h(neonBtn(this, this.cx - btnW / 2, toolsY, btnW, LAYOUT.BTN_H,
+      NEON.orange, NEON_STR.orange, 'TECH LAYOUT EDITOR', 14,
+      () => this.scene.start('TechLayoutEditorScene')));
+
     this.enableScroll(stack.currentY);
   }
 

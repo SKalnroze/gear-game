@@ -10,6 +10,13 @@ export type GearType =
   'crossbow_turret' | 'artillery_turret' | 'minelayer' | 'sentry_gear' |
   'healer';
 
+/**
+ * Gear size tier. Five discrete steps replaced free tooth counts of 5..60 --
+ * see constants/tier.constants.ts for why. Each step is ×1.5 in teeth and in
+ * every derived strength stat.
+ */
+export type GearTier = 1 | 2 | 3 | 4 | 5;
+
 export interface GearDefinition {
   type: GearType;
   goldCost: number;
@@ -20,7 +27,8 @@ export interface GearDefinition {
 export interface GearState {
   id: string;
   type: GearType;
-  teeth: number;              // replaces GearSize; radius = teeth * GEAR_MODULE
+  tier: GearTier;             // authored size step; drives every strength stat
+  teeth: number;              // derived from tier (TIER_TEETH); radius = teeth * GEAR_MODULE
   x: number;                  // pixel x position (center)
   y: number;                  // pixel y position (center)
   owner: 'player' | 'ai';

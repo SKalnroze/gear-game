@@ -6,6 +6,10 @@
 import { UnitDefinition, UnitState, UnitType } from '../types/unit.types';
 import { DEFAULT_TEETH } from '../constants/gear.constants';
 import {
+  TIER_TEETH, tierPower, tierRangeFactor, tierCostFactor, tierForTeeth,
+} from '../constants/tier.constants';
+import type { GearTier } from '../types/gear.types';
+import {
   ENGAGE_DISTANCE, UNIT_SIZE_TEETH_MULT, CROSSBOW_RANGE_MULT, ARTILLERY_RANGE_MULT,
   CAVALRY_CHARGE_DAMAGE_DIVISOR,
 } from '../constants/balance.constants';
@@ -38,49 +42,115 @@ export const TYPE_MASS_MULT: Partial<Record<UnitType, number>> = {
   field_medic: 0.9,
 };
 
+/**
+ * How a unit's speed responds to tier, as a per-tier exponent base.
+ *
+ * The ladder makes everything else uniformly 1.5x stronger, which would make
+ * tier choice automatic. Speed is where identity is preserved *and sharpened*:
+ * light units get faster with tier, heavy units get slower. Across the full
+ * ladder that is +36% for a tier-5 cavalry and -22% for a tier-5 iron guard,
+ * so the gap between the fast flanker and the slow wall widens as you climb --
+ * which is what makes picking a tier per factory an actual decision.
+ *
+ * Sits beside TYPE_MASS_MULT because it is the same kind of knob: a per-type
+ * deviation from an otherwise uniform rule.
+ */
+export const TIER_SPEED_BASE: Partial<Record<UnitType, number>> = {
+  // Light -- tier makes them faster.
+  cavalry: 1.08,
+  elite_cavalry: 1.08,
+  skirmish_diver: 1.08,
+  raider: 1.08,
+  aether_phantom: 1.08,
+  // Standard -- tier makes them slightly faster.
+  infantry: 1.04,
+  elite_infantry: 1.04,
+  mixed: 1.04,
+  crossbow: 1.04,
+  sentry_unit: 1.04,
+  saboteur: 1.04,
+  field_medic: 1.04,
+  crystal_sentinel: 1.04,
+  // Heavy -- tier makes them SLOWER. Being big is part of their identity.
+  iron_guard: 0.94,
+  artillery: 0.94,
+  elite_artillery: 0.94,
+  sapper: 0.94,
+  slime: 0.94,
+};
+
 // ─── Stat scaling ─────────────────────────────────────────────────────────────
 
 /**
- * Compute per-unit stats scaled from gear teeth count.
+ * @deprecated Teeth-keyed shim over computeTierStats.
  *
- * Base values in UNIT_DEFINITIONS are calibrated at DEFAULT_TEETH (10).
- * Scaling rules:
- *   size (visual radius)  = teeth × 1.2              — matches gear silhouette
- *   hp                    ∝ teeth^1.5                — bigger = tankier
- *   speed                 ∝ teeth^(-0.5)             — bigger = slower (min 15 px/s)
- *   baseDamage / damage   ∝ teeth^1.2                — bigger hits harder
- *   attackRange           ∝ teeth^0.8  × ENGAGE_BASE — bigger reaches further
- *   mass                  ∝ teeth^2                  — quadratic (area-based)
- *   costAmount            ∝ teeth^1.3                — larger units cost more
+ * Kept only so the call sites that still hold a raw tooth count keep compiling
+ * while they are converted. Deleted with `teeth` itself.
  */
 export function computeScaledStats(def: UnitDefinition, teeth: number, unitType: UnitType): {
   hp: number; speed: number; baseDamage: number; damage: number;
   size: number; attackRange: number; mass: number; costAmount: number;
 } {
-  const s = teeth / DEFAULT_TEETH;
-  const baseMass = Math.max(1, Math.round(10 * s * s));
+  return computeTierStats(def, tierForTeeth(teeth), unitType);
+}
+
+/**
+ * Per-unit stats for a unit built by a tier-N factory.
+ *
+ * One rule: everything that makes a unit stronger is `base x 1.5^(tier-1)`, so
+ * a tier-3 unit is exactly 2.25x a tier-1 one and the player can reason about
+ * the ladder without a table. Base values in UNIT_DEFINITIONS are the tier-1
+ * values.
+ *
+ * Three deliberate exceptions, each documented in the GDD:
+ *
+ *  - **Range** uses the shallow 1.15^p curve. At the full 1.5^p a tier-5
+ *    artillery would reach 5.06x as far and shoot across most of the map.
+ *  - **Armor** is additive, not multiplicative. HP and damage are each already
+ *    x1.5, which puts raw duel power at 2.25x per tier (26x across the ladder);
+ *    a multiplicative resistance on top of that makes high tiers literally
+ *    unkillable by low ones and deletes the counterplay that keeps cheap
+ *    swarms worth building.
+ *  - **Speed** uses a per-type base (TIER_SPEED_BASE) so heavy units get
+ *    slower with tier while light ones get faster.
+ *
+ * Cost uses 1.6^p -- steeper than power, so scaling up is a commitment.
+ */
+export function computeTierStats(def: UnitDefinition, tier: GearTier, unitType: UnitType): {
+  hp: number; speed: number; baseDamage: number; damage: number;
+  size: number; attackRange: number; mass: number; costAmount: number;
+} {
+  const power = tierPower(tier);
+  const teeth = TIER_TEETH[tier];
   const massMult = TYPE_MASS_MULT[unitType] ?? 1.0;
-  return {
-    hp:          Math.max(1, Math.round(def.hp          * Math.pow(s, 1.5))),
-    speed:       Math.max(15, Math.round(def.speed      * Math.pow(s, -0.5))),
-    baseDamage:  Math.max(1, Math.round(def.baseDamage  * Math.pow(s, 1.2))),
-    damage:      Math.max(1, Math.round(def.damage      * Math.pow(s, 1.2))),
-    size:        Math.max(4, Math.round(teeth * UNIT_SIZE_TEETH_MULT)),
-    // Artillery: stop-and-fire range = 5 unit diameters (10 × size)
-    // Crystal sentinel: ranged, stops ~3 diameters away (6 × size)
-    // Crossbow: short ranged skirmish distance (4 × size) -- stops well short
-    // of melee contact but far closer than artillery/sentinel
-    // (Crossbow/Artillery multipliers shared with turretRange() in
-    // gear.constants.ts, so a turret's range is always derived from these.)
-    attackRange: (unitType === 'artillery' || unitType === 'elite_artillery')
-      ? Math.max(4, Math.round(teeth * UNIT_SIZE_TEETH_MULT)) * ARTILLERY_RANGE_MULT
+  const speedBase = TIER_SPEED_BASE[unitType] ?? 1.0;
+  const p = tier - 1;
+
+  // Visual radius tracks the gear silhouette, as it always has.
+  const size = Math.max(4, Math.round(teeth * UNIT_SIZE_TEETH_MULT));
+  // Ranges are anchored to the TIER-1 silhouette and then grown on the shallow
+  // curve, so they do not inherit the 1.5x size growth.
+  const baseSize = Math.max(4, Math.round(TIER_TEETH[1] * UNIT_SIZE_TEETH_MULT));
+  const rangeFactor = tierRangeFactor(tier);
+
+  const attackRange =
+    (unitType === 'artillery' || unitType === 'elite_artillery')
+      ? Math.round(baseSize * ARTILLERY_RANGE_MULT * rangeFactor)
       : (unitType === 'crystal_sentinel')
-        ? Math.max(4, Math.round(teeth * UNIT_SIZE_TEETH_MULT)) * 6
+        ? Math.round(baseSize * 6 * rangeFactor)
         : (unitType === 'crossbow')
-          ? Math.max(4, Math.round(teeth * UNIT_SIZE_TEETH_MULT)) * CROSSBOW_RANGE_MULT
-          : Math.max(ENGAGE_DISTANCE, Math.round(ENGAGE_DISTANCE * Math.pow(s, 0.8))),
-    mass:        Math.max(1, Math.round(baseMass * massMult)),
-    costAmount:  Math.max(1, Math.round(def.costAmount  * Math.pow(s, 1.3))),
+          ? Math.round(baseSize * CROSSBOW_RANGE_MULT * rangeFactor)
+          : Math.max(ENGAGE_DISTANCE, Math.round(ENGAGE_DISTANCE * rangeFactor));
+
+  return {
+    hp:          Math.max(1, Math.round(def.hp         * power)),
+    speed:       Math.max(15, Math.round(def.speed     * Math.pow(speedBase, p))),
+    baseDamage:  Math.max(1, Math.round(def.baseDamage * power)),
+    damage:      Math.max(1, Math.round(def.damage     * power)),
+    size,
+    attackRange,
+    mass:        Math.max(1, Math.round(10 * massMult * power)),
+    costAmount:  Math.max(1, Math.round(def.costAmount * tierCostFactor(tier))),
   };
 }
 

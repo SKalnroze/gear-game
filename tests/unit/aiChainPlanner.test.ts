@@ -6,6 +6,7 @@ import { EconomySystem } from '../../src/systems/EconomySystem';
 import type { EventBus } from '../../src/systems/EventBus';
 import type { GearState, GearType } from '../../src/types/gear.types';
 import { gearRadius } from '../../src/constants/gear.constants';
+import { tierForTeeth, TIER_TEETH } from '../../src/constants/tier.constants';
 
 /**
  * AIController and AIChainPlanner were rewritten this session and had zero
@@ -35,7 +36,7 @@ function makeBus(): EventBus {
 
 function makeGear(id: string, x: number, y: number, teeth: number, type: GearType, owner: 'player' | 'ai' = 'ai'): GearState {
   return {
-    id, type, teeth, x, y, owner,
+    id, type, tier: tierForTeeth(teeth), teeth, x, y, owner,
     angularVelocity: 0, currentAngle: 0, accumulatedAngle: 0,
     frictionLoad: 0, torqueOutput: 0, isSpinning: false, isBurntOut: false,
     hp: gearRadius(teeth) * 2, maxHp: gearRadius(teeth) * 2,
@@ -67,7 +68,7 @@ describe('AIChainPlanner.getChainPhase', () => {
     expect(AIChainPlanner.getChainPhase({
       motorCount: 0, amplifierCount: 0, capacitorCount: 0, researcherCount: 0,
       minerCount: 0, converterCount: 0, healerCount: 0, spikedCount: 0, armoredCount: 0,
-      overclockCount: 0, turretCount: 0, minelayerCount: 0, spawnerTypes: [], estimatedOutput: 0,
+      overclockCount: 0, turretCount: 0, minelayerCount: 0, sentryGearCount: 0, reliefValveCount: 0, spawnerTypes: [], estimatedOutput: 0,
     })).toBe('bootstrap');
   });
 
@@ -75,7 +76,7 @@ describe('AIChainPlanner.getChainPhase', () => {
     expect(AIChainPlanner.getChainPhase({
       motorCount: 1, amplifierCount: 0, capacitorCount: 0, researcherCount: 0,
       minerCount: 0, converterCount: 0, healerCount: 0, spikedCount: 0, armoredCount: 0,
-      overclockCount: 0, turretCount: 0, minelayerCount: 0, spawnerTypes: [], estimatedOutput: 0,
+      overclockCount: 0, turretCount: 0, minelayerCount: 0, sentryGearCount: 0, reliefValveCount: 0, spawnerTypes: [], estimatedOutput: 0,
     })).toBe('spawn');
   });
 
@@ -83,7 +84,7 @@ describe('AIChainPlanner.getChainPhase', () => {
     expect(AIChainPlanner.getChainPhase({
       motorCount: 1, amplifierCount: 0, capacitorCount: 0, researcherCount: 0,
       minerCount: 0, converterCount: 0, healerCount: 0, spikedCount: 0, armoredCount: 0,
-      overclockCount: 0, turretCount: 0, minelayerCount: 0, spawnerTypes: ['infantry_spawner'], estimatedOutput: 0,
+      overclockCount: 0, turretCount: 0, minelayerCount: 0, sentryGearCount: 0, reliefValveCount: 0, spawnerTypes: ['infantry_spawner'], estimatedOutput: 0,
     })).toBe('amplify');
   });
 
@@ -91,7 +92,7 @@ describe('AIChainPlanner.getChainPhase', () => {
     expect(AIChainPlanner.getChainPhase({
       motorCount: 1, amplifierCount: 1, capacitorCount: 0, researcherCount: 0,
       minerCount: 0, converterCount: 0, healerCount: 0, spikedCount: 0, armoredCount: 0,
-      overclockCount: 0, turretCount: 0, minelayerCount: 0, spawnerTypes: ['infantry_spawner'], estimatedOutput: 0,
+      overclockCount: 0, turretCount: 0, minelayerCount: 0, sentryGearCount: 0, reliefValveCount: 0, spawnerTypes: ['infantry_spawner'], estimatedOutput: 0,
     })).toBe('support');
   });
 
@@ -99,7 +100,7 @@ describe('AIChainPlanner.getChainPhase', () => {
     expect(AIChainPlanner.getChainPhase({
       motorCount: 1, amplifierCount: 1, capacitorCount: 1, researcherCount: 0,
       minerCount: 0, converterCount: 0, healerCount: 0, spikedCount: 0, armoredCount: 0,
-      overclockCount: 0, turretCount: 0, minelayerCount: 0, spawnerTypes: ['infantry_spawner'], estimatedOutput: 0,
+      overclockCount: 0, turretCount: 0, minelayerCount: 0, sentryGearCount: 0, reliefValveCount: 0, spawnerTypes: ['infantry_spawner'], estimatedOutput: 0,
     })).toBe('expand');
   });
 });

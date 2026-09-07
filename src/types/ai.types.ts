@@ -58,6 +58,8 @@ export interface AIChainSummary {
   totalCost: number;
   /** True when this is the chain the AI is currently developing (earliest non-full phase) */
   isFocus: boolean;
+  /** Gear type the planner would place here next, or null (full / nothing actionable). */
+  nextGear: string | null;
   stats: {
     motorCount: number;
     amplifierCount: number;
@@ -65,27 +67,57 @@ export interface AIChainSummary {
     researcherCount: number;
     capacitorCount: number;
     minerCount: number;
+    converterCount: number;
     healerCount: number;
     spikedCount: number;
     armoredCount: number;
     overclockCount: number;
     turretCount: number;
+    minelayerCount: number;
+    sentryGearCount: number;
+    reliefValveCount: number;
   };
+}
+
+/** One entry in the debug-overlay's preview of the AI's upcoming research queue. */
+export interface AIResearchPreviewItem {
+  id: string;
+  name: string;
+  goldCost: number;
+  score: number;
 }
 
 /** Full snapshot returned by AIController.getDebugState() */
 export interface AIDebugState {
   owner: 'player' | 'ai';
   profile: AIStrategyProfile;
+  personality: AIPersonality;
   threat: ThreatLevel;
   gold: number;
-  researchGoal: string;
+  /** Passive gold/sec income (base + researched/gear bonuses). */
+  goldPerSec: number;
+  /** ms since this controller's match started. */
+  matchElapsedMs: number;
+  /** True when threat was critical/danger within the recent past (keeps posture leaning economy). */
+  recentlyThreatened: boolean;
+  /** Economy/defense/offense weights (sum to 1) + chain capacity, recomputed periodically. */
+  posture: { economy: number; defense: number; offense: number; capacity: number };
+  /** The AI's actions-per-minute pool -- its real difficulty axis. */
+  actionBudget: { points: number; capacity: number; apm: number };
   chainCount: number;
   chainSummaries: AIChainSummary[];
+  /** Role the AI would assign to its NEXT bootstrapped chain, and why. */
+  nextChainRole: string;
+  nextChainRoleReason: string;
+  researchGoal: string;
+  researchInProgress: boolean;
+  /** Top of the prioritized research queue (already-researched/blocked entries excluded). */
+  researchQueue: AIResearchPreviewItem[];
+  /** What this controller has observed about its opponent's unit composition. */
+  opponent: { dominantUnit: string; sampleCount: number };
   lastDecisionReason: string;
   lastDecisionType: AIDecisionType;
   /** Active (unlocked, non-passive) abilities and their cooldown state */
   abilities: Array<{ id: string; cooldownRemaining: number }>;
-  personality: AIPersonality;
 }
 

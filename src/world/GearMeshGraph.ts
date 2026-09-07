@@ -1,6 +1,7 @@
 import { GearState } from '../types/gear.types';
 import { GEAR_MESH_TOLERANCE, gearRadius } from '../constants/gear.constants';
 import { gearsAreMeshing } from '../utils/MathUtils';
+import { bfsFrom, findConnectedComponents } from './graph.utils';
 
 export interface MeshEdge {
   gearIdA: string;
@@ -119,45 +120,17 @@ export class GearMeshGraph {
 
   /**
    * BFS to find all connected gears from a starting gear.
+   * Delegates to the shared traversal so PowerGraph cannot drift from it.
    */
   bfsFrom(startId: string): string[] {
-    const visited = new Set<string>();
-    const queue: string[] = [startId];
-    visited.add(startId);
-    const result: string[] = [];
-
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      result.push(current);
-      for (const neighbor of this.getNeighbors(current)) {
-        if (!visited.has(neighbor)) {
-          visited.add(neighbor);
-          queue.push(neighbor);
-        }
-      }
-    }
-
-    return result;
+    return bfsFrom(this.adjacency, startId);
   }
 
   /**
    * Find all connected components.
    */
   findConnectedComponents(gearIds: Iterable<string>): string[][] {
-    const visited = new Set<string>();
-    const components: string[][] = [];
-
-    for (const id of gearIds) {
-      if (!visited.has(id) && this.adjacency.has(id)) {
-        const component = this.bfsFrom(id);
-        for (const gearId of component) {
-          visited.add(gearId);
-        }
-        components.push(component);
-      }
-    }
-
-    return components;
+    return findConnectedComponents(this.adjacency, gearIds);
   }
 
   clear(): void {

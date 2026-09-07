@@ -6,6 +6,7 @@ import type { EventBus } from '../../src/systems/EventBus';
 import type { GearState } from '../../src/types/gear.types';
 import type { UnitState } from '../../src/types/unit.types';
 import { mineDamage, mineRadius } from '../../src/constants/gear.constants';
+import { tierForTeeth, TIER_TEETH } from '../../src/constants/tier.constants';
 
 interface Emitted { event: string; payload: any }
 
@@ -32,7 +33,7 @@ function makeBus() {
 
 function makeMinelayerGear(id: string, x: number, y: number, teeth: number, owner: 'player' | 'ai'): GearState {
   return {
-    id, type: 'minelayer', teeth, x, y, owner,
+    id, type: 'minelayer', tier: tierForTeeth(teeth), teeth, x, y, owner,
     angularVelocity: 0, currentAngle: 0, accumulatedAngle: 0,
     frictionLoad: 0, torqueOutput: 0, isSpinning: true, isBurntOut: false,
     hp: 100, maxHp: 100, isJammed: false, crackLevel: 0, jamStress: 0,

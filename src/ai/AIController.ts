@@ -18,10 +18,11 @@ import { computePosture, roleCapFromPosture, StrategicPosture } from './AIStrate
 import { AbilitySystem } from '../systems/AbilitySystem';
 import { AI_POLL_INTERVAL, AI_APM, AI_ACTION_BUDGET_CAPACITY, gearPlacementCost } from '../constants/balance.constants';
 import { gearRadius } from '../constants/gear.constants';
+import { tierForTeeth } from '../constants/tier.constants';
 import { TECH_NODES } from '../constants/tech.constants';
 import { TechNode } from '../types/tech.types';
 import { randomChoice } from '../utils/MathUtils';
-import { byPhase, assessThreatLevel as assessThreatLevelPure } from './ai.utils';
+import { byPhase, assessThreatLevel as assessThreatLevelPure, weightedRandomPick, AI_BIAS_STRENGTH } from './ai.utils';
 import { RotationPhysicsSystem } from '../systems/RotationPhysicsSystem';
 import { TechSystem } from '../systems/TechSystem';
 import {
@@ -241,6 +242,19 @@ export class AIController {
   }
 
   /** Full debug snapshot consumed by AIDebugOverlay */
+  /** Up to `n` researchable-when-prereqs-met nodes from the top of the priority queue. */
+  private getResearchQueuePreview(n: number): Array<{ id: string; name: string; goldCost: number; score: number }> {
+    const out: Array<{ id: string; name: string; goldCost: number; score: number }> = [];
+    for (const nodeId of this.researchPlan.prioritizedQueue) {
+      if (out.length >= n) break;
+      const node = TECH_NODES[nodeId];
+      if (!node || this.aiResearched.has(nodeId)) continue;
+      if (!node.prereqs.every(p => this.aiResearched.has(p))) continue;
+      out.push({ id: nodeId, name: node.name ?? nodeId, goldCost: node.goldCost, score: Math.round(this.getResearchScore(nodeId)) });
+    }
+    return out;
+  }
+
   getDebugState(): AIDebugState {
     const threat = this.assessThreatLevel();
     const abilities = this.abilityHandlers
@@ -253,18 +267,46 @@ export class AIController {
     // Determine focus chain: earliest non-full phase in priority order
     const focusChainId = [...this.chainPlans].sort(byPhase).find(p => p.phase !== 'full')?.id ?? null;
 
+    // Same context makeDecision() would build this tick -- used to preview what
+    // each chain wants next, cheaply (no placement search, see previewNextGear).
+    const hasAnySpawner = this.chainPlans.some(p => p.stats.spawnerTypes.length > 0);
+    const previewContext: AIPlacementContext = {
+      threatLevel: threat,
+      preferredSpawnerType: this.getCounterSpawnerType(),
+      hasAnySpawner,
+      spawnReserveMult: this.getPersonalitySpawnMult(),
+      preferSwarmSpawners: this.opponentFavorsSwarmCounter(),
+    };
+
+    // Preview the role the AI would give its NEXT chain, and why -- even when it's
+    // not actually about to bootstrap one this tick (that gating lives in makeDecision).
+    const nextChainRole = this.determineNextChainRole();
+    const nextChainRoleReason = this.lastRoleDecisionReason;
+
     return {
       owner: this.owner,
       profile: this.strategyProfile,
+      personality: this.personality,
       threat,
       gold: this.economySystem.getResources(this.owner).gold,
-      researchGoal: this.researchPlan.currentGoal,
+      goldPerSec: this.economySystem.getGoldPerSec(this.owner),
+      matchElapsedMs: this.clock.now - this.startTime,
+      recentlyThreatened: this.clock.now - this.lastSeriousThreatAt < AIController.RECENT_THREAT_WINDOW_MS,
+      posture: { ...this.posture },
+      actionBudget: {
+        points:   Math.round(this.actionBudget.currentPoints * 100) / 100,
+        capacity: this.actionBudget.maxCapacity,
+        apm:      Math.round(this.actionBudget.apm),
+      },
       chainCount: this.chainPlans.length,
       chainSummaries: this.chainPlans.map(p => {
         const totalCost = p.gearIds.reduce((sum, id) => {
           const gear = this.world.getGear(id);
           return sum + (gear ? gearPlacementCost(gear.teeth) : 0);
         }, 0);
+        const nextGear = p.phase === 'full'
+          ? null
+          : AIChainPlanner.previewNextGear(p, this.strategyProfile, this.aiResearched, this.economySystem, this.owner, previewContext);
         return {
           id: p.id,
           phase: p.phase,
@@ -273,6 +315,7 @@ export class AIController {
           gearCount: p.gearIds.length,
           totalCost: Math.round(totalCost),
           isFocus: p.id === focusChainId,
+          nextGear,
           stats: {
             motorCount:      p.stats.motorCount,
             amplifierCount:  p.stats.amplifierCount,
@@ -280,18 +323,30 @@ export class AIController {
             researcherCount: p.stats.researcherCount,
             capacitorCount:  p.stats.capacitorCount,
             minerCount:      p.stats.minerCount,
+            converterCount:  p.stats.converterCount,
             healerCount:     p.stats.healerCount,
             spikedCount:     p.stats.spikedCount,
             armoredCount:    p.stats.armoredCount,
             overclockCount:  p.stats.overclockCount,
             turretCount:     p.stats.turretCount,
+            minelayerCount:  p.stats.minelayerCount,
+            sentryGearCount: p.stats.sentryGearCount,
+            reliefValveCount: p.stats.reliefValveCount,
           },
         };
       }),
+      nextChainRole,
+      nextChainRoleReason,
+      researchGoal: this.researchPlan.currentGoal,
+      researchInProgress: this.aiResearchInProgress,
+      researchQueue: this.getResearchQueuePreview(5),
+      opponent: {
+        dominantUnit: this.getDominantOpponentUnit(),
+        sampleCount: this.opponentUnitWindow.length,
+      },
       lastDecisionReason: this.lastDecisionReason,
       lastDecisionType:   this.lastDecisionType,
       abilities,
-      personality: this.personality,
     };
   }
 
@@ -383,6 +438,24 @@ export class AIController {
   }
 
   /**
+   * True when the opponent's observed dominant unit is a slow-cadence or
+   * high-overkill single-target attacker: cavalry/elite cavalry (high
+   * per-hit damage vs a cheap unit's low HP -- pure overkill, no cleave to
+   * spill it onto a neighbour), crossbow (fires at 1.8x normal cooldown,
+   * see UnitSystem.updateCrossbow), artillery/elite artillery (also
+   * cooldown-gated, stops to fire), or iron guard (slow heavy melee).
+   * Feeds AIPlacementContext.preferSwarmSpawners -- see AIChainPlanner.
+   * Same >=5-sample gate as the research counter-boost, to avoid reacting
+   * to noise before there's a real read on the opponent.
+   */
+  private opponentFavorsSwarmCounter(): boolean {
+    if (this.opponentUnitWindow.length < 5) return false;
+    const dominant = this.getDominantOpponentUnit();
+    return dominant.includes('cavalry') || dominant === 'crossbow'
+        || dominant.includes('artillery') || dominant === 'iron_guard';
+  }
+
+  /**
    * Returns the spawner type that counters the opponent's dominant unit.
    * Counter table (rock-paper-scissors):
    *   infantry → cavalry beats infantry
@@ -394,7 +467,16 @@ export class AIController {
     let chosen: GearType = 'infantry_spawner';
     let reason = 'default';
 
-    if ((dom === 'infantry' || dom === 'elite_infantry') && this.aiResearched.has('unlock_cavalry_spawner')) {
+    // Stop-and-shoot dominant (Artillery, Crystal Sentinel, Crossbow, and Artillery's
+    // elite variant): Skirmish Diver hard-counters all three (2.5-3x per the counter
+    // matrix) -- prefer it over the narrower single-matchup picks below.
+    const isStopAndShoot = dom.includes('artillery') || dom === 'crystal_sentinel' || dom === 'crossbow';
+
+    if (isStopAndShoot && this.aiResearched.has('unlock_skirmish_diver_spawner')) {
+      chosen = 'skirmish_diver_spawner'; reason = `counter ${dom}`;
+    } else if ((dom === 'infantry' || dom === 'elite_infantry' || dom === 'iron_guard')
+        && this.aiResearched.has('unlock_cavalry_spawner')) {
+      // Cavalry also beats Iron Guard (2x) same as it beats Infantry.
       chosen = 'cavalry_spawner'; reason = `counter ${dom}`;
     } else if ((dom === 'cavalry' || dom === 'elite_cavalry') && this.aiResearched.has('unlock_artillery_spawner')) {
       chosen = 'artillery_spawner'; reason = `counter ${dom}`;
@@ -623,7 +705,11 @@ export class AIController {
 
     const hasAnySpawner     = this.chainPlans.some(p => p.stats.spawnerTypes.length > 0);
     const preferredSpawnerType = this.getCounterSpawnerType();
-    const context: AIPlacementContext = { threatLevel: threat, preferredSpawnerType, hasAnySpawner, spawnReserveMult: this.getPersonalitySpawnMult() };
+    const context: AIPlacementContext = {
+      threatLevel: threat, preferredSpawnerType, hasAnySpawner,
+      spawnReserveMult: this.getPersonalitySpawnMult(),
+      preferSwarmSpawners: this.opponentFavorsSwarmCounter(),
+    };
 
     // Sort: bootstrap > spawn > amplify > support > expand > full
     // Economy chains are deprioritised vs combat chains at the same phase
@@ -721,15 +807,24 @@ export class AIController {
    *   2. defense — in-lane physical barrier (hard always; others with tech or under threat)
    *   3. combat  — default
    */
+  /** Reason string for the most recent determineNextChainRole() call — debug overlay only. */
+  private lastRoleDecisionReason = '';
+
   private determineNextChainRole(): ChainRole {
-    if (this.strategyProfile === 'easy') return 'combat';
+    if (this.strategyProfile === 'easy') {
+      this.lastRoleDecisionReason = 'easy AI never diversifies — always combat';
+      return 'combat';
+    }
 
     // A combat chain must have its spawner placed (past 'spawn' phase) before we
     // divert gold to economy/defense chains.
     const hasSpawningCombatChain = this.chainPlans.some(
       p => p.role === 'combat' && p.phase !== 'bootstrap' && p.phase !== 'spawn',
     );
-    if (!hasSpawningCombatChain) return 'combat';
+    if (!hasSpawningCombatChain) {
+      this.lastRoleDecisionReason = 'no combat chain spawning yet — must have one before diversifying';
+      return 'combat';
+    }
 
     // Under critical threat: more unit output is the only useful emergency response.
     // Defense chains without tech are immediately destroyed; economy chains take too long to pay off.
@@ -737,13 +832,19 @@ export class AIController {
     const threat = this.assessThreatLevel();
     if (threat === 'critical') {
       const combatCount = this.chainPlans.filter(p => p.role === 'combat').length;
-      if (combatCount < this.posture.capacity) return 'combat';
+      if (combatCount < this.posture.capacity) {
+        this.lastRoleDecisionReason = `critical threat — flooding combat (${combatCount}/${this.posture.capacity} chains)`;
+        return 'combat';
+      }
     }
 
     // Rusher: build 2 combat chains before diversifying
     if (this.personality === 'rusher') {
       const combatCount = this.chainPlans.filter(p => p.role === 'combat').length;
-      if (combatCount < 2) return 'combat';
+      if (combatCount < 2) {
+        this.lastRoleDecisionReason = `rusher — wants 2 combat chains before diversifying (has ${combatCount})`;
+        return 'combat';
+      }
     }
 
     // Economy chains: only start when a mining node is available so the chain can actually mine.
@@ -752,7 +853,10 @@ export class AIController {
     const hasEconomyTech = this.hasEconomyTech();
     const economyChainCount = this.chainPlans.filter(p => p.role === 'economy').length;
     const maxEconomyChains = roleCapFromPosture(this.posture, this.posture.economy, 1);
-    if (this.personality !== 'turtle' && hasEconomyTech && economyChainCount < maxEconomyChains) return 'economy';
+    if (this.personality !== 'turtle' && hasEconomyTech && economyChainCount < maxEconomyChains) {
+      this.lastRoleDecisionReason = `economy posture ${(this.posture.economy * 100).toFixed(0)}% — room for another economy chain (${economyChainCount}/${maxEconomyChains})`;
+      return 'economy';
+    }
 
     // Defense chains: only build when we actually have defensive gear tech.
     // A chain with nothing but motors in the lane is not a defense — it's a gold sink;
@@ -762,17 +866,28 @@ export class AIController {
     if (defenseChainCount < maxDefenseChains) {
       const hasDefenseTech = this.aiResearched.has('crossbow_turret_tech')
         || this.aiResearched.has('spiked_gears')
-        || this.aiResearched.has('armored_gears');
+        || this.aiResearched.has('armored_gears')
+        || this.aiResearched.has('artillery_turret_tech')
+        || this.aiResearched.has('healer_gear_tech')
+        || this.aiResearched.has('unlock_minelayer')
+        || this.aiResearched.has('unlock_sentry');
       // Only build a defense chain if it can have real defensive content.
       // Turtle personality always builds defense regardless (it's their identity).
       if (hasDefenseTech || this.personality === 'turtle') {
+        this.lastRoleDecisionReason = this.personality === 'turtle' && !hasDefenseTech
+          ? 'turtle identity — defense chain regardless of tech'
+          : `defense posture ${(this.posture.defense * 100).toFixed(0)}% + defensive tech available (${defenseChainCount}/${maxDefenseChains})`;
         return 'defense';
       }
     }
 
     // Turtle: economy after defense
-    if (this.personality === 'turtle' && hasEconomyTech && economyChainCount < maxEconomyChains) return 'economy';
+    if (this.personality === 'turtle' && hasEconomyTech && economyChainCount < maxEconomyChains) {
+      this.lastRoleDecisionReason = `turtle — defense covered, now economy (${economyChainCount}/${maxEconomyChains})`;
+      return 'economy';
+    }
 
+    this.lastRoleDecisionReason = 'no economy/defense slot open — defaulting to combat';
     return 'combat';
   }
 
@@ -828,9 +943,10 @@ export class AIController {
   /** Place the first motor of a brand-new chain near the given origin. */
   private bootstrapNewChain(origin: { x: number; y: number }): AIDecision | null {
     const unlocked = this.ownTech()?.unlockedTeeth ?? [10];
-    const profileMax = this.strategyProfile === 'hard' ? 30 : this.strategyProfile === 'medium' ? 15 : 10;
-    const teethList = [...unlocked].filter(t => t <= profileMax).sort((a, b) => b - a);
-    if (teethList.length === 0) teethList.push(10);
+    const gold = this.economySystem.getResources(this.owner).gold;
+    const target = AIChainPlanner.selectTeeth(this.strategyProfile, gold, unlocked, 'motor');
+    const teethList = [...unlocked].filter(t => t <= target).sort((a, b) => b - a);
+    if (!teethList.includes(10)) teethList.push(10);
 
     for (const t of teethList) {
       if (!this.economySystem.canAffordGold(this.owner, this.getGearPlacementCost(t))) continue;
@@ -889,10 +1005,17 @@ export class AIController {
         if (this.isOriginFarEnough(x, y, MIN_ORIGIN_DIST)) return { x, y };
       }
     } else {
-      // Hard: evenly spaced within front 65% of zone, strongly prefer off-lane
+      // Hard: evenly spaced within front 65% of zone, strongly prefer off-lane.
+      // Slice count is capped by how many MIN_ORIGIN_DIST-wide bands actually fit --
+      // posture.capacity can grow well past what the zone can spatially hold (up to
+      // 18 late-game), and dividing by the raw capacity would shrink slices below the
+      // min-separation distance, making every candidate in the loop below fail and
+      // silently falling through to the full-zone fallback every time.
       const activeBandW = zoneW * 0.65;
-      const sliceW = activeBandW / this.posture.capacity;
-      const chainIndex = this.chainPlans.length;
+      const maxSlices = Math.max(1, Math.floor(activeBandW / MIN_ORIGIN_DIST));
+      const sliceCount = Math.min(this.posture.capacity, maxSlices);
+      const sliceW = activeBandW / sliceCount;
+      const chainIndex = this.chainPlans.length % sliceCount;
       const sliceStart = zoneMinX + chainIndex * sliceW;
 
       for (let i = 0; i < 12; i++) {
@@ -1113,25 +1236,24 @@ export class AIController {
       'power_efficiency_1':           850,  // +10% all gears
       'unlock_infantry':              800,  // cheap HP boost unlocks elite path
       'gold_mining_2':                770,  // +2 g/s stacks with gold_mining_1
-      'gear_precision_1':             720,  // unlocks 15t gears (bigger motors)
+      'gear_precision_1':             790,  // unlocks 5t/15t gears -- fast spawners, bigger motors
       'unlock_artillery_spawner':     700,  // counter-pick tool
       'unlock_cavalry_spawner':       690,  // counter-pick tool
       'unlock_crossbow_spawner':      520,  // counter-pick tool (aether phantom)
       'gold_mining_3':                650,  // +3 g/s
-      'gear_precision_2':             600,  // 20/25t gears
+      'gear_precision_2':             660,  // 20/25t gears
       'power_efficiency_2':           580,  // +15% stacks
       'unlock_iron_mining':           680,  // gate for iron economy chain — boosted (key income tech)
       'iron_to_gold':                 640,  // iron_converter unlocked; drives economy chains — boosted
       'power_overdrive':              510,  // +25% from all sources
       'gold_empire':                  500,  // +5 g/s
-      'gear_precision_3':             490,  // 30/35t gears + super_amplifier prereq
+      'gear_precision_3':             560,  // 30/35t gears + super_amplifier prereq
       'basic_capacitor':              460,  // burst mechanic, great with chains
       'super_amplifier':              450,  // 2× amplifier - huge late-game
       'cavalry_charge':               430,  // cavalry speed+dmg
       'elite_infantry_unlock':        420,  // 2× HP/dmg infantry
-      'gear_precision_4':             410,  // 40/45t gears
+      'gear_precision_4':             480,  // 40/45t gears
       'unlock_crystal_mining':        400,  // opens crystal→gold chain
-      'iron_guard_spawner_unlock':    390,
       'unlock_iron_guard_spawner':    390,
       'power_surge':                  380,  // 30 gold on demand
       'infantry_speed':               370,
@@ -1141,21 +1263,29 @@ export class AIController {
       'basic_overclock':              340,  // overclock gears (+50% speed adj)
       'elite_cavalry_unlock':         330,
       'elite_artillery_unlock':       325,
+      'unlock_skirmish_diver_spawner': 500,  // hard-counters 3 stop-and-shoot archetypes at once
+      'unlock_slime_spawner':         340,  // cheap early clog/chip pressure
       // ── Defense (boosted under threat via adaptive scoring below) ──
       'base_fortification':           310,
       'spiked_gears':                 300,
+      'unlock_relief_valve':          300,  // jam-mitigation clutch, cheap and broadly useful
       'armored_gears':                295,
       'crossbow_turret_tech':         290,
+      'unlock_sentry':                270,  // mine detection, the counter to a Minelayer
       'healer_gear_tech':             285,
       'fortress_wall':                280,
       'unlock_crystal_sentinel_spawner': 265,
+      'unlock_sapper_spawner':        260,  // breach tool vs a turtled defense
       'unlock_aether_mining':         260,
       'aether_to_gold':               255,
+      'unlock_raider_spawner':        255,  // economy disruption
       'unlock_aether_phantom_spawner': 250,
+      'unlock_field_medic_spawner':   245,  // mobile sustain
       'artillery_turret_tech':        245,
       'heavy_fortification':          240,
       'overclock_mastery':            235,
-      'gear_precision_5':             230,
+      'gear_precision_5':             340,  // 50/55/60t gears -- top of the tooth-size tree
+      'unlock_saboteur_spawner':      210,  // situational, gated behind relief_valve
       'total_war':                    220,
       'counter_intel':                200,
     };
@@ -1171,9 +1301,11 @@ export class AIController {
                          : this.personality === 'economist' ? 700   // stays below iron_mining (720+40)
                          : this.personality === 'turtle'    ? 820
                          :                                    950;  // balanced / default
-      if (dominant.includes('infantry') && nodeId === 'unlock_cavalry_spawner')   score = Math.max(score, counterBoost);
+      if ((dominant.includes('infantry') || dominant === 'iron_guard') && nodeId === 'unlock_cavalry_spawner') score = Math.max(score, counterBoost);
       if (dominant.includes('cavalry')  && nodeId === 'unlock_artillery_spawner') score = Math.max(score, counterBoost);
       if (dominant.includes('aether_phantom') && nodeId === 'unlock_crossbow_spawner') score = Math.max(score, counterBoost);
+      const dominantIsStopAndShoot = dominant.includes('artillery') || dominant === 'crystal_sentinel' || dominant === 'crossbow';
+      if (dominantIsStopAndShoot && nodeId === 'unlock_skirmish_diver_spawner') score = Math.max(score, counterBoost);
     }
 
     // Natural unit-tech progression: once cavalry spawner is researched, artillery is the
@@ -1181,6 +1313,13 @@ export class AIController {
     // score (700) loses to almost every other node and is never researched.
     if (nodeId === 'unlock_artillery_spawner' && this.aiResearched.has('unlock_cavalry_spawner')) {
       score = Math.max(score, 800);
+    }
+
+    // Tooth-size research pays off once the foundation is up (bigger gears are
+    // strictly better output-per-gold, and small spawners spin faster) -- but
+    // it shouldn't outrace basic economy/combat unlocks in the opening moves.
+    if (nodeId.startsWith('gear_precision_') && this.aiResearched.size >= 3) {
+      score += 150;
     }
 
     // Threat-adaptive boost: under pressure, prioritise defensive tech
@@ -1206,6 +1345,29 @@ export class AIController {
     return score;
   }
 
+  /**
+   * Weighted-random full ordering of `pool` by research need: every node gets
+   * weight >= 1 (always reachable), plus a bias toward its getResearchScore()
+   * need, scaled by difficulty (AI_BIAS_STRENGTH) -- easy barely leans on the
+   * score, hard leans on it heavily without ever fully excluding the rest.
+   */
+  private buildWeightedResearchQueue(pool: string[]): string[] {
+    if (pool.length <= 1) return pool;
+    const bias = AI_BIAS_STRENGTH[this.strategyProfile] ?? AI_BIAS_STRENGTH.medium;
+    const scores = new Map(pool.map(id => [id, Math.max(0, this.getResearchScore(id))]));
+    const maxScore = Math.max(1, ...scores.values());
+
+    const remaining = [...pool];
+    const queue: string[] = [];
+    while (remaining.length > 0) {
+      const weights = remaining.map(id => 1 + bias * ((scores.get(id) ?? 0) / maxScore));
+      const picked = weightedRandomPick(remaining, weights);
+      queue.push(picked);
+      remaining.splice(remaining.indexOf(picked), 1);
+    }
+    return queue;
+  }
+
   private rebuildResearchPlan(): void {
     const available = Object.keys(TECH_NODES).filter(id => {
       const node = TECH_NODES[id];
@@ -1217,33 +1379,15 @@ export class AIController {
       return;
     }
 
-    let queue: string[];
-    let goal: string;
-
-    if (this.strategyProfile === 'easy') {
-      // Easy: prefer cheap economy first, rest is random
-      const econNodes = available
-        .filter(id => TECH_NODES[id].column === 2)
-        .sort((a, b) => TECH_NODES[a].goldCost - TECH_NODES[b].goldCost);
-      const rest = available.filter(id => TECH_NODES[id].column !== 2).sort(() => Math.random() - 0.5);
-      queue = [...econNodes, ...rest];
-      goal = 'economy first';
-    } else {
-      // Medium/hard: score-based (ROI + opponent adaptation)
-      const scored = [...available].sort((a, b) => this.getResearchScore(b) - this.getResearchScore(a));
-
-      if (this.strategyProfile === 'medium') {
-        // Medium: skip T3+ until 4+ nodes are researched (foundation first)
-        const hasFoundation = this.aiResearched.size >= 4;
-        queue = hasFoundation ? scored : scored.filter(id => TECH_NODES[id].tier <= 2);
-        if (queue.length === 0) queue = scored;
-      } else {
-        queue = scored;
-      }
-
-      goal = queue.length > 0 ? (TECH_NODES[queue[0]]?.name ?? queue[0]) : 'complete';
+    // Medium: skip T3+ until 4+ nodes are researched (foundation first)
+    let pool = available;
+    if (this.strategyProfile === 'medium' && this.aiResearched.size < 4) {
+      const foundation = available.filter(id => TECH_NODES[id].tier <= 2);
+      if (foundation.length > 0) pool = foundation;
     }
 
+    const queue = this.buildWeightedResearchQueue(pool);
+    const goal = queue.length > 0 ? (TECH_NODES[queue[0]]?.name ?? queue[0]) : 'complete';
     this.researchPlan = { prioritizedQueue: queue, currentGoal: goal, lastRebuildAt: this.clock.now };
   }
 
@@ -1280,7 +1424,7 @@ export class AIController {
         const cost = this.getGearPlacementCost(decision.teeth);
         if (this.economySystem.spendGold(this.owner, cost, false)) {
           const placed = this.gearSystem.tryPlace(
-            decision.gearType, decision.teeth, decision.x, decision.y, this.owner,
+            decision.gearType, tierForTeeth(decision.teeth), decision.x, decision.y, this.owner,
           );
           // tryPlace can refuse (zone, overlap, tech gate). The gold was
           // already spent, so refund it rather than silently burning it.

@@ -3,12 +3,14 @@ import { World } from '../../src/world/World';
 import type { GearState } from '../../src/types/gear.types';
 import { gearRadius, GEAR_MESH_TOLERANCE } from '../../src/constants/gear.constants';
 import { PLAYER_ZONE_MAX_X, AI_ZONE_MIN_X, LANE_Y_MIN, LANE_Y_MAX } from '../../src/constants/world.constants';
+import { tierForTeeth, TIER_TEETH } from '../../src/constants/tier.constants';
 
 // Helper to build a minimal GearState
 function makeGear(id: string, x: number, y: number, teeth: number, owner: 'player' | 'ai'): GearState {
   return {
     id,
     type: 'motor',
+    tier: tierForTeeth(teeth),
     teeth,
     x,
     y,

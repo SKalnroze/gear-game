@@ -48,6 +48,8 @@ export interface GameEventMap {
 
   // Crystal sentinel cold zone events
   'cold_beam:fired': { owner: 'player' | 'ai'; srcX: number; srcY: number; dstX: number; dstY: number };
+  // Mobile crossbow's instant hitscan shot -- no travel time, just a visual/audio cue
+  'crossbow_bolt:fired': { owner: 'player' | 'ai'; srcX: number; srcY: number; dstX: number; dstY: number };
   'cold_zone:created': { id: string; x: number; y: number; radius: number };
   'cold_zone:expired': { id: string };
   'slime_puddle:created': { id: string; x: number; y: number; radius: number; duration: number };

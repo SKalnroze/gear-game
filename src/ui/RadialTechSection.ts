@@ -7,36 +7,52 @@ import { NEON, NEON_STR } from '../constants/ui.constants';
 import { PANEL_BODY_H } from '../constants/world.constants';
 import { panelState } from './SlidingPanel';
 import {
-  computeTechTreeLayout, polarToXY,
-  TechTreeLayout, TechLayoutNode, BranchSector,
-  CARD_W, CARD_H, RING_GAP, ELLIPSE_Y,
+  ROOT_NODE_ID, NODE_R, LayoutPoint, edgeKey,
+  getNodeVisualState, getUnmetPrereqs, getNodeIcon, NodeVisualState,
+  BRANCH_ACCENT, branchOf,
 } from './techTreeLayout';
+import { TECH_TREE_LAYOUT } from '../data/techTreeLayoutData';
+import {
+  drawGear, drawRing, drawPolyline, pointAlongPolyline,
+  darkenColor, colorToHex, hashString, EMOJI_FONT_STACK,
+} from './techTreeRender';
 
 // ─── Layout constants ────────────────────────────────────────────────────────
 const QUEUE_W  = 192;  // left sidebar for research queue
 const CONTENT_BASE_X = QUEUE_W + 4;
-
-const TIER_STRIPE_H = 3;
-const TIER_COLORS: number[] = [0x00ffcc, 0xff8800, 0xff2244]; // T1 / T2 / T3
-
-const STATE = {
-  researched: { bg: 0x001a0f, border: NEON.green,   text: '#66ff99', stripe: NEON.green  },
-  queued:     { bg: 0x1a1300, border: NEON.yellow,  text: '#ffcc44', stripe: NEON.yellow },
-  available:  { bg: 0x040e1a, border: NEON.blue,    text: '#eef2ff', stripe: NEON.blue   },
-  locked:     { bg: 0x060810, border: 0x1a2233,     text: '#3a4a5a', stripe: 0x1a2233    },
-};
-type NodeState = keyof typeof STATE;
-
-const MIN_ZOOM = 0.15;
-const MAX_ZOOM = 1.1;
+const MIN_ZOOM = 0.4;
+const MAX_ZOOM = 1.8;
 const ZOOM_STEP = 1.12;
 
+const TIER_TEETH = [8, 10, 12]; // T1 / T2 / T3, purely cosmetic
+
+const SPIN_RESEARCHED = 0.12;   // rad/sec — slow, content
+const SPIN_RESEARCHING = 1.4;   // rad/sec — busy
+
+/** A single node's live GameObjects, kept around so update() can animate
+ * (spin/pulse/progress) each frame without rebuilding. Position is set once
+ * from the static layout and never changes. */
+interface NodeVisual {
+  container: Phaser.GameObjects.Container;
+  rotor: Phaser.GameObjects.Graphics;   // spins; also the blank circle when distant
+  ring: Phaser.GameObjects.Graphics;    // state ring, does not spin
+  glow: Phaser.GameObjects.Graphics;    // pulses while researching
+  progress: Phaser.GameObjects.Graphics;
+  icon: Phaser.GameObjects.Text;
+  iconNumeral: Phaser.GameObjects.Text; // small "II"/"III" badge for repeated-upgrade families
+  label: Phaser.GameObjects.Text;       // always-visible name + cost, doesn't spin
+  state: NodeVisualState;
+  radius: number;
+}
+
 /**
- * RadialTechSection — a true radial tree: prereq-chain depth is radius (the
- * techs researchable right now form the innermost ring), branch is angle (a
- * resource's whole line — mining, converting, its unit spawner — always
- * points the same direction, see techTreeLayout.ts). Right-drag pans,
- * the wheel zooms, left-click researches.
+ * RadialTechSection — a static, hand-designed tech tree. Every node's
+ * position and every connection's curve come from TECH_TREE_LAYOUT (see
+ * src/data/techTreeLayoutData.ts), authored with the Tech Layout Editor —
+ * there is no physics or auto-layout here at all. A node too far from
+ * anything touched by research renders as a blank, uninteractive circle
+ * rather than a full gear — see getNodeVisualState's 'distant' state.
+ * Right-drag pans, the wheel zooms, left-click researches an available gear.
  */
 export class RadialTechSection {
   private scene: Phaser.Scene;
@@ -47,13 +63,11 @@ export class RadialTechSection {
   private readonly: boolean;
 
   private contentContainer!: Phaser.GameObjects.Container;
-  private guideGraphics!: Phaser.GameObjects.Graphics;
   private edgesGraphics!: Phaser.GameObjects.Graphics;
-  private cardContainers: Map<string, Phaser.GameObjects.Container> = new Map();
+  private rootHub!: Phaser.GameObjects.Graphics;
+  private nodeVisuals: Map<string, NodeVisual> = new Map();
+  private positions: Map<string, LayoutPoint> = new Map();
 
-  private layout: TechTreeLayout;
-
-  private progressBarRects: Map<string, Phaser.GameObjects.Rectangle> = new Map();
   private prereqHighlights: Phaser.GameObjects.Graphics[] = [];
 
   private queuePanel!: Phaser.GameObjects.Container;
@@ -65,14 +79,14 @@ export class RadialTechSection {
   private tooltipDesc!: Phaser.GameObjects.Text;
   private tooltipPrereqs!: Phaser.GameObjects.Text;
   private tooltipStatus!: Phaser.GameObjects.Text;
+  private hoveredNodeId: string | null = null;
 
   private recenterBtn!: Phaser.GameObjects.Container;
 
   panelW: number;
+  private zoom = 1;
   private panOffsetX = 0;
   private panOffsetY = 0;
-  private zoom = 0.3;
-  private defaultZoom = 0.3;
   private isPanning = false;
   private panStart = { px: 0, py: 0, ox: 0, oy: 0 };
 
@@ -91,21 +105,21 @@ export class RadialTechSection {
     this.owner = owner;
     this.readonly = readonly;
     this.container = scene.add.container(0, 0);
-    this.layout = computeTechTreeLayout();
-
-    this.defaultZoom = this.computeDefaultZoom();
-    this.zoom = this.defaultZoom;
 
     this.contentContainer = scene.add.container(CONTENT_BASE_X, 0);
     this.contentContainer.setScale(this.zoom);
     this.container.add(this.contentContainer);
 
-    this.guideGraphics = scene.add.graphics();
-    this.contentContainer.add(this.guideGraphics);
     this.edgesGraphics = scene.add.graphics();
     this.contentContainer.add(this.edgesGraphics);
 
-    this.buildLayout();
+    this.rootHub = scene.add.graphics();
+    this.contentContainer.add(this.rootHub);
+
+    this.loadPositions();
+    for (const id of Object.keys(TECH_NODES)) this.createNodeVisual(id);
+    this.renderEdges();
+
     this.buildQueuePanel();
     this.buildTooltip();
     this.buildRecenterButton();
@@ -120,250 +134,190 @@ export class RadialTechSection {
   }
 
   private readonly handleTechEvent = (): void => {
-    this.refreshCards();
+    for (const id of this.nodeVisuals.keys()) this.restyleNodeVisual(id);
     this.refreshQueuePanel();
   };
 
-  /** Fit the innermost ring plus a first step outward (the "available now"
-   * techs and what they lead to) comfortably in the body viewport on first
-   * open — not the whole tree, which would shrink the center to a speck. */
-  private computeDefaultZoom(): number {
-    const viewW = Math.max(200, this.panelW - QUEUE_W);
-    const viewH = PANEL_BODY_H;
-    const target = this.hubRadius() + RING_GAP * 1.2;
-    const fitW = (viewW * 0.46) / target;
-    const fitH = (viewH * 0.92) / (target * ELLIPSE_Y);
-    return Phaser.Math.Clamp(Math.min(fitW, fitH), MIN_ZOOM, MAX_ZOOM);
-  }
-
-  // ── Build layout ─────────────────────────────────────────────────────────
-
-  private buildLayout(): void {
-    this.renderSectorGuides();
-    this.renderEdges();
-    for (const nodeId of Object.keys(TECH_NODES)) {
-      this.renderCard(nodeId);
+  /** Reads every node's fixed position out of TECH_TREE_LAYOUT. A tech that
+   * exists in the game but not yet in the saved layout (e.g. newly added
+   * content the editor hasn't placed) falls back to the origin rather than
+   * crashing — visibly wrong, easy to spot, never a hard failure. */
+  private loadPositions(): void {
+    this.positions.set(ROOT_NODE_ID, TECH_TREE_LAYOUT.nodes[ROOT_NODE_ID] ?? { x: 0, y: 0 });
+    for (const id of Object.keys(TECH_NODES)) {
+      this.positions.set(id, TECH_TREE_LAYOUT.nodes[id] ?? { x: 0, y: 0 });
     }
   }
 
-  /** Faint depth rings + branch wedges + branch labels, drawn in the same
-   * ellipse-projected space as the nodes so they line up exactly. */
-  private renderSectorGuides(): void {
-    const g = this.guideGraphics;
-    g.clear();
+  // ── Node visuals ─────────────────────────────────────────────────────────
 
-    // Depth rings
-    const hub = this.hubRadius();
-    for (let d = 0; d <= this.layout.maxDepth + 1; d++) {
-      const r = hub + d * RING_GAP;
-      if (r > this.layout.maxRadius + RING_GAP) break;
-      g.lineStyle(1, 0x1a2a33, 0.35);
-      this.strokeEllipse(g, r, 40);
-    }
-
-    // Branch wedges + labels
-    for (const sector of this.layout.sectors) {
-      this.fillWedge(g, sector, sector.outerRadius + 60, 0.05);
-      const midAngle = (sector.startAngle + sector.endAngle) / 2;
-      const { x, y } = polarToXY(sector.outerRadius + 46, midAngle);
-      const label = this.scene.add.text(x, y, sector.label, {
-        fontSize: '12px', color: `#${sector.accent.toString(16).padStart(6, '0')}`,
-        fontFamily: 'monospace', fontStyle: 'bold',
-      }).setOrigin(0.5).setAlpha(0.85);
-      this.contentContainer.add(label);
-    }
-  }
-
-  private hubRadius(): number {
-    let min = Infinity;
-    for (const n of this.layout.nodes.values()) if (n.depth === 0) min = Math.min(min, n.radius);
-    return Number.isFinite(min) ? min : 0;
-  }
-
-  private strokeEllipse(g: Phaser.GameObjects.Graphics, radius: number, segments: number): void {
-    g.beginPath();
-    for (let i = 0; i <= segments; i++) {
-      const a = (i / segments) * Math.PI * 2;
-      const { x, y } = polarToXY(radius, a);
-      if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
-    }
-    g.strokePath();
-  }
-
-  private fillWedge(g: Phaser.GameObjects.Graphics, sector: BranchSector, radius: number, alpha: number): void {
-    const segments = 14;
-    g.fillStyle(sector.accent, alpha);
-    g.beginPath();
-    g.moveTo(0, 0);
-    for (let i = 0; i <= segments; i++) {
-      const a = sector.startAngle + (i / segments) * (sector.endAngle - sector.startAngle);
-      const { x, y } = polarToXY(radius, a);
-      g.lineTo(x, y);
-    }
-    g.closePath();
-    g.fillPath();
-  }
-
-  private getNodeState(nodeId: string): NodeState {
-    if (this.playerTech.researched.has(nodeId)) return 'researched';
-    if (this.playerTech.queue.includes(nodeId)) return 'queued';
+  private createNodeVisual(nodeId: string): void {
     const node = TECH_NODES[nodeId];
-    if (!node) return 'locked';
-    const prereqsMet = !node.prereqs?.length || node.prereqs.every(p => this.playerTech.researched.has(p));
-    return prereqsMet ? 'available' : 'locked';
-  }
+    const pos = this.positions.get(nodeId);
+    if (!node || !pos) return;
 
-  private renderCard(nodeId: string): void {
-    const pos = this.layout.nodes.get(nodeId);
-    const node = TECH_NODES[nodeId];
-    if (!pos || !node) return;
-
-    const state = this.getNodeState(nodeId);
-    const isInProgress = this.playerTech.inProgress === nodeId;
-    const colors = STATE[state];
-    const tierColor = TIER_COLORS[(node.tier ?? 1) - 1] ?? TIER_COLORS[0];
-
-    const cardX = pos.x - CARD_W / 2;
-    const cardY = pos.y - CARD_H / 2;
-
-    const c = this.scene.add.container(cardX, cardY);
+    const radius = NODE_R;
+    const c = this.scene.add.container(pos.x, pos.y);
     this.contentContainer.add(c);
-    this.cardContainers.set(nodeId, c);
 
-    const bg = this.scene.add.rectangle(CARD_W / 2, CARD_H / 2, CARD_W, CARD_H, colors.bg, 1);
-    c.add(bg);
+    const glow = this.scene.add.graphics();
+    c.add(glow);
 
-    if (isInProgress) {
-      const progressBar = this.scene.add.rectangle(0, 0, 0, CARD_H, 0x112244, 1).setOrigin(0, 0);
-      c.add(progressBar);
-      this.progressBarRects.set(nodeId, progressBar);
-    }
+    const rotor = this.scene.add.graphics();
+    c.add(rotor);
 
-    const stripe = this.scene.add.rectangle(CARD_W / 2, TIER_STRIPE_H / 2, CARD_W, TIER_STRIPE_H, tierColor, isInProgress ? 1 : 0.85);
-    c.add(stripe);
+    const ring = this.scene.add.graphics();
+    c.add(ring);
 
-    const border = this.scene.add.graphics();
-    border.lineStyle(1.5, colors.border, state === 'locked' ? 0.25 : 0.85);
-    border.strokeRect(0, 0, CARD_W, CARD_H);
-    c.add(border);
+    const progress = this.scene.add.graphics();
+    c.add(progress);
 
-    const statusIcon = state === 'researched' ? '✓' : state === 'queued' ? '⌛' : isInProgress ? '◈' : '';
-    if (statusIcon) {
-      const statusTxt = this.scene.add.text(CARD_W - 6, 5, statusIcon, {
-        fontSize: '11px', color: colors.text, fontFamily: 'monospace', fontStyle: 'bold',
-      }).setOrigin(1, 0);
-      c.add(statusTxt);
-    }
+    const iconInfo = getNodeIcon(nodeId);
+    const icon = this.scene.add.text(0, 0, iconInfo.glyph, {
+      fontSize: `${Math.round(radius * 1.4)}px`, color: '#eef2ff', fontFamily: EMOJI_FONT_STACK,
+    }).setOrigin(0.5);
+    c.add(icon);
 
-    const nameText = this.scene.add.text(7, 6, node.name, {
-      fontSize: '10.5px', color: colors.text, fontFamily: 'monospace', fontStyle: 'bold',
-      wordWrap: { width: CARD_W - 34 },
-    });
-    c.add(nameText);
+    // Small Roman-numeral badge for a repeated-upgrade family ("Gold Mining
+    // III") sharing one icon across its tiers — bottom-right of the gear.
+    const iconNumeral = this.scene.add.text(radius * 0.55, radius * 0.5, iconInfo.numeral ?? '', {
+      fontSize: '10px', color: '#eef2ff', fontFamily: 'monospace', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    iconNumeral.setShadow(0, 1, '#000000', 2, true, true);
+    c.add(iconNumeral);
 
-    const costText = this.scene.add.text(CARD_W - 6, CARD_H - 6, `G${node.goldCost}`, {
-      fontSize: '10px',
-      color: state === 'locked' ? '#334455' : NEON_STR.yellow,
-      fontFamily: 'monospace',
-    }).setOrigin(1, 1);
-    c.add(costText);
+    // Always-visible name + cost, hovering below the gear — never rotates
+    // with the rotor, and its size/position never feeds back into layout,
+    // so it can never nudge node spacing even though it visually overflows
+    // the gear's own radius.
+    const label = this.scene.add.text(0, radius + 8, `${node.name}\n${node.goldCost}g`, {
+      fontSize: '10px', color: colorToHex(BRANCH_ACCENT[branchOf(nodeId)] ?? NEON.cyan),
+      fontFamily: 'monospace', fontStyle: 'bold', align: 'center',
+      wordWrap: { width: radius * 3.4 },
+    }).setOrigin(0.5, 0);
+    label.setShadow(0, 1, '#000000', 2, true, true);
+    c.add(label);
 
-    const hit = this.scene.add.zone(CARD_W / 2, CARD_H / 2, CARD_W, CARD_H);
-    const canClick = state !== 'researched' && state !== 'locked' && !isInProgress;
-    hit.setInteractive({ useHandCursor: state === 'available' });
-
-    hit.on('pointerover', () => {
-      if (state !== 'locked') {
-        bg.setFillStyle(state === 'queued' ? 0x2a2000 : (isInProgress ? 0x0a1a2e : 0x071222), 1);
-        border.clear();
-        border.lineStyle(2, colors.border, 1);
-        border.strokeRect(0, 0, CARD_W, CARD_H);
-      }
-      this.highlightPrereqs(nodeId);
-      this.showTooltip(nodeId, pos);
-    });
-    hit.on('pointerout', () => {
-      bg.setFillStyle(colors.bg, 1);
-      border.clear();
-      border.lineStyle(1.5, colors.border, state === 'locked' ? 0.25 : 0.85);
-      border.strokeRect(0, 0, CARD_W, CARD_H);
-      this.clearPrereqHighlights();
-      this.hideTooltip();
-    });
-    if (canClick && !this.readonly) {
-      hit.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
-        if (!ptr.leftButtonDown()) return;
-        if (panelState.isAnimating || this.isPanning) return;
-        eventBus.emit('ui:tech_node_clicked', { nodeId });
-      });
-    }
-    c.add(hit);
+    const state = getNodeVisualState(nodeId, this.playerTech);
+    this.nodeVisuals.set(nodeId, { container: c, rotor, ring, glow, progress, icon, iconNumeral, label, state, radius });
+    this.paintNode(nodeId);
   }
 
-  /** Radial "elbow" edges: straight out along the parent's angle to the
-   * child's ring, then an arc sweep at that ring to the child's angle. Every
-   * sibling sweeps at its own ring, so fanning children never overlaps. */
+  private restyleNodeVisual(nodeId: string): void {
+    const visual = this.nodeVisuals.get(nodeId);
+    const newState = getNodeVisualState(nodeId, this.playerTech);
+    if (!visual || visual.state === newState) return;
+    visual.state = newState;
+    this.paintNode(nodeId);
+  }
+
+  private paintNode(nodeId: string): void {
+    const visual = this.nodeVisuals.get(nodeId);
+    const node = TECH_NODES[nodeId];
+    if (!visual || !node) return;
+
+    const accent = BRANCH_ACCENT[branchOf(nodeId)] ?? NEON.cyan;
+    const r = visual.radius;
+    const state = visual.state;
+
+    if (state === 'distant') {
+      // Blank, undecorated circle — no icon, no name, no tooltip, not
+      // interactive (see hitTestNode). Keeps the whole tree's shape legible
+      // without drowning it in detail for techs nothing points at yet.
+      visual.ring.clear();
+      visual.glow.clear();
+      visual.progress.clear();
+      visual.icon.setVisible(false);
+      visual.iconNumeral.setVisible(false);
+      visual.label.setVisible(false);
+      visual.rotor.clear();
+      const dr = r * 0.55;
+      visual.rotor.fillStyle(darkenColor(accent, 0.3), 0.6);
+      visual.rotor.fillCircle(0, 0, dr);
+      visual.rotor.lineStyle(1, accent, 0.4);
+      visual.rotor.strokeCircle(0, 0, dr);
+      return;
+    }
+
+    visual.icon.setVisible(true);
+    visual.iconNumeral.setVisible(!!visual.iconNumeral.text);
+    visual.label.setVisible(true);
+
+    const teeth = TIER_TEETH[(node.tier ?? 1) - 1] ?? TIER_TEETH[0];
+    const researched = state === 'researched';
+    const researching = state === 'researching';
+    const darkened = !researched;
+
+    const fillColor = darkened ? darkenColor(accent, researching ? 0.55 : (state === 'available' ? 0.42 : 0.22)) : accent;
+
+    drawGear(visual.rotor, r, teeth, fillColor, 0.95);
+
+    let ringColor = 0x2a3a4a;
+    let ringAlpha = 0.4;
+    let ringWidth = 2;
+    let dashed = false;
+    switch (state) {
+      case 'researched':  ringColor = accent;       ringAlpha = 0.95; ringWidth = 2.5; break;
+      case 'researching': ringColor = 0xffffff;     ringAlpha = 0.9;  ringWidth = 2.5; break;
+      case 'queued':       ringColor = NEON.yellow;  ringAlpha = 0.85; ringWidth = 2;   dashed = true; break;
+      case 'available':    ringColor = accent;       ringAlpha = 0.85; ringWidth = 2.5; break;
+      case 'next':         ringColor = 0x2a3a4a;     ringAlpha = 0.5;  ringWidth = 1.5; break;
+    }
+    drawRing(visual.ring, r + 3, ringColor, ringAlpha, ringWidth, dashed);
+
+    if (!researching) visual.glow.clear();
+    if (state !== 'researching') visual.progress.clear();
+  }
+
+  // ── Edges (circuit-style connections, static curve from the layout) ─────
+
   private renderEdges(): void {
     const g = this.edgesGraphics;
     g.clear();
 
-    for (const [nodeId, node] of Object.entries(TECH_NODES)) {
-      if (!node.prereqs?.length) continue;
-      const to = this.layout.nodes.get(nodeId);
-      if (!to) continue;
+    const drawEdge = (fromId: string, toId: string, color: number, alpha: number, animate: boolean): void => {
+      const from = this.positions.get(fromId);
+      const to = this.positions.get(toId);
+      if (!from || !to) return;
 
-      for (const prereqId of node.prereqs) {
-        const from = this.layout.nodes.get(prereqId);
-        if (!from) continue;
+      const beads = TECH_TREE_LAYOUT.edges[edgeKey(fromId, toId)] ?? [];
+      const points: LayoutPoint[] = [from, ...beads, to];
 
-        const isResearched = this.playerTech.researched.has(prereqId);
-        const crossBranch = from.branch !== to.branch;
-        const alpha = isResearched ? 0.55 : 0.16;
-        const color = isResearched ? NEON.green : (crossBranch ? NEON.magenta : 0x334455);
-
-        const waypoint = polarToXY(to.radius, from.angle);
-        const points: { x: number; y: number }[] = [{ x: from.x, y: from.y }, waypoint];
-        const arcSegments = 10;
-        for (let i = 1; i <= arcSegments; i++) {
-          const t = i / arcSegments;
-          const a = from.angle + (to.angle - from.angle) * t;
-          points.push(polarToXY(to.radius, a));
-        }
-
-        if (crossBranch) {
-          this.strokeDashed(g, points, color, alpha, 1.5, 7, 5);
-        } else {
-          g.lineStyle(1, color, alpha);
-          g.beginPath();
-          g.moveTo(points[0].x, points[0].y);
-          for (let i = 1; i < points.length; i++) g.lineTo(points[i].x, points[i].y);
-          g.strokePath();
-        }
+      // Glow pass + bright core pass through the curve, plus small "via"
+      // studs at each bead for the circuit-board feel.
+      g.lineStyle(8, color, alpha * 0.25);
+      drawPolyline(g, points);
+      g.lineStyle(3, color, alpha);
+      drawPolyline(g, points);
+      for (const bead of beads) {
+        g.fillStyle(color, alpha);
+        g.fillCircle(bead.x, bead.y, 2.4);
       }
-    }
-  }
 
-  private strokeDashed(
-    g: Phaser.GameObjects.Graphics, points: { x: number; y: number }[],
-    color: number, alpha: number, width: number, dashLen: number, gapLen: number,
-  ): void {
-    g.lineStyle(width, color, alpha);
-    let remaining = dashLen;
-    let drawing = true;
-    for (let i = 0; i < points.length - 1; i++) {
-      let [x1, y1] = [points[i].x, points[i].y];
-      const [x2, y2] = [points[i + 1].x, points[i + 1].y];
-      let segLen = Phaser.Math.Distance.Between(x1, y1, x2, y2);
-      while (segLen > 0) {
-        const step = Math.min(remaining, segLen);
-        const t = step / segLen;
-        const nx = x1 + (x2 - x1) * t;
-        const ny = y1 + (y2 - y1) * t;
-        if (drawing) g.lineBetween(x1, y1, nx, ny);
-        x1 = nx; y1 = ny;
-        segLen -= step;
-        remaining -= step;
-        if (remaining <= 0.001) { drawing = !drawing; remaining = drawing ? dashLen : gapLen; }
+      if (animate) {
+        const t = ((this.scene.time.now / 2600) + hashString(toId)) % 1;
+        const pip = pointAlongPolyline(points, t);
+        g.fillStyle(0xffffff, 1);
+        g.fillCircle(pip.x, pip.y, 3.2);
+      }
+    };
+
+    // Every connection is always drawn — including root spokes and edges
+    // into a 'distant' blank node — but only carries "electricity" (the
+    // traveling pip) once its target is researched or being researched, and
+    // stays darkened until its target is actually researched. Depth-0 nodes
+    // have no real prereq, so they spoke from the (invisible) root instead.
+    for (const [nodeId, node] of Object.entries(TECH_NODES)) {
+      const childResearched = this.playerTech.researched.has(nodeId);
+      const childResearching = this.playerTech.inProgress === nodeId;
+      const accent = BRANCH_ACCENT[branchOf(nodeId)] ?? NEON.cyan;
+      const color = childResearched ? accent : 0x445566;
+      const alpha = childResearched ? 1 : (childResearching ? 0.6 : 0.35);
+      const animate = childResearched || childResearching;
+
+      const prereqs = node.prereqs?.length ? node.prereqs : [ROOT_NODE_ID];
+      for (const prereqId of prereqs) {
+        drawEdge(prereqId, nodeId, color, alpha, animate);
       }
     }
   }
@@ -503,18 +457,17 @@ export class RadialTechSection {
     const node = TECH_NODES[nodeId];
     if (!node?.prereqs?.length) return;
 
-    const tierColor = TIER_COLORS[(node.tier ?? 1) - 1] ?? TIER_COLORS[0];
-
     for (const prereqId of node.prereqs) {
-      const prereqCard = this.cardContainers.get(prereqId);
-      if (!prereqCard) continue;
+      const visual = this.nodeVisuals.get(prereqId);
+      if (!visual) continue;
+      const accent = BRANCH_ACCENT[branchOf(prereqId)] ?? NEON.cyan;
 
       const g = this.scene.add.graphics();
-      g.lineStyle(2.5, tierColor, 0.9);
-      g.strokeRect(0, 0, CARD_W, CARD_H);
-      g.lineStyle(5, tierColor, 0.25);
-      g.strokeRect(-1, -1, CARD_W + 2, CARD_H + 2);
-      prereqCard.add(g);
+      g.lineStyle(2.5, accent, 0.9);
+      g.strokeCircle(0, 0, visual.radius + 8);
+      g.lineStyle(5, accent, 0.25);
+      g.strokeCircle(0, 0, visual.radius + 11);
+      visual.container.add(g);
       this.prereqHighlights.push(g);
     }
   }
@@ -562,36 +515,41 @@ export class RadialTechSection {
     this.container.add(this.tooltip);
   }
 
-  private showTooltip(nodeId: string, pos: TechLayoutNode): void {
+  private showTooltip(nodeId: string): void {
     const node = TECH_NODES[nodeId];
-    if (!node) return;
+    const pos = this.positions.get(nodeId);
+    const visual = this.nodeVisuals.get(nodeId);
+    if (!node || !pos || !visual) return;
 
     this.tooltipName.setText(node.name);
     this.tooltipDesc.setText(node.description ?? '');
 
+    const unmet = new Set(getUnmetPrereqs(nodeId, this.playerTech));
     const prereqNames = node.prereqs?.length
-      ? 'Requires: ' + node.prereqs.map(p => TECH_NODES[p]?.name ?? p).join(', ')
+      ? 'Requires: ' + node.prereqs.map(p => `${unmet.has(p) ? '✗' : '✓'} ${TECH_NODES[p]?.name ?? p}`).join(', ')
       : '';
     this.tooltipPrereqs.setText(prereqNames);
 
-    const state = this.getNodeState(nodeId);
-    const isInProgress = this.playerTech.inProgress === nodeId;
-    const statusMap: Record<NodeState, string> = {
-      researched: '✓ Researched',
-      queued:     '⌛ Queued',
-      available:  `Click to research  G ${node.goldCost}`,
-      locked:     '🔒 Locked',
+    const state = visual.state;
+    const statusMap: Record<NodeVisualState, string> = {
+      researched:  '✓ Researched',
+      researching: '◈ Researching...',
+      queued:      '⌛ Queued',
+      available:   `Click to research  G ${node.goldCost}`,
+      next:        '🔒 Missing prerequisite',
+      distant:     '',
     };
-    const statusStr = isInProgress ? '◈ Researching...' : statusMap[state];
-    this.tooltipStatus.setText(statusStr);
+    this.tooltipStatus.setText(statusMap[state]);
 
-    const statusColors: Record<NodeState, string> = {
-      researched: NEON_STR.green,
-      queued:     NEON_STR.yellow,
-      available:  NEON_STR.cyan,
-      locked:     '#556677',
+    const statusColors: Record<NodeVisualState, string> = {
+      researched:  NEON_STR.green,
+      researching: NEON_STR.cyan,
+      queued:      NEON_STR.yellow,
+      available:   NEON_STR.cyan,
+      next:        '#556677',
+      distant:     '#556677',
     };
-    this.tooltipStatus.setColor(isInProgress ? NEON_STR.cyan : statusColors[state]);
+    this.tooltipStatus.setColor(statusColors[state]);
 
     const descH = this.tooltipDesc.height;
     const prereqsY = 28 + descH + (descH > 0 ? 6 : 0);
@@ -602,13 +560,11 @@ export class RadialTechSection {
     const totalH = Math.max(80, statusY + this.tooltipStatus.height + 12);
     this.tooltipBg.setSize(280, totalH);
 
-    // pos is in unscaled content space; project through the same transform
-    // the content container itself uses to find its actual screen position.
     const worldX = this.container.x + this.contentContainer.x + pos.x * this.zoom;
     const worldY = this.container.y + this.contentContainer.y + pos.y * this.zoom;
-    const rawTx = worldX + (CARD_W / 2) * this.zoom + 8;
+    const rawTx = worldX + visual.radius * this.zoom + 12;
     const tx = Math.min(rawTx, (this.scene.scale.width ?? 1400) - 288);
-    const ty = Math.max(0, worldY - (CARD_H / 2) * this.zoom);
+    const ty = Math.max(0, worldY - visual.radius * this.zoom);
     this.tooltip.setPosition(tx, ty);
     this.tooltip.setVisible(true);
   }
@@ -639,83 +595,196 @@ export class RadialTechSection {
     bg.on('pointerout', () => bg.setFillStyle(0x081018, 0.9));
     bg.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
       if (!ptr.leftButtonDown()) return;
-      this.resetView();
+      this.centerView();
+      this.applyTransform();
     });
   }
 
-  private resetView(): void {
-    this.zoom = this.defaultZoom;
-    this.centerView();
-    this.applyTransform();
-  }
-
-  /** Places the tree's convergence point (radius 0 — no node sits exactly
-   * here, but every branch wedge meets there) in the middle of the visible
-   * viewport, to the right of the queue sidebar. */
+  /** Places the layout's origin (where the root hub sits) in the middle of
+   * the visible viewport, to the right of the queue sidebar. */
   private centerView(): void {
     const viewW = Math.max(200, this.panelW - QUEUE_W);
     this.panOffsetX = viewW / 2 - 4;
     this.panOffsetY = PANEL_BODY_H / 2;
   }
 
-  // ── Update (progress bars) ───────────────────────────────────────────────
+  // ── Update (spin/pulse/progress animation + edge redraw for the pip) ────
 
   public update(now: number): void {
-    const inProg = this.playerTech.inProgress;
-    if (!inProg || !this.playerTech.progressStartedAt) return;
+    const dtSec = this._lastUpdateAt === null ? 0 : Math.min(0.05, (now - this._lastUpdateAt) / 1000);
+    this._lastUpdateAt = now;
 
-    const node = TECH_NODES[inProg];
-    if (!node) return;
+    for (const [id, visual] of this.nodeVisuals) {
+      const spin = visual.state === 'researched' ? SPIN_RESEARCHED
+        : visual.state === 'researching' ? SPIN_RESEARCHING : 0;
+      if (spin !== 0) visual.rotor.rotation += spin * dtSec;
 
-    const progress = Math.min(1, (now - this.playerTech.progressStartedAt) / node.researchTime);
-    const progressBar = this.progressBarRects.get(inProg);
-    if (progressBar) {
-      progressBar.setSize(CARD_W * progress, CARD_H);
+      if (visual.state === 'researching') {
+        const pulse = 0.22 + 0.18 * Math.sin(now / 260);
+        visual.glow.clear();
+        visual.glow.fillStyle(0xffffff, pulse);
+        visual.glow.fillCircle(0, 0, visual.radius * 1.35);
+
+        const inProg = this.playerTech.inProgress;
+        const node = inProg ? TECH_NODES[inProg] : undefined;
+        if (inProg === id && node && this.playerTech.progressStartedAt) {
+          const progress = Math.min(1, (now - this.playerTech.progressStartedAt) / node.researchTime);
+          visual.progress.clear();
+          visual.progress.lineStyle(3, NEON.cyan, 0.95);
+          visual.progress.beginPath();
+          visual.progress.arc(0, 0, visual.radius + 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress, false);
+          visual.progress.strokePath();
+        }
+      }
     }
-  }
 
-  // ── Refresh ──────────────────────────────────────────────────────────────
-
-  private refreshCards(): void {
-    this.progressBarRects.clear();
-    this.clearPrereqHighlights();
     this.renderEdges();
-    for (const [, c] of this.cardContainers) c.destroy();
-    this.cardContainers.clear();
-    for (const nodeId of Object.keys(TECH_NODES)) {
-      this.renderCard(nodeId);
-    }
+    this.drawRootHub(now);
+    if (this.hoveredNodeId) this.showTooltip(this.hoveredNodeId);
   }
 
-  // ── Input (right-drag pan, wheel zoom) ──────────────────────────────────
+  private _lastUpdateAt: number | null = null;
+
+  /** The root is a real, visible hub — a small pulsing core at the origin
+   * that every "researchable now" gear spokes out from — even though it
+   * isn't a tech and can never be researched itself. */
+  private drawRootHub(now: number): void {
+    const g = this.rootHub;
+    g.clear();
+    const pulse = 0.55 + 0.25 * Math.sin(now / 700);
+    const r = 9;
+    const hub = this.positions.get(ROOT_NODE_ID) ?? { x: 0, y: 0 };
+    g.setPosition(hub.x, hub.y);
+    g.fillStyle(0xffffff, pulse * 0.25);
+    g.fillCircle(0, 0, r * 2.4);
+    g.fillStyle(NEON.cyan, 0.9);
+    g.fillCircle(0, 0, r);
+    g.lineStyle(1.5, 0xffffff, 0.9);
+    g.strokeCircle(0, 0, r);
+  }
+
+  // ── Hit-testing (unified — no per-node interactive zones) ───────────────
+
+  /** Converts a screen-space (pointer) coordinate into `this.container`'s own
+   * local space via its actual world transform, rather than assuming
+   * `this.container.x/y` reflect its screen position — they don't: the
+   * SlidingPanel this container lives in slides its whole tab body up from
+   * the bottom of the canvas via ancestor containers this section never
+   * touches directly, so any hand-rolled offset math here would silently
+   * break the moment that ancestor moves. */
+  private toLocal(screenX: number, screenY: number): { x: number; y: number } {
+    const m = this.container.getWorldTransformMatrix();
+    const out = new Phaser.Math.Vector2();
+    m.applyInverse(screenX, screenY, out);
+    return { x: out.x, y: out.y };
+  }
+
+  /** Local-space (this.container's frame) rectangles that cover the tree
+   * canvas but belong to other UI (the queue sidebar, recenter button) — a
+   * click or hover landing here is never a node, however far a panned
+   * node's own geometry might otherwise extend underneath it. */
+  private isInExcludedUiArea(screenX: number, screenY: number): boolean {
+    const { x: localX, y: localY } = this.toLocal(screenX, screenY);
+    if (localX < CONTENT_BASE_X) return true; // queue sidebar
+    if (localY < 0 || localY > PANEL_BODY_H) return true; // outside the panel body
+
+    const rbX = this.panelW - 84 - 10, rbY = 8;
+    if (localX >= rbX && localX <= rbX + 84 && localY >= rbY && localY <= rbY + 22) return true; // recenter
+
+    return false;
+  }
+
+  /** Finds the node under a screen point, if any — gear circles are tested
+   * first and always win; a node's label (which can overhang a neighbor's
+   * gear, since it deliberately doesn't affect layout) is only eligible when
+   * no gear was hit directly, so a passing label never steals a click or
+   * hover from the gear actually underneath it. Distant (blank) nodes are
+   * never interactive. */
+  private hitTestNode(screenX: number, screenY: number): string | null {
+    if (this.isInExcludedUiArea(screenX, screenY)) return null;
+
+    const containerLocal = this.toLocal(screenX, screenY);
+    const localX = (containerLocal.x - this.contentContainer.x) / this.zoom;
+    const localY = (containerLocal.y - this.contentContainer.y) / this.zoom;
+
+    let best: string | null = null;
+    let bestDist = Infinity;
+    for (const [id, visual] of this.nodeVisuals) {
+      if (visual.state === 'distant') continue;
+      const pos = this.positions.get(id);
+      if (!pos) continue;
+      const d = Math.hypot(localX - pos.x, localY - pos.y);
+      if (d <= visual.radius * 1.15 && d < bestDist) { best = id; bestDist = d; }
+    }
+    if (best) return best;
+
+    for (const [id, visual] of this.nodeVisuals) {
+      if (visual.state === 'distant') continue;
+      const pos = this.positions.get(id);
+      if (!pos) continue;
+      const halfW = visual.label.width / 2;
+      const top = pos.y + visual.radius + 6;
+      const bottom = top + visual.label.height;
+      if (localX >= pos.x - halfW && localX <= pos.x + halfW && localY >= top && localY <= bottom) {
+        const d = Math.hypot(localX - pos.x, localY - pos.y);
+        if (d < bestDist) { best = id; bestDist = d; }
+      }
+    }
+    return best;
+  }
+
+  private setHovered(nodeId: string | null): void {
+    if (nodeId === this.hoveredNodeId) return;
+    this.hoveredNodeId = nodeId;
+    this.clearPrereqHighlights();
+    if (nodeId) { this.highlightPrereqs(nodeId); this.showTooltip(nodeId); }
+    else this.hideTooltip();
+  }
+
+  // ── Input (right-drag pan, wheel zoom, left-click research) ─────────────
 
   private setupInput(): void {
     this.scene.input.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
       if (!this.container.visible) return;
-      if (!ptr.rightButtonDown()) return;
-      this.isPanning = true;
-      this.panStart = { px: ptr.x, py: ptr.y, ox: this.panOffsetX, oy: this.panOffsetY };
+      if (ptr.rightButtonDown()) {
+        this.isPanning = true;
+        this.panStart = { px: ptr.x, py: ptr.y, ox: this.panOffsetX, oy: this.panOffsetY };
+        return;
+      }
+      if (!ptr.leftButtonDown()) return;
+      if (panelState.isAnimating || this.readonly) return;
+      const hit = this.hitTestNode(ptr.x, ptr.y);
+      if (!hit) return;
+      const visual = this.nodeVisuals.get(hit);
+      if (visual?.state !== 'available') return;
+      eventBus.emit('ui:tech_node_clicked', { nodeId: hit });
     });
 
     this.scene.input.on('pointermove', (ptr: Phaser.Input.Pointer) => {
-      if (!this.isPanning || !this.container.visible) return;
-      if (!ptr.rightButtonDown()) { this.isPanning = false; return; }
-      this.panOffsetX = this.panStart.ox + (ptr.x - this.panStart.px);
-      this.panOffsetY = this.panStart.oy + (ptr.y - this.panStart.py);
-      this.clampPan();
-      this.applyTransform();
+      if (!this.container.visible) return;
+      if (this.isPanning) {
+        if (!ptr.rightButtonDown()) { this.isPanning = false; return; }
+        this.panOffsetX = this.panStart.ox + (ptr.x - this.panStart.px);
+        this.panOffsetY = this.panStart.oy + (ptr.y - this.panStart.py);
+        this.clampPan();
+        this.applyTransform();
+        return;
+      }
+      this.setHovered(this.hitTestNode(ptr.x, ptr.y));
     });
 
     this.scene.input.on('pointerup', () => { this.isPanning = false; });
 
     this.scene.input.on('wheel', (ptr: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
       if (!this.container.visible) return;
+      if (this.isInExcludedUiArea(ptr.x, ptr.y)) return;
       const factor = dy > 0 ? 1 / ZOOM_STEP : ZOOM_STEP;
       this.zoomAt(ptr.x, ptr.y, factor);
     });
   }
 
-  /** Change zoom by `factor`, keeping the content point under the cursor fixed on screen. */
+  /** Change zoom by `factor`, keeping the content point under the cursor
+   * fixed on screen. */
   private zoomAt(screenX: number, screenY: number, factor: number): void {
     const oldZoom = this.zoom;
     const newZoom = Phaser.Math.Clamp(oldZoom * factor, MIN_ZOOM, MAX_ZOOM);
@@ -734,23 +803,24 @@ export class RadialTechSection {
   }
 
   /** Loose clamp: keeps the content's bounding box always overlapping the
-   * viewport (with a generous margin), so a stray drag/zoom can't strand
-   * the tree somewhere the user can't pan back from. */
+   * viewport (with a generous margin), so a stray drag can't strand the
+   * tree somewhere the user can't pan back from. */
   private clampPan(): void {
     const viewW = Math.max(200, this.panelW - QUEUE_W);
-    const contentW = this.layout.maxRadius * this.zoom;
-    const contentH = this.layout.maxRadius * ELLIPSE_Y * this.zoom;
+    let maxR = 0;
+    for (const p of this.positions.values()) maxR = Math.max(maxR, Math.hypot(p.x, p.y));
+    const scaledR = maxR * this.zoom;
     const marginX = viewW * 0.5;
     const marginY = PANEL_BODY_H * 0.5;
     this.panOffsetX = Phaser.Math.Clamp(
       this.panOffsetX,
-      -marginX - contentW - CONTENT_BASE_X,
-      viewW + marginX + contentW - CONTENT_BASE_X,
+      -marginX - scaledR - CONTENT_BASE_X,
+      viewW + marginX + scaledR - CONTENT_BASE_X,
     );
     this.panOffsetY = Phaser.Math.Clamp(
       this.panOffsetY,
-      -marginY - contentH,
-      PANEL_BODY_H + marginY + contentH,
+      -marginY - scaledR,
+      PANEL_BODY_H + marginY + scaledR,
     );
   }
 

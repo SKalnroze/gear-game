@@ -4,7 +4,40 @@
  */
 
 import type { AIChainPlan } from './AIChainPlanner';
-import type { ThreatLevel } from '../types/ai.types';
+import type { ThreatLevel, AIStrategyProfile } from '../types/ai.types';
+
+/**
+ * How strongly each difficulty leans on its "need" signal (research score,
+ * gear-size preference) rather than picking uniformly at random.
+ * Shared by research selection (AIController) and gear-size selection
+ * (AIChainPlanner) so "easy = mostly random, hard = near-optimal" reads the
+ * same way across both decisions. `practice` mirrors `hard` -- it never
+ * actually decides anything (AIController short-circuits first).
+ */
+export const AI_BIAS_STRENGTH: Record<AIStrategyProfile, number> = {
+  easy: 1.5,
+  medium: 5,
+  hard: 14,
+  practice: 14,
+};
+
+/**
+ * Pick one item at random, weighted by the parallel `weights` array.
+ * Every item needs weight > 0 to have a chance; a single-item list short-
+ * circuits without consuming a random draw (keeps call counts stable for
+ * random-seeded tests elsewhere in the AI).
+ */
+export function weightedRandomPick<T>(items: T[], weights: number[], rand: () => number = Math.random): T {
+  if (items.length === 1) return items[0];
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  if (total <= 0) return items[Math.floor(rand() * items.length)];
+  let r = rand() * total;
+  for (let i = 0; i < items.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return items[i];
+  }
+  return items[items.length - 1];
+}
 
 // Phase priority: bootstrap first, full last
 const PHASE_ORDER: Record<string, number> = {

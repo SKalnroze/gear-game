@@ -7,6 +7,7 @@ import type { EconomySystem } from '../../src/systems/EconomySystem';
 import { GameClock } from '../../src/systems/GameClock';
 import type { GearState, GearType } from '../../src/types/gear.types';
 import { gearRadius, motorTorque, motorOutput, gearInertia } from '../../src/constants/gear.constants';
+import { seizeThreshold } from '../../src/systems/thermal.utils';
 import { tierForTeeth, TIER_TEETH } from '../../src/constants/tier.constants';
 import {
   AMPLIFIER_CHAIN_MULTIPLIER,
@@ -945,5 +946,81 @@ describe('electricity drives chain speed', () => {
     ]);
     expect(world.getGear('b')!.isSpinning).toBe(true);
     expect(Math.abs(world.getGear('b')!.angularVelocity)).toBeGreaterThan(0);
+  });
+});
+
+// ─── Heat ────────────────────────────────────────────────────────────────────
+
+describe('heat seizure', () => {
+  /** Drive a gear's heat straight to its seize point. */
+  function cook(physics: RotationPhysicsSystem, world: World, gearId: string) {
+    const gear = world.getGear(gearId)!;
+    gear.heat = seizeThreshold(gear.tier, 0) * 3;
+    world.updateGear(gear);
+    physics.update(0.016);
+  }
+
+  it('stops the gear it seizes', () => {
+    const { world, physics } = rig([makeGear('m', 0, 0, T1, 'motor')]);
+    cook(physics, world, 'm');
+    expect(world.getGear('m')!.isSeized).toBe(true);
+    expect(world.getGear('m')!.angularVelocity).toBe(0);
+  });
+
+  /**
+   * The conflict this phase exists to avoid.
+   *
+   * propagateTorque() clears every rotation-conflict jam each time it runs, and
+   * it now runs whenever grid power changes -- not just on mesh changes. If a
+   * heat seizure lived in that same map it would be wiped the instant a battery
+   * charged, and overheating would silently do nothing at all.
+   */
+  it('survives a propagateTorque pass, which clears rotation jams', () => {
+    const { world, physics } = rig([makeGear('m', 0, 0, T1, 'motor')]);
+    cook(physics, world, 'm');
+    expect(world.getGear('m')!.isSeized).toBe(true);
+
+    physics.propagateTorque();
+
+    expect(world.getGear('m')!.isSeized).toBe(true);
+    expect(world.getGear('m')!.angularVelocity).toBe(0);
+  });
+
+  it('stops the whole chain behind it, not just itself', () => {
+    const { world, physics } = rig([
+      makeGear('m', 0, 0, T1, 'motor'),
+      makeGear('a', gearRadius(T1) * 2, 0, T1, 'armored'),
+      makeGear('b', gearRadius(T1) * 4, 0, T1, 'armored'),
+    ]);
+    expect(world.getGear('b')!.isSpinning).toBe(true);
+
+    // Seize the middle gear: torque must not cross it.
+    cook(physics, world, 'a');
+    physics.propagateTorque();
+
+    expect(world.getGear('a')!.isSeized).toBe(true);
+    expect(world.getGear('b')!.angularVelocity).toBe(0);
+  });
+
+  it('releases once cooled, and the gear turns again', () => {
+    const { world, physics } = rig([makeGear('m', 0, 0, T1, 'motor')]);
+    cook(physics, world, 'm');
+    expect(world.getGear('m')!.isSeized).toBe(true);
+
+    const gear = world.getGear('m')!;
+    gear.heat = 0;
+    world.updateGear(gear);
+    physics.update(0.016);
+
+    expect(world.getGear('m')!.isSeized).toBe(false);
+    expect(Math.abs(world.getGear('m')!.angularVelocity)).toBeGreaterThan(0);
+  });
+
+  it('a cool gear is never seized, however long it runs', () => {
+    const { world, physics } = rig([makeGear('m', 0, 0, T1, 'motor')]);
+    for (let i = 0; i < 200; i++) physics.update(0.05);
+    // A plain tier-1 motor settles well under its threshold -- ordinary
+    // machines should never have to think about heat.
+    expect(world.getGear('m')!.isSeized).toBeFalsy();
   });
 });

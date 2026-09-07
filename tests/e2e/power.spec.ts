@@ -279,4 +279,77 @@ test.describe('electrical grid', () => {
     await page.waitForTimeout(2500);
     expect(errors).toEqual([]);
   });
+
+  /**
+   * The heat failure pipeline end to end: a gear driven hot seizes, the chain
+   * behind it stops, and it recovers rather than being lost -- "recoverable if
+   * the player reacts" is the whole design of the band, not just a nice value.
+   */
+  test('an overheated gear seizes, stops the chain, then recovers when it cools', async ({ page }) => {
+    const motor = await place(page, 'motor', 1, 300, 700);
+    // A driven gear, not a second motor: a motor has torque of its own and
+    // should keep turning regardless of what happens to its neighbour.
+    const driven = await place(page, 'armored', 1, 340, 700);
+
+    const seized = await page.evaluate(([hotId, otherId]) => {
+      const scene = (window as any).game.scene.getScene('GameScene');
+      const gear = scene.world.getGear(hotId);
+      // Drive it well past its threshold, as a fast unoiled chain would.
+      gear.heat = 10_000;
+      scene.world.updateGear(gear);
+      scene.rotationPhysics.update(0.016);
+      return {
+        hot: scene.world.getGear(hotId).isSeized === true,
+        hotOmega: scene.world.getGear(hotId).angularVelocity,
+        otherOmega: scene.world.getGear(otherId).angularVelocity,
+      };
+    }, [motor, driven] as const);
+
+    expect(seized.hot).toBe(true);
+    expect(seized.hotOmega).toBe(0);
+    expect(seized.otherOmega).toBe(0);   // the chain stops, not just the gear
+
+    const recovered = await page.evaluate((hotId) => {
+      const scene = (window as any).game.scene.getScene('GameScene');
+      const gear = scene.world.getGear(hotId);
+      gear.heat = 0;
+      scene.world.updateGear(gear);
+      scene.rotationPhysics.update(0.016);
+      return {
+        stillSeized: scene.world.getGear(hotId).isSeized === true,
+        omega: Math.abs(scene.world.getGear(hotId).angularVelocity),
+      };
+    }, motor);
+
+    expect(recovered.stillSeized).toBe(false);
+    expect(recovered.omega).toBeGreaterThan(0);
+  });
+
+  test('an oiler makes oil from coal and it spreads to meshed neighbours', async ({ page }) => {
+    const oiler = await place(page, 'oiler', 1, 300, 700);
+    const neighbour = await place(page, 'motor', 1, 340, 700);
+    // Power the motor, or it idles at MOTOR_BASELINE and never completes the
+    // rotation the oiler needs to produce anything.
+    const solar = await place(page, 'solar_panel', 1, 340, 790);
+    await wire(page, solar, neighbour);
+
+    await page.evaluate(() => {
+      const scene = (window as any).game.scene.getScene('GameScene');
+      scene.economySystem.earnResource('player', 'coal', 50);
+    });
+    await advanceGameMs(page, 8000);
+
+    const oil = await page.evaluate(([oilerId, otherId]) => {
+      const scene = (window as any).game.scene.getScene('GameScene');
+      return {
+        oiler: scene.world.getGear(oilerId).oil ?? 0,
+        neighbour: scene.world.getGear(otherId).oil ?? 0,
+      };
+    }, [oiler, neighbour] as const);
+
+    expect(oil.oiler).toBeGreaterThan(0);
+    // Oil rides the teeth, so a meshed neighbour gets wet without any wiring.
+    expect(oil.neighbour).toBeGreaterThan(0);
+  });
+
 });

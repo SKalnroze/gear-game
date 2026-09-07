@@ -46,6 +46,7 @@ async function loadConstants() {
     export * as world from ${JSON.stringify(join(ROOT, 'src/constants/world.constants.ts'))};
     export * as gearRegistry from ${JSON.stringify(join(ROOT, 'src/gears/registry.ts'))};
     export * as power from ${JSON.stringify(join(ROOT, 'src/constants/power.constants.ts'))};
+    export * as thermal from ${JSON.stringify(join(ROOT, 'src/constants/thermal.constants.ts'))};
     export * as tier from ${JSON.stringify(join(ROOT, 'src/constants/tier.constants.ts'))};
     export * as unitUtils from ${JSON.stringify(join(ROOT, 'src/systems/unit.utils.ts'))};
   `.replace(/\\/g, '\\\\'));
@@ -92,7 +93,7 @@ function table(headers, rows) {
  * @returns {Record<string, string>}
  */
 function buildBlocks(m) {
-  const { gear, unit, tech, ability, balance, world, tier, power, gearRegistry, unitUtils } = m;
+  const { gear, unit, tech, ability, balance, world, tier, power, thermal, gearRegistry, unitUtils } = m;
   /** @type {Record<string, string>} */
   const blocks = {};
 
@@ -362,6 +363,30 @@ function buildBlocks(m) {
       ['`TIE_INTAKE`', num(power.TIE_INTAKE), 'surplus the grid tie buys per second'],
       ['`GOLD_PER_ELECTRICITY`', num(power.GOLD_PER_ELECTRICITY), 'gold per unit of electricity sold'],
       ['`OVERLOAD_HEAT_PER_UNIT`', num(power.OVERLOAD_HEAT_PER_UNIT), 'heat per unit of surplus with nowhere to go'],
+    ],
+  );
+
+  // Heat and oil -----------------------------------------------------------
+  blocks['thermal.constants'] = table(
+    ['Constant', 'Value', 'Meaning'],
+    [
+      ['`FRICTION_K`', num(thermal.FRICTION_K), 'friction heat coefficient, calibrated so ~8 rad/s seizes a dry tier-1 gear'],
+      ['`FRICTION_SPEED_EXP`', num(thermal.FRICTION_SPEED_EXP), 'heat grows with |omega| to this power -- speed costs more than linearly'],
+      ['`COOL_K`', num(thermal.COOL_K), 'fraction of stored heat shed per second'],
+      ['`HEAT_THRESHOLD_BASE`', num(thermal.HEAT_THRESHOLD_BASE), 'heat a tier-1 gear tolerates dry'],
+      ['`HEAT_THRESHOLD_TIER_STEP`', num(thermal.HEAT_THRESHOLD_TIER_STEP), 'per tier: more metal, more heat soaked'],
+      ['`HOT_FRACTION`', num(thermal.HOT_FRACTION), 'threshold fraction at which efficiency starts falling'],
+      ['`SEIZE_RELEASE_FRACTION`', num(thermal.SEIZE_RELEASE_FRACTION), 'hysteresis: a seized gear releases only below this'],
+      ['`HOT_EFFICIENCY_FLOOR`', num(thermal.HOT_EFFICIENCY_FLOOR), 'efficiency just before seizing'],
+      ['`SEIZE_STRESS_BASE`', num(thermal.SEIZE_STRESS_BASE), 'tier-1 damage stress applied while seized'],
+      ['`SEIZE_RAMP_PER_SEC`', num(thermal.SEIZE_RAMP_PER_SEC), 'how fast an ignored seizure escalates'],
+      ['`OIL_CAPACITY_BASE`', num(thermal.OIL_CAPACITY_BASE), 'oil a tier-1 gear holds'],
+      ['`OILER_CAPACITY_MULT`', num(thermal.OILER_CAPACITY_MULT), 'the oiler is a reservoir, not a consumer'],
+      ['`OIL_PER_ROTATION` / `COAL_PER_OIL_ROTATION`', `${num(thermal.OIL_PER_ROTATION)} / ${num(thermal.COAL_PER_OIL_ROTATION)}`, 'oil made per rotation, and the coal it costs'],
+      ['`OIL_FRICTION_RELIEF`', num(thermal.OIL_FRICTION_RELIEF), 'friction a full film avoids'],
+      ['`OIL_BLEED_K`', num(thermal.OIL_BLEED_K), 'extra cooling from a full film'],
+      ['`OIL_THRESHOLD_BONUS`', num(thermal.OIL_THRESHOLD_BONUS), 'how much a full film raises the seize point'],
+      ['`OIL_DIFFUSE_K`', num(thermal.OIL_DIFFUSE_K), 'how fast oil spreads along meshed teeth'],
     ],
   );
 

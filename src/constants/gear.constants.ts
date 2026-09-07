@@ -494,4 +494,10 @@ export const GEAR_DEFINITIONS: Record<GearType, GearDefinition> = {
     description: 'Digs coal, the feedstock for burners and oilers.',
     unlockNode: 'basic_electricity',
   },
+  oiler: {
+    type: 'oiler',
+    goldCost: 16,
+    description: 'Turns coal into oil. Oil spreads along meshed teeth from here, so where you put it decides which part of the machine can run fast.',
+    unlockNode: 'basic_electricity',
+  },
 };

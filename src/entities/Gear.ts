@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GearState, GearType } from '../types/gear.types';
+import { oilCapacityFor, seizeThreshold } from '../systems/thermal.utils';
 import { gearRadius } from '../constants/gear.constants';
 import { REPOSITION_COOLDOWN_MS } from '../constants/balance.constants';
 import { RESOURCE_COLORS } from '../types/resource.types';
@@ -48,6 +49,7 @@ const GEAR_COLORS: Record<GearType, number> = {
   power_pole:  0x998866,
   grid_tie:    0x66ffdd,
   coal_miner:  0x776655,
+  oiler:       0xffcc66,
 };
 
 const GEAR_LABELS: Record<GearType, string> = {
@@ -91,6 +93,7 @@ const GEAR_LABELS: Record<GearType, string> = {
   power_pole:  'POLE',
   grid_tie:    'TIE',
   coal_miner:  'COAL',
+  oiler:       'OIL',
 };
 
 /**
@@ -102,6 +105,8 @@ export class GearEntity extends Phaser.GameObjects.Container {
   private gearGraphics: Phaser.GameObjects.Graphics;
   private labelText: Phaser.GameObjects.Text;
   private frictionIndicator: Phaser.GameObjects.Graphics;
+  private heatGlow: Phaser.GameObjects.Graphics;
+  private oilFilm: Phaser.GameObjects.Graphics;
   private hpBar: Phaser.GameObjects.Graphics;
   private cooldownArc: Phaser.GameObjects.Graphics;
   public gearState: GearState;
@@ -123,8 +128,16 @@ export class GearEntity extends Phaser.GameObjects.Container {
     this.gearState = state;
     this.clock = clock;
 
+    // Heat sits UNDER the gear so it reads as the metal glowing rather than as
+    // one more ring competing with the cooldown arc, friction ring and HP bar.
+    this.heatGlow = scene.add.graphics();
+    this.add(this.heatGlow);
+
     this.gearGraphics = scene.add.graphics();
     this.add(this.gearGraphics);
+
+    this.oilFilm = scene.add.graphics();
+    this.add(this.oilFilm);
 
     this.frictionIndicator = scene.add.graphics();
     this.add(this.frictionIndicator);
@@ -494,10 +507,58 @@ export class GearEntity extends Phaser.GameObjects.Container {
       this.frictionIndicator.clear();
     }
 
+    this.drawHeatGlow(state);
+    this.drawOilFilm(state);
+
     // Universal HP bar for all gears
     this.drawHpBar(state);
 
     this.drawCooldownArc(state);
+  }
+
+  /**
+   * Heat glow.
+   *
+   * A filled disc under the gear rather than another ring: the radius band
+   * around a gear is already crowded (cooldown arc, friction ring, jam rings,
+   * HP bar), and heat needs to read at a glance across a whole machine rather
+   * than be picked out of concentric circles. Colour runs amber to red with
+   * temperature, so a chain that is quietly warming looks different from one
+   * about to seize.
+   *
+   * Deliberately the same colour language as an overloading wire -- overload
+   * dumps into heat, so they are the same failure and should look it.
+   */
+  private drawHeatGlow(state: GearState): void {
+    const g = this.heatGlow;
+    g.clear();
+
+    const oilFraction = Math.min(1, (state.oil ?? 0) / oilCapacityFor(state.tier));
+    const threshold = seizeThreshold(state.tier, oilFraction);
+    const fraction = threshold > 0 ? (state.heat ?? 0) / threshold : 0;
+    // Nothing to show until a gear is genuinely warm; ordinary machines should
+    // stay visually quiet.
+    if (fraction < 0.45) return;
+
+    const radius = gearRadius(state.teeth);
+    const t = Math.min(1, (fraction - 0.45) / 0.55);
+    // Amber (0xffaa33) to red (0xff2200).
+    const r = 0xff;
+    const gg = Math.round(0xaa * (1 - t) + 0x22 * t);
+    const b = Math.round(0x33 * (1 - t));
+    g.fillStyle((r << 16) | (gg << 8) | b, 0.15 + 0.35 * t);
+    g.fillCircle(0, 0, radius * (1 + 0.25 * t));
+  }
+
+  /** A thin film of oil, drawn as a ring just inside the teeth. */
+  private drawOilFilm(state: GearState): void {
+    const g = this.oilFilm;
+    g.clear();
+    const capacity = oilCapacityFor(state.tier);
+    const fraction = capacity > 0 ? Math.min(1, (state.oil ?? 0) / capacity) : 0;
+    if (fraction <= 0.02) return;
+    g.lineStyle(2, 0xffcc66, 0.25 + 0.45 * fraction);
+    g.strokeCircle(0, 0, gearRadius(state.teeth) * 0.82);
   }
 
   private drawFrictionIndicator(frictionLoad: number, teeth: number): void {

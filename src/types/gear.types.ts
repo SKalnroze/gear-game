@@ -11,7 +11,7 @@ export type GearType =
   'healer' |
   // Electrical
   'crank' | 'solar_panel' | 'burner' | 'battery' | 'power_pole' | 'grid_tie' |
-  'coal_miner';
+  'coal_miner' | 'oiler';
 
 /**
  * Gear size tier. Five discrete steps replaced free tooth counts of 5..60 --
@@ -59,6 +59,14 @@ export interface GearState {
   coalBuffer?: number;
   /** ms timestamp until which a hand-cranked gear is still generating. */
   crankUntil?: number;
+  /** Accumulated heat, in the same units as the seize threshold. */
+  heat?: number;
+  /** Oil film on the teeth. Suppresses friction, raises the seize threshold. */
+  oil?: number;
+  /** True while heat has seized this gear -- distinct from a rotation-conflict jam. */
+  isSeized?: boolean;
+  /** ms timestamp the current seizure began, so stress can escalate. */
+  seizedAt?: number;
   ammo?: number;              // current ammo (turret gears only)
   maxAmmo?: number;           // max ammo capacity
   disabledUntil?: number;     // ms timestamp; a Raider-disabled gear produces nothing until then

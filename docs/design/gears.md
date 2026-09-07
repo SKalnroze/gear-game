@@ -145,6 +145,7 @@ regardless of its tier, while turrets scaled normally.
 | Power Pole | power | 5 | `basic_electricity` | Carries no load of its own -- it just reaches three times further than anything else, and takes twice as many wires. |
 | Grid Tie | power | 0 | _from start_ | The buyer at your base wall. Wire your grid to it and surplus electricity is sold for gold, up to its intake. Cannot be built or sold. |
 | Coal Miner | extraction | 14 | `basic_electricity` | Digs coal, the feedstock for burners and oilers. |
+| Oiler | refinery | 16 | `basic_electricity` | Turns coal into oil. Oil spreads along meshed teeth from here, so where you put it decides which part of the machine can run fast. |
 <!-- END GENERATED: gears.catalogue -->
 
 <!-- BEGIN GENERATED: gears.formulas -->
@@ -398,3 +399,66 @@ The AI plays the same way, and gets no free power: a starved motor is its highes
 | `GOLD_PER_ELECTRICITY` | 0.35 | gold per unit of electricity sold |
 | `OVERLOAD_HEAT_PER_UNIT` | 3 | heat per unit of surplus with nowhere to go |
 <!-- END GENERATED: power.constants -->
+
+---
+
+## Heat and oil
+
+A gear train had no maintenance cost: once built it ran forever at whatever speed its chain settled on. Heat gives speed a price.
+
+Friction rises with how fast a gear turns (`|ω|^1.5`) and how big it is. Heat builds, ambient cooling sheds it, and a gear settles at whatever temperature balances the two. The numbers are calibrated against speeds the game actually produces:
+
+| chain speed | settles at | verdict |
+|---|---|---|
+| ~4 rad/s — a plain motor | ~37% of threshold | safe, never think about it |
+| ~6 rad/s — a modest chain | ~67% | warm, still fine |
+| ~8 rad/s — amplified or overclocked | ~102% | **seizes dry** |
+
+So ordinary machines never overheat, and pushing for speed is exactly when oil stops being optional.
+
+### The bands
+
+| band | condition | effect |
+|---|---|---|
+| **ok** | below 80% of threshold | full efficiency |
+| **hot** | 80–100% | efficiency falls 1.0 → 0.6; the gear glows |
+| **seized** | at or above threshold | stops dead, blocks torque, takes escalating damage |
+| **release** | seized, and back below 70% | returns to hot |
+
+Seizing at 100% but releasing at 70% is **hysteresis**, and it is load-bearing: without the gap a gear parked at its limit would seize and release every frame, flickering and stuttering the chain it sits on.
+
+Efficiency degrading *before* the gear stops matters too — the chain visibly slows as it heats, so the warning is in the machine's behaviour, not only in a colour.
+
+A seizure reuses the existing jam machinery — HP loss, crack levels, relief-valve softening, destruction — but is tracked **separately** from rotation-conflict jams. Those are cleared and rebuilt by `propagateTorque()`, which now runs whenever grid power changes; a heat seizure kept in the same place would be wiped the instant a battery charged, and overheating would silently do nothing.
+
+Stress escalates the longer a seizure is ignored. Reacting early costs some HP; ignoring it costs the gear.
+
+### Oil is logistics, not a toggle
+
+An **oiler** turns coal into oil, into its own large reservoir. It never pushes oil anywhere — oil **diffuses along meshed teeth**, equalising by saturation rather than volume, so a big reservoir tops up a small gear instead of draining into it. It pools near the oiler and thins with distance.
+
+That is the whole point: **where you put the oiler decides which part of your machine can safely run fast.** An oiler that oiled everything at once would make its placement meaningless.
+
+A full film buys a lot — 45% less friction, extra cooling, and an 80% higher seize threshold — but it cooks off as gears turn, and twice as fast once a gear is running hot. A gear you keep pushing burns through its own protection.
+
+<!-- BEGIN GENERATED: thermal.constants -->
+| Constant | Value | Meaning |
+|---|---|---|
+| `FRICTION_K` | 1 | friction heat coefficient, calibrated so ~8 rad/s seizes a dry tier-1 gear |
+| `FRICTION_SPEED_EXP` | 1.5 | heat grows with \|omega\| to this power -- speed costs more than linearly |
+| `COOL_K` | 0.22 | fraction of stored heat shed per second |
+| `HEAT_THRESHOLD_BASE` | 100 | heat a tier-1 gear tolerates dry |
+| `HEAT_THRESHOLD_TIER_STEP` | 1.5 | per tier: more metal, more heat soaked |
+| `HOT_FRACTION` | 0.8 | threshold fraction at which efficiency starts falling |
+| `SEIZE_RELEASE_FRACTION` | 0.7 | hysteresis: a seized gear releases only below this |
+| `HOT_EFFICIENCY_FLOOR` | 0.6 | efficiency just before seizing |
+| `SEIZE_STRESS_BASE` | 40 | tier-1 damage stress applied while seized |
+| `SEIZE_RAMP_PER_SEC` | 0.35 | how fast an ignored seizure escalates |
+| `OIL_CAPACITY_BASE` | 20 | oil a tier-1 gear holds |
+| `OILER_CAPACITY_MULT` | 6 | the oiler is a reservoir, not a consumer |
+| `OIL_PER_ROTATION` / `COAL_PER_OIL_ROTATION` | 4 / 1 | oil made per rotation, and the coal it costs |
+| `OIL_FRICTION_RELIEF` | 0.45 | friction a full film avoids |
+| `OIL_BLEED_K` | 0.3 | extra cooling from a full film |
+| `OIL_THRESHOLD_BONUS` | 0.8 | how much a full film raises the seize point |
+| `OIL_DIFFUSE_K` | 0.8 | how fast oil spreads along meshed teeth |
+<!-- END GENERATED: thermal.constants -->

@@ -18,7 +18,7 @@ import { crankBehaviour, initBattery, initBurner } from './behaviours/power';
 import {
   SOLAR_OUTPUT, BURNER_OUTPUT, CRANK_OUTPUT, BATTERY_CAPACITY, MOTOR_DRAW, TIE_INTAKE,
 } from '../constants/power.constants';
-import { converterBehaviour } from './behaviours/refinery';
+import { converterBehaviour, oilerBehaviour, initOiler } from './behaviours/refinery';
 import {
   ammoGear, CROSSBOW_AMMO, ARTILLERY_AMMO, MINELAYER_AMMO,
 } from './behaviours/defense';
@@ -62,6 +62,7 @@ export const GEAR_BEHAVIOURS: GearBehaviourRegistry = {
   power_pole: { category: 'power', power: { role: 'pole' } },
   grid_tie: { category: 'power', power: { role: 'tie', buys: TIE_INTAKE } },
   coal_miner: { category: 'extraction', onRotation: minerBehaviour('coal') },
+  oiler: { category: 'refinery', onPlace: initOiler, onRotation: oilerBehaviour },
   amplifier: inert('structural'),
   capacitor: inert('structural'),
   overclock: inert('structural'),

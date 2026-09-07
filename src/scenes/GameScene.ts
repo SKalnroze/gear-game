@@ -263,6 +263,9 @@ export class GameScene extends Phaser.Scene {
     this.powerGraph = new PowerGraph((gear) => GEAR_BEHAVIOURS[gear.type].power?.role);
     this.powerSystem = new PowerSystem(eventBus, this.world, this.powerGraph);
     this.powerSystem.setEconomySystem(this.economySystem);
+    // Burner self-heat and electrical overload reach the thermal model through
+    // this lookup, so overheating and over-generating share one failure path.
+    this.rotationPhysics.setExternalHeatSource((gearId) => this.powerSystem.takePendingHeat(gearId));
     if (isPractice) this.economySystem.setPracticeMode(true);
     this.unitSystem = new UnitSystem(eventBus);
     this.unitSystem.setWorld(this.world);

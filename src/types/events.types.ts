@@ -18,10 +18,14 @@ export interface GameEventMap {
   'gear:snap_preview': { x: number; y: number; valid: boolean };
   'gear:repositioned': { gearId: string; oldX: number; oldY: number; newX: number; newY: number };
   'gear:rotation_result': { gearId: string; owner: 'player' | 'ai'; text: string; color: number };
-  'gear:jammed': { gearId: string; conflictingGearId: string; torque: number; severity: number };
+  'gear:jammed': {
+    gearId: string; conflictingGearId: string; torque: number; severity: number;
+    /** Why it stopped: two gears fighting, or heat. Different fixes, different feedback. */
+    cause?: 'conflict' | 'heat';
+  };
   'gear:jam_cleared': { gearId: string };
-  'gear:damaged': { gearId: string; damage: number; remainingHp: number; source: 'jam' | 'combat' };
-  'gear:destroyed': { gearId: string; owner: 'player' | 'ai'; cause: 'jam' | 'combat' };
+  'gear:damaged': { gearId: string; damage: number; remainingHp: number; source: 'jam' | 'heat' | 'combat' };
+  'gear:destroyed': { gearId: string; owner: 'player' | 'ai'; cause: 'jam' | 'heat' | 'combat' };
 
   // Power/capacitor events
   'power:capacitor_burst': { gearId: string; owner: 'player' | 'ai'; goldEarned: number };

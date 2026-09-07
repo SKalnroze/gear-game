@@ -6,6 +6,11 @@ import { GEAR_DEFINITIONS, gearInertia, motorTorque, motorOutput, crackLevelFor 
 import { motorPowerFactor } from '../world/power.utils';
 import { MOTOR_BASELINE } from '../constants/power.constants';
 import {
+  stepThermal, diffuseOil, escalatedSeizeStress, oilCapacityFor, thermalEfficiency,
+  type OilNode,
+} from './thermal.utils';
+import { OIL_DIFFUSE_INTERVAL_MS, OILER_CAPACITY_MULT } from '../constants/thermal.constants';
+import {
   AMPLIFIER_CHAIN_MULTIPLIER,
   COMBO_CHAIN_MIN_GEARS,
   OVERCLOCK_SPEED_BONUS,
@@ -51,6 +56,21 @@ export class RotationPhysicsSystem {
 
   // Jam tracking
   private jammedPairs: Map<string, string> = new Map();     // gearId → conflictingGearId
+  /**
+   * Gears stopped by HEAT, kept deliberately separate from `jammedPairs`.
+   *
+   * propagateTorque() clears every rotation-conflict jam each time it runs, and
+   * it now runs whenever grid power changes rather than only on mesh changes.
+   * If a heat seizure lived in that same map it would be wiped the instant a
+   * battery charged, and overheating would silently do nothing. This set is
+   * owned by the thermal step and cleared only by hysteresis release.
+   */
+  private seizedGears: Set<string> = new Set();
+  private seizedSince: Map<string, number> = new Map();
+  private lastOilDiffuseAt = Number.NEGATIVE_INFINITY;
+  /** Heat owed from elsewhere (burner self-heat, electrical overload). */
+  private externalHeat: ((gearId: string) => number) | null = null;
+
   private jamStressMap: Map<string, number> = new Map();    // gearId → stress value
 
   // Tech modifiers, per side. These were single values shared by both owners,
@@ -85,7 +105,9 @@ export class RotationPhysicsSystem {
    * tier buys strength, electricity buys speed.
    */
   private poweredTorque(gear: GearState): number {
-    return motorTorque(gear.teeth) * motorPowerFactor(gear.powerSatisfaction ?? 0, MOTOR_BASELINE);
+    return motorTorque(gear.teeth)
+      * motorPowerFactor(gear.powerSatisfaction ?? 0, MOTOR_BASELINE)
+      * thermalEfficiency(gear);
   }
 
   /**
@@ -95,6 +117,15 @@ export class RotationPhysicsSystem {
    * SATISFACTION_STEPS. Torque feeds an O(V+E) double BFS, so a continuously
    * drifting grid would otherwise rebuild every chain every frame.
    */
+  /**
+   * Source of heat produced outside the rotation model -- burners running, and
+   * electrical overload dumped into the generators causing it. Wiring it as a
+   * lookup rather than a system reference keeps PowerSystem out of this file.
+   */
+  setExternalHeatSource(source: (gearId: string) => number): void {
+    this.externalHeat = source;
+  }
+
   markChainsDirty(): void {
     this.rebuildChains();
   }
@@ -184,8 +215,10 @@ export class RotationPhysicsSystem {
       gear.isSpinning = false;
     }
 
-    // Clear jams from previous cycle
+    // Clear jams from previous cycle -- but never a heat seizure, which this
+    // pass does not own and must not silently undo.
     for (const gearId of this.jammedPairs.keys()) {
+      if (this.seizedGears.has(gearId)) continue;
       const gear = allGears.get(gearId);
       if (gear) {
         gear.isJammed = false;
@@ -200,6 +233,8 @@ export class RotationPhysicsSystem {
     // BFS from each motor
     for (const [, gear] of allGears) {
       if (gear.type !== 'motor' || gear.isBurntOut || visited.has(gear.id)) continue;
+      // A seized motor drives nothing until it cools.
+      if (this.seizedGears.has(gear.id)) continue;
 
       // Pass 1: Compute chain physics for this motor's chain
       const chainGearIds = this.getChainGearIds(gear.id, visited);
@@ -239,7 +274,7 @@ export class RotationPhysicsSystem {
           }
 
           const neighbor = allGears.get(neighborId);
-          if (!neighbor || neighbor.isBurntOut) continue;
+          if (!neighbor || neighbor.isBurntOut || this.seizedGears.has(neighborId)) continue;
 
           const neighborTeeth = neighbor.teeth;
 
@@ -284,7 +319,10 @@ export class RotationPhysicsSystem {
       const neighbors = this.meshGraph.getNeighbors(current);
       for (const nId of neighbors) {
         const n = allGears.get(nId);
-        if (n && !n.isBurntOut && !localVisited.has(nId) && !visited.has(nId)) {
+        // A seized gear is a wall: torque does not cross it, which is what
+        // makes an overheat stop the chain rather than just the one gear.
+        if (n && !n.isBurntOut && !this.seizedGears.has(nId)
+            && !localVisited.has(nId) && !visited.has(nId)) {
           queue.push(nId);
         }
       }
@@ -461,6 +499,11 @@ export class RotationPhysicsSystem {
       this.world.updateGear(gear);
     }
 
+    // Heat and oil, in this same pass: omega is already in hand, and a seizure
+    // set here has to be visible to the damage loop below in the SAME frame.
+    this.stepHeat(allGears, deltaSec, now);
+    this.stepOil(allGears, now);
+
     // Apply jam damage
     for (const [gearId, stress] of this.jamStressMap) {
       const gear = allGears.get(gearId);
@@ -488,21 +531,130 @@ export class RotationPhysicsSystem {
         gearId,
         damage: dmg,
         remainingHp: gear.hp,
-        source: 'jam',
+        source: this.seizedGears.has(gearId) ? 'heat' : 'jam',
       });
 
       if (gear.hp <= 0) {
+        const cookedItself = this.seizedGears.has(gearId);
         this.jamStressMap.delete(gearId);
         this.jammedPairs.delete(gearId);
+        this.seizedGears.delete(gearId);
+        this.seizedSince.delete(gearId);
         this.eventBus.emit('gear:destroyed', {
           gearId,
           owner: gear.owner,
-          cause: 'jam',
+          cause: cookedItself ? 'heat' : 'jam',
         });
       }
     }
 
     this.checkOverclockBurnouts(now);
+  }
+
+  /**
+   * Advance every gear's heat, and apply the resulting band.
+   *
+   * A seizure reuses the existing jam machinery -- isJammed, jamStress and
+   * jamStressMap -- so HP loss, crack levels, the relief-valve softening and
+   * gear:destroyed all work unchanged. What it does NOT reuse is jammedPairs,
+   * whose whole lifecycle is "cleared and rebuilt by propagateTorque".
+   */
+  private stepHeat(allGears: Map<string, GearState>, deltaSec: number, now: number): void {
+    for (const [, gear] of allGears) {
+      const wasSeized = this.seizedGears.has(gear.id);
+      const result = stepThermal({
+        heat: gear.heat ?? 0,
+        oil: gear.oil ?? 0,
+        tier: gear.tier,
+        omega: gear.angularVelocity,
+        dt: deltaSec,
+        externalHeat: this.externalHeat?.(gear.id) ?? 0,
+        wasSeized,
+      });
+
+      gear.heat = result.heat;
+      gear.oil = result.oil;
+
+      if (result.state === 'seized') {
+        if (!wasSeized) this.beginSeizure(gear, now);
+        // Stress climbs the longer an overheat is ignored, so reacting early
+        // costs HP and ignoring it costs the gear.
+        const heldFor = (now - (gear.seizedAt ?? now)) / 1000;
+        const stress = escalatedSeizeStress(gear.tier, heldFor);
+        gear.jamStress = stress;
+        this.jamStressMap.set(gear.id, stress);
+        gear.angularVelocity = 0;
+        gear.isSpinning = false;
+      } else if (wasSeized) {
+        this.endSeizure(gear);
+      }
+
+      this.world.updateGear(gear);
+    }
+  }
+
+  private beginSeizure(gear: GearState, now: number): void {
+    // Set BEFORE rebuilding: rebuildChains re-solves torque, and torque reads
+    // thermalEfficiency, which reads this flag.
+    gear.isSeized = true;
+    this.seizedGears.add(gear.id);
+    this.seizedSince.set(gear.id, now);
+    gear.seizedAt = now;
+    gear.isJammed = true;
+    this.eventBus.emit('gear:jammed', {
+      gearId: gear.id,
+      conflictingGearId: gear.id,
+      torque: gear.jamStress,
+      severity: jamSeverity(gear.jamStress),
+      cause: 'heat',
+    });
+    // The chain has to be re-solved without this gear in it.
+    this.rebuildChains();
+  }
+
+  private endSeizure(gear: GearState): void {
+    // Cleared BEFORE rebuilding, for the same reason -- leaving it set made the
+    // chain re-solve with zero torque and the gear stayed at a standstill even
+    // though it had cooled and released.
+    gear.isSeized = false;
+    this.seizedGears.delete(gear.id);
+    this.seizedSince.delete(gear.id);
+    this.jamStressMap.delete(gear.id);
+    gear.seizedAt = undefined;
+    gear.isJammed = false;
+    gear.jamStress = 0;
+    this.eventBus.emit('gear:jam_cleared', { gearId: gear.id });
+    this.rebuildChains();
+  }
+
+  /**
+   * Spread oil along meshed teeth.
+   *
+   * On its own sub-tick: oil moves slowly and resolving it every frame is
+   * wasted work. Deltas are computed against a snapshot and applied afterwards,
+   * so edge order cannot change the result.
+   */
+  private stepOil(allGears: Map<string, GearState>, now: number): void {
+    if (now - this.lastOilDiffuseAt < OIL_DIFFUSE_INTERVAL_MS) return;
+    const dt = (now - this.lastOilDiffuseAt) / 1000;
+    this.lastOilDiffuseAt = now;
+    if (!Number.isFinite(dt) || dt <= 0) return;
+
+    const nodes = new Map<string, OilNode>();
+    for (const [id, gear] of allGears) {
+      const capacity = oilCapacityFor(gear.tier)
+        * (gear.type === 'oiler' ? OILER_CAPACITY_MULT : 1);
+      nodes.set(id, { oil: gear.oil ?? 0, capacity, omega: gear.angularVelocity });
+    }
+
+    const deltas = diffuseOil(this.meshGraph.getAllEdges(), nodes, Math.min(dt, 1));
+    for (const [id, delta] of deltas) {
+      const gear = allGears.get(id);
+      const node = nodes.get(id);
+      if (!gear || !node) continue;
+      gear.oil = Math.max(0, Math.min(node.capacity, (gear.oil ?? 0) + delta));
+      this.world.updateGear(gear);
+    }
   }
 
   private onFullRotation(gear: GearState, allGears: Map<string, GearState>): void {

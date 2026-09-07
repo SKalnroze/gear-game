@@ -57,6 +57,7 @@ const TYPE_COLORS: Record<GearType, number> = {
   power_pole:  0x998866,
   grid_tie:    0x66ffdd,
   coal_miner:  0x776655,
+  oiler:       0xffcc66,
 };
 
 /** Short display name for gear types that are too long */

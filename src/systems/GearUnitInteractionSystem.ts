@@ -118,7 +118,7 @@ export class GearUnitInteractionSystem {
           case 'aether_phantom_spawner':
           default:
             if (unit.owner === gear.owner) break;
-            if (unit.type === 'slime' || unit.type === 'saboteur' || unit.type === 'raider') {
+            if (unit.type === 'slime') {
               // Slime deals no damage to gears either -- just a soft
               // physical push so a pile of them doesn't visibly clip through.
               // Saboteur and Raider are explicitly "instead of damaging it"

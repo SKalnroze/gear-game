@@ -1,32 +1,23 @@
 export type UnitBehaviorState = 'marching' | 'attacking' | 'charging' | 'retreating' | 'firing';
 
+/**
+ * The eight units.
+ *
+ * Trimmed from eighteen. The cut ones were mostly variations rather than
+ * identities -- three "elite" upgrades and a "mixed" unit that appeared through
+ * chain composition rather than through a choice you made, plus several
+ * near-duplicate skirmishers. What survives is one clear role each, so a
+ * counter can be reasoned about rather than looked up.
+ */
 export type UnitType =
-  // Gold-based (from motor/amplifier/converter gears)
-  | 'infantry' | 'artillery' | 'cavalry' | 'mixed'
-  // Elite gold units
-  | 'elite_infantry' | 'elite_artillery' | 'elite_cavalry'
-  // Iron-based (from iron_miner)
-  | 'iron_guard'
-  // Crystal-based (from crystal_miner)
-  | 'crystal_sentinel'
-  // Aether-based (from aether_miner)
-  | 'aether_phantom'
-  // Ranged skirmisher, gold-based
-  | 'crossbow'
-  // Mobile true-sight pulse, counters hidden mines
-  | 'sentry_unit'
-  // Special -- the clog unit: no damage, explodes into a slowing puddle on death
-  | 'slime'
-  // Anti-gear siege unit: weak vs units, tears gears apart
-  | 'sapper'
-  // Fast flanker built to punish ranged units and turrets
-  | 'skirmish_diver'
-  // Disruptor: fouls an enemy gear's rotation instead of dealing HP damage
-  | 'saboteur'
-  // Economic raider: disables a miner/converter gear instead of damaging it
-  | 'raider'
-  // Mobile sustain: heals nearby allied units, never fights
-  | 'field_medic';
+  | 'infantry'      // the line: cheap, gold-only, the thing you always have
+  | 'crossbow'      // short-ranged skirmisher, beats the line
+  | 'cavalry'       // fast flanker, runs down artillery
+  | 'artillery'     // long-ranged siege, slow and fragile
+  | 'iron_guard'    // the wall: slow, heavy, soaks damage
+  | 'sapper'        // anti-gear specialist, tears machines apart
+  | 'field_medic'   // support, heals the line
+  | 'slime';        // the clog: no damage, bursts into a slowing puddle
 
 export interface UnitDefinition {
   type: UnitType;
@@ -34,8 +25,15 @@ export interface UnitDefinition {
   speed: number;           // pixels per second
   damage: number;          // damage dealt to base on arrival
   baseDamage: number;      // damage in combat per tick
-  costResource: 'gold' | 'iron' | 'crystal' | 'aether' | 'none';  // resource used to spawn this unit
-  costAmount: number;      // amount of resource required
+  /**
+   * Gold cost. Every unit costs gold; most also cost a little of something you
+   * had to mine, so an army is downstream of a working machine rather than of
+   * a gold counter. Infantry is the deliberate exception -- the line you can
+   * always field, whatever else has gone wrong.
+   */
+  costAmount: number;
+  secondaryResource?: 'iron' | 'crystal' | 'coal';
+  secondaryAmount?: number;
   description: string;
   frictionValue?: number;  // friction the slime's death puddle adds to gears standing in it
   /** Slime only: radius/duration/slow of the puddle left on death. */

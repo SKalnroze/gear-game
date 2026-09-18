@@ -23,21 +23,11 @@ import {
 export const TYPE_MASS_MULT: Partial<Record<UnitType, number>> = {
   iron_guard: 3,
   cavalry: 0.8,
-  elite_cavalry: 0.8,
-  aether_phantom: 0.5,
   artillery: 1.5,
-  elite_artillery: 1.5,
-  crystal_sentinel: 1.0,
   infantry: 1.0,
-  elite_infantry: 1.0,
-  mixed: 1.0,
   crossbow: 0.9,
-  sentry_unit: 1.0,
   slime: 0.6,
   sapper: 1.8,
-  skirmish_diver: 0.7,
-  saboteur: 1.0,
-  raider: 0.7,
   field_medic: 0.9,
 };
 
@@ -57,23 +47,11 @@ export const TYPE_MASS_MULT: Partial<Record<UnitType, number>> = {
 export const TIER_SPEED_BASE: Partial<Record<UnitType, number>> = {
   // Light -- tier makes them faster.
   cavalry: 1.08,
-  elite_cavalry: 1.08,
-  skirmish_diver: 1.08,
-  raider: 1.08,
-  aether_phantom: 1.08,
-  // Standard -- tier makes them slightly faster.
   infantry: 1.04,
-  elite_infantry: 1.04,
-  mixed: 1.04,
   crossbow: 1.04,
-  sentry_unit: 1.04,
-  saboteur: 1.04,
   field_medic: 1.04,
-  crystal_sentinel: 1.04,
-  // Heavy -- tier makes them SLOWER. Being big is part of their identity.
   iron_guard: 0.94,
   artillery: 0.94,
-  elite_artillery: 0.94,
   sapper: 0.94,
   slime: 0.94,
 };
@@ -133,7 +111,7 @@ export function computeTierStats(def: UnitDefinition, tier: GearTier, unitType: 
   const rangeFactor = tierRangeFactor(tier);
 
   const attackRange =
-    (unitType === 'artillery' || unitType === 'elite_artillery')
+    (unitType === 'artillery')
       ? Math.round(baseSize * ARTILLERY_RANGE_MULT * rangeFactor)
       : (unitType === 'crystal_sentinel')
         ? Math.round(baseSize * 6 * rangeFactor)

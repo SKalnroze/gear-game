@@ -6,24 +6,11 @@ const UNIT_COLORS: Record<UnitType, number> = {
   infantry: 0x44aaff,
   artillery: 0xffaa00,
   cavalry: 0xaa44ff,
-  mixed: 0x44ffaa,
-  elite_infantry: 0x0055ff,
-  elite_artillery: 0xff6600,
-  elite_cavalry: 0x7700ff,
-  // Resource-based units
   iron_guard: 0x888888,
-  crystal_sentinel: 0x44ddff,
-  aether_phantom: 0xdd44ff,
-  // Ranged skirmisher / detection utility
   crossbow: 0xccaa66,
-  sentry_unit: 0x66ffcc,
-  // Special
   slime: 0x66dd33,
   // New roles
   sapper: 0xaa8866,
-  skirmish_diver: 0xff5577,
-  saboteur: 0x884499,
-  raider: 0xffaa33,
   field_medic: 0x44ffaa,
 };
 
@@ -32,20 +19,10 @@ const UNIT_SIZES: Record<UnitType, number> = {
   infantry: 9,
   artillery: 10,
   cavalry: 12,
-  mixed: 10,
-  elite_infantry: 10,
-  elite_artillery: 11,
-  elite_cavalry: 13,
   iron_guard: 11,
-  crystal_sentinel: 10,
-  aether_phantom: 10,
   crossbow: 9,
-  sentry_unit: 10,
   slime: 7,
   sapper: 11,
-  skirmish_diver: 8,
-  saboteur: 9,
-  raider: 8,
   field_medic: 9,
 };
 
@@ -99,7 +76,7 @@ export class UnitEntity extends Phaser.GameObjects.Container {
     this.drawUnit(state);
 
     // Initialize artillery turret barrel
-    if (state.type === 'artillery' || state.type === 'elite_artillery') {
+    if (state.type === 'artillery') {
       const size = state.size > 0 ? state.size : (UNIT_SIZES[state.type] ?? 10);
       this.drawArtilleryTurret(size);
       this.turretG.setRotation(state.owner === 'player' ? 0 : Math.PI);
@@ -121,7 +98,6 @@ export class UnitEntity extends Phaser.GameObjects.Container {
     const g = this.unitGraphics;
     g.clear();
     const color = UNIT_COLORS[state.type];
-    const isElite = state.type.startsWith('elite_');
     const size = state.size > 0 ? state.size : (UNIT_SIZES[state.type] ?? 10);
 
     // Owner tint color
@@ -129,26 +105,16 @@ export class UnitEntity extends Phaser.GameObjects.Container {
 
     switch (state.type) {
       case 'infantry':
-      case 'elite_infantry':
-      case 'mixed':
-        this.drawInfantry(g, color, ownerColor, size, isElite);
+        this.drawInfantry(g, color, ownerColor, size, false);
         break;
       case 'cavalry':
-      case 'elite_cavalry':
         this.drawCavalry(g, color, ownerColor, size, state.owner, this.lastCavalryDir);
         break;
       case 'artillery':
-      case 'elite_artillery':
         this.drawArtillery(g, color, ownerColor, size, state.owner);
         break;
       case 'iron_guard':
         this.drawIronGuard(g, color, ownerColor, size);
-        break;
-      case 'aether_phantom':
-        this.drawAetherPhantom(g, color, ownerColor, size);
-        break;
-      case 'crystal_sentinel':
-        this.drawCrystalSentinel(g, color, size);
         break;
       case 'slime':
         this.drawSlime(g, color, ownerColor, size);
@@ -156,18 +122,11 @@ export class UnitEntity extends Phaser.GameObjects.Container {
       case 'sapper':
         this.drawSapper(g, color, ownerColor, size);
         break;
-      case 'skirmish_diver':
-        this.drawSkirmishDiver(g, color, ownerColor, size, state.owner);
-        break;
-      case 'saboteur':
-        this.drawSaboteur(g, color, ownerColor, size);
-        break;
-      case 'raider':
-        this.drawRaider(g, color, ownerColor, size);
-        break;
       case 'field_medic':
         this.drawFieldMedic(g, color, ownerColor, size);
         break;
+      // Crossbow has no bespoke silhouette yet and falls through here, as it
+      // always has.
       default:
         this.drawGeneric(g, color, ownerColor, size);
         break;
@@ -331,110 +290,7 @@ export class UnitEntity extends Phaser.GameObjects.Container {
     }
   }
 
-  private drawAetherPhantom(
-    g: Phaser.GameObjects.Graphics,
-    color: number,
-    ownerColor: number,
-    size: number,
-  ): void {
-    // Octagonal ghost shape — ghostly, ethereal, no legs
-    const sides = 8;
 
-    // Outer glow ring
-    g.fillStyle(color, 0.18);
-    g.beginPath();
-    for (let i = 0; i < sides; i++) {
-      const angle = (i / sides) * Math.PI * 2 - Math.PI / sides;
-      const r = size * 1.35;
-      const px = Math.cos(angle) * r;
-      const py = Math.sin(angle) * r;
-      if (i === 0) g.moveTo(px, py);
-      else g.lineTo(px, py);
-    }
-    g.closePath();
-    g.fillPath();
-
-    // Main octagon body (semi-transparent)
-    g.fillStyle(color, 0.62);
-    g.lineStyle(1.5, 0xffffff, 0.55);
-    g.beginPath();
-    for (let i = 0; i < sides; i++) {
-      const angle = (i / sides) * Math.PI * 2 - Math.PI / sides;
-      const r = size;
-      const px = Math.cos(angle) * r;
-      const py = Math.sin(angle) * r;
-      if (i === 0) g.moveTo(px, py);
-      else g.lineTo(px, py);
-    }
-    g.closePath();
-    g.fillPath();
-    g.strokePath();
-
-    // Owner tint overlay
-    g.fillStyle(ownerColor, 0.18);
-    g.beginPath();
-    for (let i = 0; i < sides; i++) {
-      const angle = (i / sides) * Math.PI * 2 - Math.PI / sides;
-      const r = size;
-      const px = Math.cos(angle) * r;
-      const py = Math.sin(angle) * r;
-      if (i === 0) g.moveTo(px, py);
-      else g.lineTo(px, py);
-    }
-    g.closePath();
-    g.fillPath();
-
-    // Inner glowing core
-    g.fillStyle(0xffffff, 0.3);
-    g.fillCircle(0, 0, size * 0.3);
-
-    // Ethereal inner ring
-    g.lineStyle(1, color, 0.8);
-    g.beginPath();
-    for (let i = 0; i < sides; i++) {
-      const angle = (i / sides) * Math.PI * 2 - Math.PI / sides;
-      const r = size * 0.55;
-      const px = Math.cos(angle) * r;
-      const py = Math.sin(angle) * r;
-      if (i === 0) g.moveTo(px, py);
-      else g.lineTo(px, py);
-    }
-    g.closePath();
-    g.strokePath();
-  }
-
-  private drawCrystalSentinel(
-    g: Phaser.GameObjects.Graphics,
-    color: number,
-    size: number,
-  ): void {
-    // Hexagonal crystal shape (6-point, size radius)
-    const points6 = this.hexPoints(0, 0, size);
-    g.fillStyle(color, 1);
-    g.lineStyle(1.5, 0xffffff, 0.9);
-    g.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const p = points6[i];
-      if (i === 0) g.moveTo(p.x, p.y);
-      else g.lineTo(p.x, p.y);
-    }
-    g.closePath();
-    g.fillPath();
-    g.strokePath();
-
-    // Inner smaller hexagon of lighter color
-    const innerPoints = this.hexPoints(0, 0, size * 0.55);
-    const lighterColor = this.lightenColor(color, 0.4);
-    g.fillStyle(lighterColor, 0.8);
-    g.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const p = innerPoints[i];
-      if (i === 0) g.moveTo(p.x, p.y);
-      else g.lineTo(p.x, p.y);
-    }
-    g.closePath();
-    g.fillPath();
-  }
 
   private hexPoints(cx: number, cy: number, r: number): { x: number; y: number }[] {
     const pts = [];
@@ -508,74 +364,10 @@ export class UnitEntity extends Phaser.GameObjects.Container {
   }
 
   /** Skirmish Diver: a slim dart, sharper and thinner than Cavalry's triangle. */
-  private drawSkirmishDiver(
-    g: Phaser.GameObjects.Graphics,
-    color: number,
-    ownerColor: number,
-    size: number,
-    owner: 'player' | 'ai',
-  ): void {
-    const facingRight = owner === 'player';
-    const tipX = facingRight ? size * 1.3 : -size * 1.3;
-    const baseX = facingRight ? -size * 0.6 : size * 0.6;
-
-    g.fillStyle(color, 1);
-    g.lineStyle(1, 0xffffff, 0.85);
-    g.fillTriangle(tipX, 0, baseX, -size * 0.55, baseX, size * 0.55);
-    g.strokeTriangle(tipX, 0, baseX, -size * 0.55, baseX, size * 0.55);
-    g.fillStyle(ownerColor, 0.3);
-    g.fillTriangle(tipX, 0, baseX, -size * 0.55, baseX, size * 0.55);
-  }
 
   /** Saboteur: a diamond with a spark at its core. */
-  private drawSaboteur(
-    g: Phaser.GameObjects.Graphics,
-    color: number,
-    ownerColor: number,
-    size: number,
-  ): void {
-    g.fillStyle(color, 1);
-    g.lineStyle(1.5, 0xffffff, 0.8);
-    g.beginPath();
-    g.moveTo(0, -size);
-    g.lineTo(size, 0);
-    g.lineTo(0, size);
-    g.lineTo(-size, 0);
-    g.closePath();
-    g.fillPath();
-    g.strokePath();
-
-    g.fillStyle(ownerColor, 0.3);
-    g.beginPath();
-    g.moveTo(0, -size);
-    g.lineTo(size, 0);
-    g.lineTo(0, size);
-    g.lineTo(-size, 0);
-    g.closePath();
-    g.fillPath();
-
-    // Spark core
-    g.fillStyle(0xffee66, 0.9);
-    g.fillCircle(0, 0, size * 0.28);
-  }
 
   /** Raider: a low, fast wedge with a coin-glint dot -- built to slip in and out. */
-  private drawRaider(
-    g: Phaser.GameObjects.Graphics,
-    color: number,
-    ownerColor: number,
-    size: number,
-  ): void {
-    g.fillStyle(color, 1);
-    g.lineStyle(1, 0xffffff, 0.8);
-    g.fillEllipse(0, 0, size * 2, size * 1.2);
-    g.strokeEllipse(0, 0, size * 2, size * 1.2);
-    g.fillStyle(ownerColor, 0.3);
-    g.fillEllipse(0, 0, size * 2, size * 1.2);
-
-    g.fillStyle(0xffdd44, 0.9);
-    g.fillCircle(0, 0, size * 0.3);
-  }
 
   /** Field Medic: a plain circle with a medic's cross. */
   private drawFieldMedic(
@@ -626,7 +418,7 @@ export class UnitEntity extends Phaser.GameObjects.Container {
     this.drawHpBar(state);
 
     // Artillery: rotate turret toward target angle
-    if (state.type === 'artillery' || state.type === 'elite_artillery') {
+    if (state.type === 'artillery') {
       const targetAngle = state.turretAngle ?? (state.owner === 'player' ? 0 : Math.PI);
       // Smooth rotation: lerp 20% per frame toward target
       const cur = this.turretG.rotation;
@@ -637,7 +429,7 @@ export class UnitEntity extends Phaser.GameObjects.Container {
     }
 
     // Cavalry: direction change redraw + velocity trail
-    if (state.type === 'cavalry' || state.type === 'elite_cavalry') {
+    if (state.type === 'cavalry') {
       const newDir: 'forward' | 'backward' = state.behaviorState === 'retreating' ? 'backward' : 'forward';
       if (newDir !== this.lastCavalryDir) {
         this.lastCavalryDir = newDir;
@@ -658,7 +450,7 @@ export class UnitEntity extends Phaser.GameObjects.Container {
     }
 
     // Infantry: sword sweep animation on new attack
-    if (state.type === 'infantry' || state.type === 'elite_infantry' || state.type === 'mixed') {
+    if (state.type === 'infantry') {
       if (state.lastAttackTime !== this.lastKnownAttackTime && state.lastAttackTime > 0) {
         this.lastKnownAttackTime = state.lastAttackTime;
         this.sweepTimer = 320; // ms
@@ -672,12 +464,7 @@ export class UnitEntity extends Phaser.GameObjects.Container {
       }
     }
 
-    if (state.type === 'aether_phantom') {
-      // Pulsing alpha for aether phantom
-      const t = (gameTime ?? Date.now()) * 0.002;
-      const pulse = 0.45 + 0.25 * Math.sin(t + this.phantomPhase);
-      this.setAlpha(pulse);
-    } else if (state.inCombat && state.behaviorState === 'attacking') {
+    if (state.inCombat && state.behaviorState === 'attacking') {
       // Flash when actively attacking
       this.setAlpha(0.75 + Math.sin(Date.now() * 0.015) * 0.25);
     } else {

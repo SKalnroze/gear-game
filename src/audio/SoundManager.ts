@@ -127,14 +127,9 @@ export class SoundManager {
     this._go(() => {
       switch (type) {
         case 'infantry':        this._spawnInfantry();       break;
-        case 'elite_infantry':  this._spawnEliteInfantry();  break;
         case 'artillery':       this._spawnArtillery();      break;
-        case 'elite_artillery': this._spawnEliteArtillery(); break;
         case 'cavalry':         this._spawnCavalry();        break;
-        case 'elite_cavalry':   this._spawnEliteCavalry();   break;
         case 'iron_guard':      this._spawnIronGuard();      break;
-        case 'crystal_sentinel':this._spawnCrystalSentinel();break;
-        case 'aether_phantom':  this._spawnAetherPhantom();  break;
         case 'slime':          this._spawnSlime();         break;
         default:                this._spawnInfantry();
       }
@@ -145,14 +140,9 @@ export class SoundManager {
     this._go(() => {
       switch (type) {
         case 'infantry':        this._dieInfantry();       break;
-        case 'elite_infantry':  this._dieEliteInfantry();  break;
         case 'artillery':       this._dieArtillery();      break;
-        case 'elite_artillery': this._dieEliteArtillery(); break;
         case 'cavalry':         this._dieCavalry();        break;
-        case 'elite_cavalry':   this._dieEliteCavalry();   break;
         case 'iron_guard':      this._dieIronGuard();      break;
-        case 'crystal_sentinel':this._dieCrystalSentinel();break;
-        case 'aether_phantom':  this._dieAetherPhantom();  break;
         case 'slime':          this._dieSlime();         break;
         default:                this._dieInfantry();
       }
@@ -164,12 +154,8 @@ export class SoundManager {
     this._go(() => {
       switch (type) {
         case 'infantry':
-        case 'elite_infantry':
-        case 'mixed':           this._attackMelee();        break;
         case 'cavalry':
-        case 'elite_cavalry':   this._attackCavalry();      break;
         case 'iron_guard':      this._attackIronGuard();    break;
-        case 'aether_phantom':  this._attackAetherPhantom();break;
         case 'slime':          this._attackSlime();       break;
         // Ranged types play projectile sounds instead
         default: break;
